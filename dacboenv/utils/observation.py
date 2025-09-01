@@ -8,7 +8,6 @@ from typing import (
     TYPE_CHECKING,
     Any,
     ClassVar,
-    TypeVar,
 )
 
 import numpy as np
@@ -21,7 +20,6 @@ if TYPE_CHECKING:
     from smac.main.smbo import SMBO
 
 ObsType = dict[str, Any]
-ActType = TypeVar("ActType")
 
 
 @dataclass
@@ -36,31 +34,36 @@ class ObservationType:
         Gymnasium space for the observation's value range and type.
     compute : Callable[[SMBO], Any]
         Function to compute the observation value from a SMAC instance.
+    default : int | float
+        The observation's default value.
     """
 
     name: str
     space: Space
     compute: Callable[[SMBO], Any]
+    default: int | float
 
 
 incumbent_change_observation = ObservationType(
-    "incumbent_changes", Box(low=0, high=np.inf, dtype=np.float32), lambda smbo: smbo.intensifier.incumbents_changed
+    "incumbent_changes", Box(low=0, high=np.inf, dtype=np.float32), lambda smbo: smbo.intensifier.incumbents_changed, 0
 )
 trials_passed_observation = ObservationType(
-    "trials_passed", Box(low=0, high=np.inf, dtype=np.float32), lambda smbo: len(smbo.runhistory)
+    "trials_passed", Box(low=0, high=np.inf, dtype=np.float32), lambda smbo: len(smbo.runhistory), 0
 )
 trials_left_observation = ObservationType(
-    "trials_left", Box(low=0, high=np.inf, dtype=np.float32), lambda smbo: smbo.remaining_trials
+    "trials_left", Box(low=0, high=np.inf, dtype=np.float32), lambda smbo: smbo.remaining_trials, -1
 )
 ubr_observation = ObservationType(
     "ubr",
     Box(low=0.0, high=np.inf, dtype=np.float32),
     lambda smbo: calculate_ubr(trial_infos=None, trial_values=None, configspace=None, seed=None, smbo=smbo)["ubr"],
+    np.nan,
 )
 modelfit_observation = ObservationType(
     "modelfit_mse",
     Box(low=0.0, high=np.inf, dtype=np.float32),
     lambda smbo: np.nan if np.isnan(scores := calculate_model_fit(smbo)["mean_scores"]).any() else scores[0],
+    np.nan,
 )
 
 ALL_OBSERVATIONS = [
@@ -123,7 +126,7 @@ class ObservationSpace:
         )
 
     @property
-    def observation_space(self) -> Space:
+    def space(self) -> Space:
         """Returns the Gymnasium Dict space for the selected observations.
 
         Returns:

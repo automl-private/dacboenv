@@ -139,38 +139,6 @@ class WEI(AbstractAcquisitionFunction):
             return f
         else:
             raise NotImplementedError
-            # if len(X.shape) == 1:
-            #     X = X[:, np.newaxis]
-
-            # m, var_ = self._model.predict_marginalized(X)
-            # std = np.sqrt(var_)
-
-            # def calculate_log_ei() -> np.ndarray:
-            #     # we expect that f_min is in log-space
-            #     assert self._eta is not None
-            #     assert self._xi is not None
-
-            #     f_min = self._eta - self._xi
-            #     v = (f_min - m) / std
-            #     return self._alpha * (np.exp(f_min) * norm.cdf(v)) - (np.exp(0.5 * var_ + m) * norm.cdf(v - std))
-
-            # if np.any(std == 0.0):
-            #     # if std is zero, we have observed x on all instances
-            #     # using a RF, std should be never exactly 0.0
-            #     # Avoid zero division by setting all zeros in s to one.
-            #     # Consider the corresponding results in f to be zero.
-            #     logger.warning("Predicted std is 0.0 for at least one sample.")
-            #     std_copy = np.copy(std)
-            #     std[std_copy == 0.0] = 1.0
-            #     log_ei = calculate_log_ei()
-            #     log_ei[std_copy == 0.0] = 0.0
-            # else:
-            #     log_ei = calculate_log_ei()
-
-            # if (log_ei < 0).any():
-            #     raise ValueError("Expected Improvement is smaller than 0 for at least one sample.")
-
-            return log_ei.reshape((-1, 1))
 
 
 class EIPI(WEI):

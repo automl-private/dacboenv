@@ -7,7 +7,6 @@ import time
 from typing import TYPE_CHECKING
 
 import numpy as np
-from dacboenv.utils.loggingutils import get_logger
 from sklearn.metrics import (
     mean_absolute_error,
     mean_absolute_percentage_error,
@@ -16,6 +15,8 @@ from sklearn.metrics import (
     root_mean_squared_error,
 )
 from sklearn.model_selection import KFold
+
+from dacboenv.utils.loggingutils import get_logger
 
 if TYPE_CHECKING:
     from smac.main.smbo import SMBO

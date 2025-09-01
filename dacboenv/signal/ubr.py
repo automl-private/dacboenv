@@ -6,18 +6,19 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from ConfigSpace import Configuration
 from smac import BlackBoxFacade
-from dacboenv.utils.confidence_bound import LCB, UCB
 from smac.acquisition.maximizer import LocalAndSortedRandomSearch
 from smac.model.gaussian_process import GaussianProcess
 from smac.model.random_forest import RandomForest
-from smac.runhistory import TrialInfo, TrialValue
 from smac.scenario import Scenario
 from smac.utils.logging import get_logger
+
+from dacboenv.utils.confidence_bound import LCB, UCB
 
 if TYPE_CHECKING:
     from ConfigSpace import Configuration, ConfigurationSpace
     from smac.main.smbo import SMBO
     from smac.model import AbstractModel
+    from smac.runhistory import TrialInfo, TrialValue
 
 logger = get_logger(__name__)
 
@@ -119,4 +120,3 @@ def calculate_ubr(
         "min_ucb": min_ucb,
         "min_lcb": min_lcb,
     }
-

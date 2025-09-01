@@ -1,19 +1,24 @@
 """RL Environment for DACBO."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, SupportsFloat, TypeVar
+
 import gymnasium as gym
-from typing import TypeVar, Any, SupportsFloat
-from gymnasium.spaces import Dict, Box, Discrete
 import numpy as np
+from gymnasium.spaces import Box, Dict, Discrete
 from smac.acquisition.function import EI, PI
-from dacboenv.signal import mse
+
 from dacboenv.utils.confidence_bound import UCB
+from dacboenv.utils.observation import ObservationSpace
 from dacboenv.utils.weighted_expected_improvement import WEI
-from dacboenv.signal.ubr import calculate_ubr
-from dacboenv.signal.modelfit import calculate_model_fit
-from smac.main.smbo import SMBO
+
+if TYPE_CHECKING:
+    from smac.main.smbo import SMBO
 
 ObsType = TypeVar("ObsType")
 ActType = TypeVar("ActType")
+
 
 class DACBOEnv(gym.Env):
     """Gymnasium environment for DACBO.
@@ -51,39 +56,35 @@ class DACBOEnv(gym.Env):
     wei_alpha : float
         Parameter for WEI acquisition function.
 
-    Methods
+    Methods:
     -------
     step(action)
         Executes one optimization step using the selected acquisition function and parameters.
     reset(seed=None, options=None)
         Resets the environment and optimizer state.
     """
-    
+
     _acquisition_functions = {0: EI, 1: PI, 2: UCB, 3: WEI}
     _acquisition_function_parameters = {0: "ei_pi_xi", 1: "ei_pi_xi", 2: "ucb_beta", 3: "wei_alpha"}
     _acquisition_function_attrs = {0: "_xi", 1: "_xi", 2: "_beta", 3: "_alpha"}
 
     def __init__(self, smac_instance: SMBO):
-        
         super().__init__()
 
         self._smac_instance = smac_instance
         self._n_trials = self._smac_instance._scenario.n_trials
+        self._observation_space = ObservationSpace()
 
-        self.observation_space = Dict({
-            "incumbent_changes": Box(low=0, high=self._n_trials, dtype=np.int32),
-            "trials_passed": Box(low=0, high=self._n_trials, dtype=np.int32),
-            "trials_left": Box(low=0, high=self._n_trials, dtype=np.int32),
-            "ubr": Box(low=0.0, high=np.inf, dtype=np.float32),
-            "modelfit_mse": Box(low=0.0, high=np.inf, dtype=np.float32),
-        })
+        self.observation_space = self._observation_space.observation_space
 
-        self.action_space = Dict({
-            "acquisition_function": Discrete(len(DACBOEnv._acquisition_functions)),
-            "ei_pi_xi": Box(low=-10_000.0, high=10_000.0, dtype=np.float32),
-            "ucb_beta": Box(low=-10.0, high=5.0, dtype=np.float32), # Log scale
-            "wei_alpha": Box(low=0.0, high=1.0, dtype=np.float32),
-        })
+        self.action_space = Dict(
+            {
+                "acquisition_function": Discrete(len(DACBOEnv._acquisition_functions)),
+                "ei_pi_xi": Box(low=-10_000.0, high=10_000.0, dtype=np.float32),
+                "ucb_beta": Box(low=-10.0, high=5.0, dtype=np.float32),  # Log scale
+                "wei_alpha": Box(low=0.0, high=1.0, dtype=np.float32),
+            }
+        )
 
     @staticmethod
     def update_optimizer(optimizer: SMBO, action: ActType):
@@ -95,26 +96,20 @@ class DACBOEnv(gym.Env):
         acquisition_function_parameter = action[DACBOEnv._acquisition_function_parameters[acquisition_function_id]]
 
         if acquisition_function_id == 2:  # Log scale for UCB beta
-            acquisition_function_parameter = 10 ** acquisition_function_parameter
+            acquisition_function_parameter = 10**acquisition_function_parameter
 
         optimizer.update_acquisition_function(acquisition_function())
-        setattr(optimizer._intensifier._config_selector._acquisition_function, DACBOEnv._acquisition_function_attrs[acquisition_function_id], acquisition_function_parameter)
+        setattr(
+            optimizer._intensifier._config_selector._acquisition_function,
+            DACBOEnv._acquisition_function_attrs[acquisition_function_id],
+            acquisition_function_parameter,
+        )
 
-    @staticmethod
-    def get_observation(optimizer: SMBO) -> ObsType:
-        ubr = calculate_ubr(trial_infos=None, trial_values=None, configspace=None, seed=None, smbo=optimizer)["ubr"]
-        scores = calculate_model_fit(smbo=optimizer)["mean_scores"]
-
-        if not np.isnan(scores).any():
-            mse = scores[0]
-        else:
-            mse = np.nan # TODO: Sensible? -1 instead?
-
-        # TODO: Obs as dict
-        obs = (optimizer.intensifier.incumbents_changed, len(optimizer.runhistory), optimizer.remaining_trials, ubr, mse)
+    def get_observation(self, optimizer: SMBO) -> ObsType:
+        obs = self._observation_space.get_observation(optimizer)
 
         incumbent_cost = optimizer.intensifier.trajectory[-1].costs
-        
+
         # ParEgo
         # TODO: get_reward()
 
@@ -126,14 +121,11 @@ class DACBOEnv(gym.Env):
 
         # incumbent_improvement = last_incumbent_cost - incumbent_cost
 
-        reward = incumbent_cost # XXX: Reward == current incumbent cost
-        
+        reward = incumbent_cost  # XXX: Reward == current incumbent cost
+
         return obs, reward
 
-    def step(
-        self, action: ActType
-    ) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
-
+    def step(self, action: ActType) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
         # Update optimizer
         DACBOEnv.update_optimizer(self._smac_instance, action)
 
@@ -143,7 +135,7 @@ class DACBOEnv(gym.Env):
         self._smac_instance.tell(trial_info, trial_value)
 
         # Compute observation
-        obs, reward = DACBOEnv.get_observation(self._smac_instance)
+        obs, reward = self.get_observation(self._smac_instance)
 
         return obs, reward, self._smac_instance.budget_exhausted, False, {}
 
@@ -154,6 +146,6 @@ class DACBOEnv(gym.Env):
         options: dict[str, Any] | None = None,
     ) -> tuple[ObsType, dict[str, Any]]:
         super().reset(seed=seed)
-        
+
         # XXX: Going to be used to actually reset optimization?
         return (0, 0, self._n_trials, np.nan, np.nan), {}

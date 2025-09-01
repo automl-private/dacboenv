@@ -4,7 +4,6 @@ from abc import abstractmethod
 from typing import Any
 
 import numpy as np
-
 from smac.acquisition.function.abstract_acquisition_function import (
     AbstractAcquisitionFunction,
 )
@@ -39,7 +38,7 @@ class AbstractConfidenceBound(AbstractAcquisitionFunction):
     beta : float, defaults to 1.0
         Controls the balance between exploration and exploitation of the acquisition function.
 
-    Attributes
+    Attributes:
     ----------
     _beta : float
         Exploration-exploitation trade-off parameter.
@@ -52,7 +51,7 @@ class AbstractConfidenceBound(AbstractAcquisitionFunction):
     _beta_scaling_srinivas : bool
         Whether to use the beta scaling according to [0, 1].
 
-    References
+    References:
     ----------
     [0] Srinivas, Niranjan, et al. "Gaussian process optimization in the bandit setting: No regret and experimental
     design." arXiv preprint arXiv:0912.3995 (2009). or not.
@@ -62,7 +61,7 @@ class AbstractConfidenceBound(AbstractAcquisitionFunction):
     """
 
     def __init__(self, beta: float = 1.0, nu: float = 1.0, update_beta=True, beta_scaling_srinivas=False) -> None:
-        super(AbstractConfidenceBound, self).__init__()
+        super().__init__()
         self._beta: float = beta
         self._nu: float = nu
         self._num_data: int | None = None
@@ -71,8 +70,7 @@ class AbstractConfidenceBound(AbstractAcquisitionFunction):
 
     @property
     @abstractmethod
-    def bound_type(self) -> str:
-        ...
+    def bound_type(self) -> str: ...
 
     @property
     def name(self) -> str:  # noqa: D102
@@ -86,7 +84,7 @@ class AbstractConfidenceBound(AbstractAcquisitionFunction):
         return meta
 
     def _update(self, **kwargs: Any) -> None:
-        """Update acquisition function attributes
+        """Update acquisition function attributes.
 
         Parameters
         ----------
@@ -97,7 +95,7 @@ class AbstractConfidenceBound(AbstractAcquisitionFunction):
         self._num_data = kwargs["num_data"]
 
     def _compute(self, X: np.ndarray) -> np.ndarray:
-        """Compute LCB acquisition value
+        """Compute LCB acquisition value.
 
         Parameters
         ----------
@@ -105,12 +103,12 @@ class AbstractConfidenceBound(AbstractAcquisitionFunction):
             The input points where the acquisition function should be evaluated. The dimensionality of X is (N, D),
             with N as the number of points to evaluate at and D is the number of dimensions of one X.
 
-        Returns
+        Returns:
         -------
         np.ndarray
             Acquisition function values wrt X; shape [N,1].
 
-        Raises
+        Raises:
         ------
         ValueError
             If `update` has not been called before. Number of data points is unspecified in this case.
@@ -167,7 +165,7 @@ class LCB(AbstractConfidenceBound):
     beta : float, defaults to 1.0
         Controls the balance between exploration and exploitation of the acquisition function.
 
-    Attributes
+    Attributes:
     ----------
     _beta : float
         Exploration-exploitation trade-off parameter.
@@ -208,7 +206,7 @@ class UCB(AbstractConfidenceBound):
     beta : float, defaults to 1.0
         Controls the balance between exploration and exploitation of the acquisition function.
 
-    Attributes
+    Attributes:
     ----------
     _beta : float
         Exploration-exploitation trade-off parameter.

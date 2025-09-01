@@ -46,7 +46,7 @@ class WEI(AbstractAcquisitionFunction):
         return meta
 
     def _update(self, **kwargs: Any) -> None:
-        """Update acsquisition function attributes
+        """Update acsquisition function attributes.
 
         Parameters
         ----------
@@ -65,7 +65,7 @@ class WEI(AbstractAcquisitionFunction):
             self._alpha = alpha
 
     def _compute(self, X: np.ndarray) -> np.ndarray:
-        """Compute EI acquisition value
+        """Compute EI acquisition value.
 
         Parameters
         ----------
@@ -73,12 +73,12 @@ class WEI(AbstractAcquisitionFunction):
             The input points where the acquisition function should be evaluated. The dimensionality of X is (N, D),
             with N as the number of points to evaluate at and D is the number of dimensions of one X.
 
-        Returns
+        Returns:
         -------
         np.ndarray [N,1]
             Acquisition function values wrt X.
 
-        Raises
+        Raises:
         ------
         ValueError
             If `update` has not been called before (current incumbent value `eta` unspecified).
@@ -90,7 +90,9 @@ class WEI(AbstractAcquisitionFunction):
         assert self._model is not None
         assert self._xi is not None
         if self._use_pure_PI:
-            assert self._alpha == 1., f"{self._alpha} != 0.5 with use pure PI. Any other combination, especially alpha=0.5 (EI) leads to wrong WEI."
+            assert (
+                self._alpha == 1.0
+            ), f"{self._alpha} != 0.5 with use pure PI. Any other combination, especially alpha=0.5 (EI) leads to wrong WEI."
 
         if self._eta is None:
             raise ValueError(
@@ -108,10 +110,7 @@ class WEI(AbstractAcquisitionFunction):
 
             def calculate_f() -> np.ndarray:
                 z = (self._eta - m - self._xi) / s
-                if self._use_pure_PI:
-                    pi_term = norm.cdf(z)
-                else:
-                    pi_term = (self._eta - m - self._xi) * norm.cdf(z)
+                pi_term = norm.cdf(z) if self._use_pure_PI else (self._eta - m - self._xi) * norm.cdf(z)
                 ei_term = s * norm.pdf(z)
                 self.pi_term = pi_term
                 self.pi_pure_term = norm.cdf(z)
@@ -176,19 +175,13 @@ class WEI(AbstractAcquisitionFunction):
 
 class EIPI(WEI):
     def __init__(self, alpha: float = 0.5, xi: float = 0, log: bool = False, use_pure_PI: bool = False) -> None:
-        super().__init__(
-            alpha=alpha,
-            xi=xi,
-            log=log,
-            use_pure_PI=use_pure_PI
-        )
+        super().__init__(alpha=alpha, xi=xi, log=log, use_pure_PI=use_pure_PI)
 
     def _compute(self, X: np.ndarray) -> np.ndarray:
         if self._alpha == 0.5:  # EI
             self._use_pure_PI = False
-        elif self._alpha == 1.:  # PI
+        elif self._alpha == 1.0:  # PI
             self._use_pure_PI = True
         else:
-                raise ValueError("Only values of alpha=0.5 -> EI and alpha=1 -> PI are valid.")
+            raise ValueError("Only values of alpha=0.5 -> EI and alpha=1 -> PI are valid.")
         return super()._compute(X=X)
-

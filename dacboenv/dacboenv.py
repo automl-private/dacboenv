@@ -2,35 +2,38 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, SupportsFloat, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    SupportsFloat,
+    TypeVar,
+)
 
 import gymnasium as gym
 import numpy as np
-from gymnasium.spaces import Box, Dict, Discrete
-from smac.acquisition.function import EI, PI
 
-from dacboenv.utils.confidence_bound import UCB
+from dacboenv.utils.action import ActionSpace, FunctionAction, ParameterAction
 from dacboenv.utils.observation import ObservationSpace
-from dacboenv.utils.weighted_expected_improvement import WEI
 
 if TYPE_CHECKING:
     from smac.main.smbo import SMBO
 
-ObsType = TypeVar("ObsType")
+ObsType = dict[str, Any]
 ActType = TypeVar("ActType")
 
 
 class DACBOEnv(gym.Env):
-    """Gymnasium environment for DACBO.
+    """Gymnasium environment for Dynamic Algorithm Configuration in Bayesian Optimization (DACBO).
+
+    This environment wraps a SMAC optimizer and offers a reinforcement learning interface for
+    dynamically adjusting acquisition functions / parameters during Bayesian optimization.
 
     Parameters
     ----------
-    smac_kwargs : dict
-        Arguments for configuring the SMAC optimizer.
-    scenario_kwargs : dict
-        Arguments for configuring the SMAC scenario.
-    target_function : Callable
-        The black-box function to optimize.
+    smac_instance : SMBO
+        The SMAC optimizer instance.
+    action_mode : str, optional
+        Action mode, either "parameter" (default) or "function".
 
     Observation Space
     -----------------
@@ -62,50 +65,81 @@ class DACBOEnv(gym.Env):
         Executes one optimization step using the selected acquisition function and parameters.
     reset(seed=None, options=None)
         Resets the environment and optimizer state.
+    update_optimizer(action)
+        Updates the SMAC optimizer with the given action.
+    get_observation(optimizer)
+        Computes the current observation and reward from the optimizer.
     """
 
-    _acquisition_functions = {0: EI, 1: PI, 2: UCB, 3: WEI}
-    _acquisition_function_parameters = {0: "ei_pi_xi", 1: "ei_pi_xi", 2: "ucb_beta", 3: "wei_alpha"}
-    _acquisition_function_attrs = {0: "_xi", 1: "_xi", 2: "_beta", 3: "_alpha"}
+    def __init__(self, smac_instance: SMBO, action_mode: str = "parameter"):
+        """Initialize the DACBOEnv environment.
 
-    def __init__(self, smac_instance: SMBO):
+        Parameters
+        ----------
+        smac_instance : SMBO
+            The SMAC instance.
+        action_mode : str, optional
+            Action mode, either "parameter" (default) or "function".
+        """
         super().__init__()
 
         self._smac_instance = smac_instance
         self._n_trials = self._smac_instance._scenario.n_trials
+        self._action_mode = action_mode
+
         self._observation_space = ObservationSpace()
+        self.observation_space = self._observation_space.space
 
-        self.observation_space = self._observation_space.observation_space
+        self._action_space = ActionSpace(self._smac_instance, self._action_mode)
+        self.action_space = self._action_space.space
 
-        self.action_space = Dict(
-            {
-                "acquisition_function": Discrete(len(DACBOEnv._acquisition_functions)),
-                "ei_pi_xi": Box(low=-10_000.0, high=10_000.0, dtype=np.float32),
-                "ucb_beta": Box(low=-10.0, high=5.0, dtype=np.float32),  # Log scale
-                "wei_alpha": Box(low=0.0, high=1.0, dtype=np.float32),
-            }
-        )
+    def update_optimizer(self, action: ActType) -> None:
+        """Update the SMAC optimizer with the given action.
 
-    @staticmethod
-    def update_optimizer(optimizer: SMBO, action: ActType):
-        # Update optimizer / Take environment step
+        Parameters
+        ----------
+        action : ActType
+            Action specifying either the acquisition function or its parameter.
 
-        acquisition_function_id = action["acquisition_function"]
+        Raises:
+        ------
+        ValueError
+            If the action type is invalid.
+        """
+        if isinstance(self._action_space._action, ParameterAction):
+            action_array = np.array(action, dtype=np.float32)
+            action_val = action_array[0]
 
-        acquisition_function = DACBOEnv._acquisition_functions[acquisition_function_id]
-        acquisition_function_parameter = action[DACBOEnv._acquisition_function_parameters[acquisition_function_id]]
+            if self._action_space._action.log:
+                action_val **= 10
 
-        if acquisition_function_id == 2:  # Log scale for UCB beta
-            acquisition_function_parameter = 10**acquisition_function_parameter
+            setattr(
+                self._smac_instance._intensifier._config_selector._acquisition_function,
+                self._action_space._action.attr,
+                action_val,
+            )
 
-        optimizer.update_acquisition_function(acquisition_function())
-        setattr(
-            optimizer._intensifier._config_selector._acquisition_function,
-            DACBOEnv._acquisition_function_attrs[acquisition_function_id],
-            acquisition_function_parameter,
-        )
+        elif isinstance(self._action_space._action, FunctionAction):
+            function_idx = int(np.array(action).item())
+            self._smac_instance.update_acquisition_function(ActionSpace._ACQUISITION_FUNCTIONS[function_idx]())
+        else:
+            raise ValueError("Invalid action type")
 
-    def get_observation(self, optimizer: SMBO) -> ObsType:
+    def get_observation(self, optimizer: SMBO) -> tuple[ObsType, float]:
+        """Compute the current observation and reward from the optimizer.
+
+        Parameters
+        ----------
+        optimizer : SMBO
+            The SMAC optimizer instance.
+
+        Returns:
+        -------
+        obs : dict
+            Dictionary of observation values.
+        reward : float
+            Reward signal (current incumbent cost).
+        """
         obs = self._observation_space.get_observation(optimizer)
 
         incumbent_cost = optimizer.intensifier.trajectory[-1].costs
@@ -126,8 +160,27 @@ class DACBOEnv(gym.Env):
         return obs, reward
 
     def step(self, action: ActType) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
-        # Update optimizer
-        DACBOEnv.update_optimizer(self._smac_instance, action)
+        """Execute one optimization step using the selected acquisition function and parameters.
+
+        Parameters
+        ----------
+        action : ActType
+            Action specifying either the acquisition function or its parameter.
+
+        Returns:
+        -------
+        obs : dict
+            The new observation after taking the action.
+        reward : float
+            The reward for the action taken.
+        terminated : bool
+            Whether the episode has terminated (budget exhausted).
+        truncated : bool
+            Whether the episode was truncated (always False).
+        info : dict
+            Additional information (empty).
+        """
+        self.update_optimizer(action)
 
         # BO step
         trial_info = self._smac_instance.ask()
@@ -143,9 +196,27 @@ class DACBOEnv(gym.Env):
         self,
         *,
         seed: int | None = None,
-        options: dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None,  # noqa: ARG002
     ) -> tuple[ObsType, dict[str, Any]]:
+        """Reset the environment.
+
+        Parameters
+        ----------
+        seed : int, optional
+            Random seed.
+        options : dict, optional
+            Additional reset options.
+
+        Returns:
+        -------
+        obs : tuple
+            The initial observation.
+        info : dict
+            Additional information (empty).
+        """
         super().reset(seed=seed)
 
+        initial_obs = {obs.name: obs.default for obs in self._observation_space._observation_types}
+
         # XXX: Going to be used to actually reset optimization?
-        return (0, 0, self._n_trials, np.nan, np.nan), {}
+        return initial_obs, {}

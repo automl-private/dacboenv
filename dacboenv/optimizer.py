@@ -7,7 +7,7 @@ from dacboenv.dacboenv import DACBOEnv
 
 class DACBOEnvOptimizer(SMAC3Optimizer):
     def __init__(
-        self, task, smac_cfg, loggers=None, expects_multiple_objectives=False, expects_fidelities=False, frequency=10
+        self, task, smac_cfg, loggers=None, expects_multiple_objectives=False, expects_fidelities=False, frequency=1
     ):
         super().__init__(task, smac_cfg, loggers, expects_multiple_objectives, expects_fidelities)
 
@@ -32,10 +32,10 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
             self.solver.intensifier.config_selector._initial_design_configs
         ):
             action = self._model(self._state)
-            DACBOEnv.update_optimizer(self.solver.optimizer, action)
+            self._dacboenv.update_optimizer(action)
         return super().ask()
 
     def tell(self, trial_info, trial_value):
         super().tell(trial_info, trial_value)
-        obs, _ = self._dacboenv.get_observation(self.solver.optimizer)
-        self._state = obs
+        #obs, _ = self._dacboenv.get_observation(self.solver.optimizer)
+        #self._state = obs

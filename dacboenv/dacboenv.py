@@ -36,7 +36,7 @@ class DACBOEnv(gym.Env):
         Action mode, either "parameter" (default) or "function".
 
     Observation Space
-    -----------------
+    ----------
     incumbent_changes : int
         Number of times the incumbent solution has changed.
     trials_passed : int
@@ -49,7 +49,7 @@ class DACBOEnv(gym.Env):
         Model fit measured as mean squared error.
 
     Action Space
-    ------------
+    ----------
     acquisition_function : int
         Discrete selection among EI, PI, UCB, WEI.
     ei_pi_xi : float
@@ -60,7 +60,7 @@ class DACBOEnv(gym.Env):
         Parameter for WEI acquisition function.
 
     Methods
-    -------
+    ----------
     step(action)
         Executes one optimization step using the selected acquisition function and parameters.
     reset(seed=None, options=None)
@@ -87,7 +87,7 @@ class DACBOEnv(gym.Env):
         self._n_trials = self._smac_instance._scenario.n_trials
         self._action_mode = action_mode
 
-        self._observation_space = ObservationSpace()
+        self._observation_space = ObservationSpace(self._smac_instance)
         self.observation_space = self._observation_space.space
 
         self._action_space = ActionSpace(self._smac_instance, self._action_mode)
@@ -102,7 +102,7 @@ class DACBOEnv(gym.Env):
             Action specifying either the acquisition function or its parameter.
 
         Raises
-        ------
+        ----------
         ValueError
             If the action type is invalid.
         """
@@ -125,24 +125,19 @@ class DACBOEnv(gym.Env):
         else:
             raise ValueError("Invalid action type")
 
-    def get_observation(self, optimizer: SMBO) -> tuple[ObsType, float]:
+    def get_observation(self) -> tuple[ObsType, float]:
         """Compute the current observation and reward from the optimizer.
 
-        Parameters
-        ----------
-        optimizer : SMBO
-            The SMAC optimizer instance.
-
         Returns
-        -------
+        ----------
         obs : dict
             Dictionary of observation values.
         reward : float
             Reward signal (current incumbent cost).
         """
-        obs = self._observation_space.get_observation(optimizer)
+        obs = self._observation_space.get_observation()
 
-        incumbent_cost = optimizer.intensifier.trajectory[-1].costs
+        incumbent_cost = self._smac_instance.intensifier.trajectory[-1].costs
 
         # ParEgo
         # TODO: get_reward()
@@ -168,7 +163,7 @@ class DACBOEnv(gym.Env):
             Action specifying either the acquisition function or its parameter.
 
         Returns
-        -------
+        ----------
         obs : dict
             The new observation after taking the action.
         reward : float
@@ -188,7 +183,7 @@ class DACBOEnv(gym.Env):
         self._smac_instance.tell(trial_info, trial_value)
 
         # Compute observation
-        obs, reward = self.get_observation(self._smac_instance)
+        obs, reward = self.get_observation()
 
         return obs, reward, self._smac_instance.budget_exhausted, False, {}
 
@@ -208,7 +203,7 @@ class DACBOEnv(gym.Env):
             Additional reset options.
 
         Returns
-        -------
+        ----------
         obs : tuple
             The initial observation.
         info : dict

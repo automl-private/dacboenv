@@ -37,5 +37,6 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
 
     def tell(self, trial_info, trial_value):
         super().tell(trial_info, trial_value)
-        #obs, _ = self._dacboenv.get_observation(self.solver.optimizer)
-        #self._state = obs
+        # TODO: Compute only when needed (update_optimizer was called)
+        obs, _ = self._dacboenv.get_observation()
+        self._state = obs

@@ -68,7 +68,7 @@ class ActionSpace:
         The Gymnasium space for the current action mode.
 
     Raises
-    ------
+    ----------
     ValueError
         If the acquisition function or mode is invalid.
     """
@@ -92,7 +92,7 @@ class ActionSpace:
             Action mode, either "parameter" (default) or "function".
 
         Raises
-        ------
+        ----------
         ValueError
             If the acquisition function or mode is invalid.
         """
@@ -118,7 +118,7 @@ class ActionSpace:
         """Returns the Gymnasium space for the current action mode.
 
         Returns
-        -------
+        ----------
         Space
             The action space.
         """

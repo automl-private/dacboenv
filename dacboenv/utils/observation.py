@@ -83,6 +83,8 @@ class ObservationSpace:
 
     Parameters
     ----------
+    smac_instance : SMBO
+        The SMAC instance.
     keys : list[str], optional
         List of observation names to include. If None, all available observations are used.
 
@@ -94,26 +96,30 @@ class ObservationSpace:
         The Gymnasium Dict space describing the selected observations.
 
     Methods
-    -------
+    ----------
     get_observation(optimizer: SMBO) -> ObsType
         Computes the current observation values from the given optimizer.
     """
 
     _OBSERVATION_MAP: ClassVar[dict[str, ObservationType]] = {obs.name: obs for obs in ALL_OBSERVATIONS}
 
-    def __init__(self, keys: list[str] | None = None) -> None:
+    def __init__(self, smac_instance: SMBO, keys: list[str] | None = None) -> None:
         """Initialize the ObservationSpace.
 
         Parameters
         ----------
+        smac_instance : SMBO
+            The SMAC instance.
         keys : list[str], optional
             List of observation names to include. If None, all available observations are used.
 
         Raises
-        ------
+        ----------
         ValueError
             If any provided key is invalid.
         """
+        self._smac_instance = smac_instance
+
         # Default to all possible keys if not provided
         self._keys = keys if keys is not None else list(ObservationSpace._OBSERVATION_MAP.keys())
 
@@ -132,23 +138,18 @@ class ObservationSpace:
         """Returns the Gymnasium Dict space for the selected observations.
 
         Returns
-        -------
+        ----------
         gymnasium.spaces.Dict
             The observation space.
         """
         return self._observation_space
 
-    def get_observation(self, optimizer: SMBO) -> ObsType:
+    def get_observation(self) -> ObsType:
         """Compute the current observation values from the given optimizer.
 
-        Parameters
-        ----------
-        optimizer : SMBO
-            The SMAC instance.
-
         Returns
-        -------
+        ----------
         ObsType
             Dictionary mapping observation names to their computed values.
         """
-        return {obs.name: obs.compute(optimizer) for obs in self._observation_types}
+        return {obs.name: obs.compute(self._smac_instance) for obs in self._observation_types}

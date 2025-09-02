@@ -14,6 +14,7 @@ import numpy as np
 
 from dacboenv.utils.action import ActionSpace, FunctionAction, ParameterAction
 from dacboenv.utils.observation import ObservationSpace
+from dacboenv.utils.reward import DACBOReward
 
 if TYPE_CHECKING:
     from smac.main.smbo import SMBO
@@ -67,8 +68,10 @@ class DACBOEnv(gym.Env):
         Resets the environment and optimizer state.
     update_optimizer(action)
         Updates the SMAC optimizer with the given action.
-    get_observation(optimizer)
+    get_observation()
         Computes the current observation and reward from the optimizer.
+    get_reward()
+        Computes the current reward from the optimizer.
     """
 
     def __init__(self, smac_instance: SMBO, action_mode: str = "parameter"):
@@ -92,6 +95,8 @@ class DACBOEnv(gym.Env):
 
         self._action_space = ActionSpace(self._smac_instance, self._action_mode)
         self.action_space = self._action_space.space
+
+        self._reward = DACBOReward(self._smac_instance)
 
     def update_optimizer(self, action: ActType) -> None:
         """Update the SMAC optimizer with the given action.
@@ -125,34 +130,25 @@ class DACBOEnv(gym.Env):
         else:
             raise ValueError("Invalid action type")
 
-    def get_observation(self) -> tuple[ObsType, float]:
-        """Compute the current observation and reward from the optimizer.
+    def get_observation(self) -> ObsType:
+        """Compute the current observation from the optimizer.
 
         Returns
         ----------
-        obs : dict
+        obs : dict[str, Any]
             Dictionary of observation values.
-        reward : float
-            Reward signal (current incumbent cost).
         """
-        obs = self._observation_space.get_observation()
+        return self._observation_space.get_observation()
 
-        incumbent_cost = self._smac_instance.intensifier.trajectory[-1].costs
+    def get_reward(self) -> float:
+        """Compute the current reward from the optimizer.
 
-        # ParEgo
-        # TODO: get_reward()
-
-        # if len(optimizer.intensifier.trajectory) < 2:
-        #     last_incumbent_cost = np.inf # TODO: Sensible?
-        # else:
-        #     last_incumbent = optimizer.intensifier.trajectory[-2].config_ids[-1]
-        #     last_incumbent_cost = optimizer.runhistory.get_min_cost(last_incumbent)
-
-        # incumbent_improvement = last_incumbent_cost - incumbent_cost
-
-        reward = incumbent_cost  # XXX: Reward == current incumbent cost
-
-        return obs, reward
+        Returns
+        ----------
+        reward : float
+            The current reward signal.
+        """
+        return self._reward.get_reward()
 
     def step(self, action: ActType) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
         """Execute one optimization step using the selected acquisition function and parameters.
@@ -182,8 +178,9 @@ class DACBOEnv(gym.Env):
         trial_value = self._smac_instance._runner.run_wrapper(trial_info)
         self._smac_instance.tell(trial_info, trial_value)
 
-        # Compute observation
-        obs, reward = self.get_observation()
+        # Compute observation + reward
+        obs = self.get_observation()
+        reward = self.get_reward()
 
         return obs, reward, self._smac_instance.budget_exhausted, False, {}
 

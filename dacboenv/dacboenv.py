@@ -59,7 +59,7 @@ class DACBOEnv(gym.Env):
     wei_alpha : float
         Parameter for WEI acquisition function.
 
-    Methods:
+    Methods
     -------
     step(action)
         Executes one optimization step using the selected acquisition function and parameters.
@@ -101,7 +101,7 @@ class DACBOEnv(gym.Env):
         action : ActType
             Action specifying either the acquisition function or its parameter.
 
-        Raises:
+        Raises
         ------
         ValueError
             If the action type is invalid.
@@ -133,7 +133,7 @@ class DACBOEnv(gym.Env):
         optimizer : SMBO
             The SMAC optimizer instance.
 
-        Returns:
+        Returns
         -------
         obs : dict
             Dictionary of observation values.
@@ -167,7 +167,7 @@ class DACBOEnv(gym.Env):
         action : ActType
             Action specifying either the acquisition function or its parameter.
 
-        Returns:
+        Returns
         -------
         obs : dict
             The new observation after taking the action.
@@ -207,7 +207,7 @@ class DACBOEnv(gym.Env):
         options : dict, optional
             Additional reset options.
 
-        Returns:
+        Returns
         -------
         obs : tuple
             The initial observation.

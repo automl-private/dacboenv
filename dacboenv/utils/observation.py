@@ -26,7 +26,7 @@ ObsType = dict[str, Any]
 class ObservationType:
     """Represents a single observation type.
 
-    Attributes:
+    Attributes
     ----------
     name : str
         Name of the observation.
@@ -86,12 +86,14 @@ class ObservationSpace:
     keys : list[str], optional
         List of observation names to include. If None, all available observations are used.
 
-    Attributes:
+    Attributes
     ----------
+    observation_types : list[ObservationType]
+        The list containing all selected observation types.
     observation_space : gymnasium.spaces.Dict
         The Gymnasium Dict space describing the selected observations.
 
-    Methods:
+    Methods
     -------
     get_observation(optimizer: SMBO) -> ObsType
         Computes the current observation values from the given optimizer.
@@ -107,7 +109,7 @@ class ObservationSpace:
         keys : list[str], optional
             List of observation names to include. If None, all available observations are used.
 
-        Raises:
+        Raises
         ------
         ValueError
             If any provided key is invalid.
@@ -129,7 +131,7 @@ class ObservationSpace:
     def space(self) -> Space:
         """Returns the Gymnasium Dict space for the selected observations.
 
-        Returns:
+        Returns
         -------
         gymnasium.spaces.Dict
             The observation space.
@@ -144,7 +146,7 @@ class ObservationSpace:
         optimizer : SMBO
             The SMAC instance.
 
-        Returns:
+        Returns
         -------
         ObsType
             Dictionary mapping observation names to their computed values.

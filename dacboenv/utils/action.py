@@ -21,10 +21,10 @@ if TYPE_CHECKING:
 class ParameterAction:
     """Represents a parameter action for a fixed acquisition function.
 
-    Attributes:
+    Attributes
     ----------
-    name : str
-        Name of the parameter.
+    attr : str
+        Name of the function object's attribute.
     space : Space
         Gymnasium space for the parameter's value range and type.
     log : bool, optional
@@ -40,7 +40,7 @@ class ParameterAction:
 class FunctionAction:
     """Represents an action for selecting an acquisition function.
 
-    Attributes:
+    Attributes
     ----------
     space : Space
         Gymnasium space for the discrete selection of acquisition functions.
@@ -62,12 +62,12 @@ class ActionSpace:
     mode : str, optional
         Action mode, either "parameter" (default) or "function".
 
-    Attributes:
+    Attributes
     ----------
     action_space : Space
         The Gymnasium space for the current action mode.
 
-    Raises:
+    Raises
     ------
     ValueError
         If the acquisition function or mode is invalid.
@@ -91,7 +91,7 @@ class ActionSpace:
         mode : str, optional
             Action mode, either "parameter" (default) or "function".
 
-        Raises:
+        Raises
         ------
         ValueError
             If the acquisition function or mode is invalid.
@@ -117,7 +117,7 @@ class ActionSpace:
     def space(self) -> Space:
         """Returns the Gymnasium space for the current action mode.
 
-        Returns:
+        Returns
         -------
         Space
             The action space.

@@ -25,8 +25,10 @@ from ConfigSpace.hyperparameters import (
     IntegerHyperparameter,
     OrdinalHyperparameter,
 )
+from scipy.stats import kurtosis, skew
 
-from dacboenv.utils.features import exploration_tsp, knn_entropy
+from dacboenv.utils.X_features import exploration_tsp, knn_entropy
+from dacboenv.utils.y_features import calc_variability
 
 ObsType = dict[str, Any]
 
@@ -116,6 +118,37 @@ knn_entropy_observation = ObservationType(
     lambda smbo: knn_entropy(smbo.intensifier.config_selector._collect_data()[0]),
     np.nan,
 )
+skewness_observation = ObservationType(
+    "y_skewness",
+    Box(low=-np.inf, high=np.inf, dtype=np.float32),
+    lambda smbo: skew(smbo.intensifier.config_selector._collect_data()[1]).item(),
+    np.nan,
+)
+kurtosis_observation = ObservationType(
+    "y_kurtosis",
+    Box(low=-np.inf, high=np.inf, dtype=np.float32),
+    lambda smbo: kurtosis(smbo.intensifier.config_selector._collect_data()[1]).item(),
+    np.nan,
+)
+mean_observation = ObservationType(
+    "y_mean",
+    Box(low=-np.inf, high=np.inf, dtype=np.float32),
+    lambda smbo: np.mean(smbo.intensifier.config_selector._collect_data()[1]),
+    np.nan,
+)
+std_observation = ObservationType(
+    "y_std",
+    Box(low=0, high=np.inf, dtype=np.float32),
+    lambda smbo: np.std(smbo.intensifier.config_selector._collect_data()[1]),
+    np.nan,
+)
+variability_observation = ObservationType(
+    "y_variability",
+    Box(low=0, high=np.inf, dtype=np.float32),
+    lambda smbo: calc_variability(smbo.intensifier.config_selector._collect_data()[1]),
+    np.nan,
+)
+
 
 ALL_OBSERVATIONS = [
     incumbent_change_observation,
@@ -130,6 +163,11 @@ ALL_OBSERVATIONS = [
     int_hp_observation,
     tsp_observation,
     knn_entropy_observation,
+    skewness_observation,
+    kurtosis_observation,
+    mean_observation,
+    std_observation,
+    variability_observation,
 ]
 
 

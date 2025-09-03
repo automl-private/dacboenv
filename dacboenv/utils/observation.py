@@ -19,6 +19,15 @@ from dacboenv.signal.ubr import calculate_ubr
 if TYPE_CHECKING:
     from smac.main.smbo import SMBO
 
+from ConfigSpace.hyperparameters import (
+    CategoricalHyperparameter,
+    FloatHyperparameter,
+    IntegerHyperparameter,
+    OrdinalHyperparameter,
+)
+
+from dacboenv.utils.features import exploration_tsp, knn_entropy
+
 ObsType = dict[str, Any]
 
 
@@ -26,7 +35,7 @@ ObsType = dict[str, Any]
 class ObservationType:
     """Represents a single observation type.
 
-    Attributes
+    Attributes:
     ----------
     name : str
         Name of the observation.
@@ -65,6 +74,48 @@ modelfit_observation = ObservationType(
     lambda smbo: np.nan if np.isnan(scores := calculate_model_fit(smbo)["mean_scores"]).any() else scores[0],
     np.nan,
 )
+dimensions_observation = ObservationType(
+    "searchspace_dim",
+    Box(low=0, high=np.inf, dtype=np.int32),
+    lambda smbo: len(smbo._scenario.configspace),
+    0,
+)
+continuous_hp_observation = ObservationType(
+    "continuous_hps",
+    Box(low=0, high=np.inf, dtype=np.int32),
+    lambda smbo: len([hp for _, hp in smbo._scenario.configspace.items() if isinstance(hp, FloatHyperparameter)]),
+    0,
+)
+categorical_hp_observation = ObservationType(
+    "categorical_hps",
+    Box(low=0, high=np.inf, dtype=np.int32),
+    lambda smbo: len([hp for _, hp in smbo._scenario.configspace.items() if isinstance(hp, CategoricalHyperparameter)]),
+    0,
+)
+ordinal_hp_observation = ObservationType(
+    "ordinal_hps",
+    Box(low=0, high=np.inf, dtype=np.int32),
+    lambda smbo: len([hp for _, hp in smbo._scenario.configspace.items() if isinstance(hp, OrdinalHyperparameter)]),
+    0,
+)
+int_hp_observation = ObservationType(
+    "int_hps",
+    Box(low=0, high=np.inf, dtype=np.int32),
+    lambda smbo: len([hp for _, hp in smbo._scenario.configspace.items() if isinstance(hp, IntegerHyperparameter)]),
+    0,
+)
+tsp_observation = ObservationType(
+    "tsp",
+    Box(low=0, high=np.inf, dtype=np.float32),
+    lambda smbo: exploration_tsp(smbo.intensifier.config_selector._collect_data()[0])[-1],
+    np.nan,
+)
+knn_entropy_observation = ObservationType(
+    "knn_entropy",
+    Box(low=0, high=np.inf, dtype=np.float32),
+    lambda smbo: knn_entropy(smbo.intensifier.config_selector._collect_data()[0]),
+    np.nan,
+)
 
 ALL_OBSERVATIONS = [
     incumbent_change_observation,
@@ -72,6 +123,13 @@ ALL_OBSERVATIONS = [
     trials_left_observation,
     ubr_observation,
     modelfit_observation,
+    dimensions_observation,
+    continuous_hp_observation,
+    categorical_hp_observation,
+    ordinal_hp_observation,
+    int_hp_observation,
+    tsp_observation,
+    knn_entropy_observation,
 ]
 
 
@@ -88,14 +146,14 @@ class ObservationSpace:
     keys : list[str], optional
         List of observation names to include. If None, all available observations are used.
 
-    Attributes
+    Attributes:
     ----------
     observation_types : list[ObservationType]
         The list containing all selected observation types.
     observation_space : gymnasium.spaces.Dict
         The Gymnasium Dict space describing the selected observations.
 
-    Methods
+    Methods:
     ----------
     get_observation(optimizer: SMBO) -> ObsType
         Computes the current observation values from the given optimizer.
@@ -113,7 +171,7 @@ class ObservationSpace:
         keys : list[str], optional
             List of observation names to include. If None, all available observations are used.
 
-        Raises
+        Raises:
         ----------
         ValueError
             If any provided key is invalid.
@@ -137,7 +195,7 @@ class ObservationSpace:
     def space(self) -> Space:
         """Returns the Gymnasium Dict space for the selected observations.
 
-        Returns
+        Returns:
         ----------
         gymnasium.spaces.Dict
             The observation space.
@@ -147,7 +205,7 @@ class ObservationSpace:
     def get_observation(self) -> ObsType:
         """Compute the current observation values from the given optimizer.
 
-        Returns
+        Returns:
         ----------
         ObsType
             Dictionary mapping observation names to their computed values.

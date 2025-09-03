@@ -222,7 +222,7 @@ extra-standard-library = ["typing_extensions"]
 force-wrap-aliases = true
 
 [tool.ruff.lint.pydocstyle]
-convention = "google"
+convention = "numpy"
 
 [tool.ruff.lint.pylint]
 max-args = 10 # Changed from default of 5

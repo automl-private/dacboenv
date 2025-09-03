@@ -10,9 +10,8 @@ from typing import (
 )
 
 import gymnasium as gym
-import numpy as np
 
-from dacboenv.utils.action import ActionSpace, FunctionAction, ParameterAction
+from dacboenv.utils.action import AbstractActionSpace, AcqFunctionActionSpace, AcqParameterActionSpace
 from dacboenv.utils.observation import ObservationSpace
 from dacboenv.utils.reward import DACBOReward
 
@@ -61,7 +60,7 @@ class DACBOEnv(gym.Env):
         Parameter for WEI acquisition function.
 
     Methods
-    ----------
+    -------
     step(action)
         Executes one optimization step using the selected acquisition function and parameters.
     reset(seed=None, options=None)
@@ -89,11 +88,18 @@ class DACBOEnv(gym.Env):
         self._smac_instance = smac_instance
         self._n_trials = self._smac_instance._scenario.n_trials
         self._action_mode = action_mode
+        self._action_space: AbstractActionSpace
 
         self._observation_space = ObservationSpace(self._smac_instance)
         self.observation_space = self._observation_space.space
 
-        self._action_space = ActionSpace(self._smac_instance, self._action_mode)
+        if self._action_mode == "parameter":
+            self._action_space = AcqParameterActionSpace(self._smac_instance)
+        elif self._action_mode == "function":
+            self._action_space = AcqFunctionActionSpace(self._smac_instance)
+        else:
+            raise ValueError("Invalid action mode given")
+
         self.action_space = self._action_space.space
 
         self._reward = DACBOReward(self._smac_instance)
@@ -107,34 +113,17 @@ class DACBOEnv(gym.Env):
             Action specifying either the acquisition function or its parameter.
 
         Raises
-        ----------
+        ------
         ValueError
             If the action type is invalid.
         """
-        if isinstance(self._action_space._action, ParameterAction):
-            action_array = np.array(action, dtype=np.float32)
-            action_val = action_array[0]
-
-            if self._action_space._action.log:
-                action_val **= 10
-
-            setattr(
-                self._smac_instance._intensifier._config_selector._acquisition_function,
-                self._action_space._action.attr,
-                action_val,
-            )
-
-        elif isinstance(self._action_space._action, FunctionAction):
-            function_idx = int(np.array(action).item())
-            self._smac_instance.update_acquisition_function(ActionSpace._ACQUISITION_FUNCTIONS[function_idx]())
-        else:
-            raise ValueError("Invalid action type")
+        self._action_space.update_optimizer(action)
 
     def get_observation(self) -> ObsType:
         """Compute the current observation from the optimizer.
 
         Returns
-        ----------
+        -------
         obs : dict[str, Any]
             Dictionary of observation values.
         """
@@ -144,7 +133,7 @@ class DACBOEnv(gym.Env):
         """Compute the current reward from the optimizer.
 
         Returns
-        ----------
+        -------
         reward : float
             The current reward signal.
         """
@@ -159,7 +148,7 @@ class DACBOEnv(gym.Env):
             Action specifying either the acquisition function or its parameter.
 
         Returns
-        ----------
+        -------
         obs : dict
             The new observation after taking the action.
         reward : float
@@ -200,7 +189,7 @@ class DACBOEnv(gym.Env):
             Additional reset options.
 
         Returns
-        ----------
+        -------
         obs : tuple
             The initial observation.
         info : dict

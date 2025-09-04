@@ -1,3 +1,5 @@
+"""Handling the Weighted Expected Improvement Acquisition Function (WEI) [Sobester et al., 2005]."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -13,7 +15,52 @@ logger = get_logger(__name__)
 
 
 class WEI(AbstractAcquisitionFunction):
-    def __init__(self, alpha: float = 0.5, xi: float = 0, log: bool = False, use_pure_PI: bool = False) -> None:
+    r"""Weighted Expected Improvement (WEI) acquisition function.
+
+    WEI [Sobester et al., 2005] is Expected Improvement (EI) [Mockus et al., 1978] but its
+    two terms are weighted by alpha. One term is more exploratory, the other more
+    exploitative.
+    alpha = 0.5 recovers the standard EI [Mockus et al., 1978]
+    alpha = 1 has similar behavior as $PI(x) = \\Phi( z(x))$ [Kushner, 1974]
+    alpha = 0 emphasizes a stronger exploration
+
+    Attributes
+    ----------
+    _xi : float
+        Exploration-exploitation trade-off parameter.
+    _log : bool
+        Whether the function operates in log-space. Not implemented yet.
+    _eta : float | None
+        Current best function value, set during ``update``.
+    _alpha : float
+        Weighting parameter that interpolates between PI and EI.
+    _use_pure_PI : bool
+        Whether to enforce pure PI mode.
+    pi_term : np.ndarray | None
+        Computed PI component values.
+    pi_pure_term : np.ndarray | None
+        Pure PI component values.
+    pi_mod_term : np.ndarray | None
+        Modified PI component values ``(eta - mu - xi) * Phi(z)``.
+    ei_term : np.ndarray | None
+        Computed EI component values.
+    """
+
+    def __init__(self, alpha: float = 0.5, xi: float = 0, log: bool = False, use_pure_PI: bool = False) -> None:  # noqa: FBT001, FBT002, N803
+        """Initialize the WEI acquisition function.
+
+        Parameters
+        ----------
+        alpha : float, optional
+            The initial weight of weighted expected improvement, by default 0.5.
+            This equals EI.
+        xi : float, optional
+            Exploration-exploitation trade-off parameter. Default is 0.
+        log : bool, optional
+            Whether to operate in log-space. Not implemented. Default is False.
+        use_pure_PI : bool, optional
+            If True, enforces pure PI behavior. Default is False.
+        """
         super().__init__()
         self._xi: float = xi
         self._log: bool = log
@@ -64,7 +111,7 @@ class WEI(AbstractAcquisitionFunction):
         if alpha is not None:
             self._alpha = alpha
 
-    def _compute(self, X: np.ndarray) -> np.ndarray:
+    def _compute(self, X: np.ndarray) -> np.ndarray:  # noqa: N803
         """Compute EI acquisition value.
 
         Parameters
@@ -73,12 +120,12 @@ class WEI(AbstractAcquisitionFunction):
             The input points where the acquisition function should be evaluated. The dimensionality of X is (N, D),
             with N as the number of points to evaluate at and D is the number of dimensions of one X.
 
-        Returns:
+        Returns
         -------
         np.ndarray [N,1]
             Acquisition function values wrt X.
 
-        Raises:
+        Raises
         ------
         ValueError
             If `update` has not been called before (current incumbent value `eta` unspecified).
@@ -92,7 +139,7 @@ class WEI(AbstractAcquisitionFunction):
         if self._use_pure_PI:
             assert (
                 self._alpha == 1.0
-            ), f"{self._alpha} != 0.5 with use pure PI. Any other combination, especially alpha=0.5 (EI) leads to wrong WEI."
+            ), f"{self._alpha} != 1.0 with pure PI. Any other combination leads to wrong behavior."
 
         if self._eta is None:
             raise ValueError(
@@ -137,19 +184,4 @@ class WEI(AbstractAcquisitionFunction):
             #     # raise ValueError("Expected Improvement is smaller than 0 for at least one " "sample.")
 
             return f
-        else:
-            raise NotImplementedError
-
-
-class EIPI(WEI):
-    def __init__(self, alpha: float = 0.5, xi: float = 0, log: bool = False, use_pure_PI: bool = False) -> None:
-        super().__init__(alpha=alpha, xi=xi, log=log, use_pure_PI=use_pure_PI)
-
-    def _compute(self, X: np.ndarray) -> np.ndarray:
-        if self._alpha == 0.5:  # EI
-            self._use_pure_PI = False
-        elif self._alpha == 1.0:  # PI
-            self._use_pure_PI = True
-        else:
-            raise ValueError("Only values of alpha=0.5 -> EI and alpha=1 -> PI are valid.")
-        return super()._compute(X=X)
+        raise NotImplementedError

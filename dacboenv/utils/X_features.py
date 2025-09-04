@@ -1,4 +1,4 @@
-"""Exploration features from Exploring Exploration in Bayesian Optimization [Papenmeier et al., 2025]."""
+"""Exploration features from Exploring Exploration in Bayesian Optimization [Papenmeier et al., 2025]."""  # noqa: N999
 
 from __future__ import annotations
 
@@ -13,11 +13,13 @@ from scipy.special import digamma
 def exploration_tsp(X: np.ndarray) -> np.ndarray:  # noqa: N803
     """Movement of observation center over time.
 
-    Args:
-        X (np.ndarray): shape (T, D)
+    Parameters
+    ----------
+    X : np.ndarray, shape (T, D)
 
-    Returns:
-        np.ndarray: shape (T, )
+    Returns
+    -------
+    np.ndarray, shape (T, )
     """
     T, D = X.shape
     tsp_solution = np.zeros(shape=(T,), dtype=np.float32)
@@ -62,12 +64,17 @@ def exploration_tsp(X: np.ndarray) -> np.ndarray:  # noqa: N803
 def knn_entropy(X: np.ndarray, k: int = 3) -> float:  # noqa: N803
     """Estimate the Shannon entropy of a dataset using the k-nearest neighbors method.
 
-    Parameters:
-        X (numpy.ndarray): The N x D array of data points.
-        k (int): Number of neighbors to use in the k-NN estimation.
+    Parameters
+    ----------
+    X : numpy.ndarray
+        The N x D array of data points.
+    k : int
+        Number of neighbors to use in the k-NN estimation.
 
-    Returns:
-        float: The estimated entropy.
+    Returns
+    -------
+    float
+        The estimated entropy.
     """
     N = X.shape[0]
     D = X.shape[1]
@@ -88,11 +95,15 @@ def exploration_entropy(X: np.ndarray) -> np.ndarray:  # noqa: N803
     """Calculate the empirical Shannon entropy over cumulative observation points at each time step,
     dynamically setting k based on the sample size.
 
-    Parameters:
-        X (numpy.ndarray): The T x D array where each row is a data point in [0, 1]^D.
+    Parameters
+    ----------
+    X : numpy.ndarray
+        The T x D array where each row is a data point in [0, 1]^D.
 
-    Returns:
-        numpy.ndarray: An array of entropy values for each time step.
+    Returns
+    -------
+    numpy.ndarray
+        An array of entropy values for each time step.
     """
     T = X.shape[0]
     D = X.shape[1]

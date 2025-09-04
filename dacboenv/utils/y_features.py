@@ -10,11 +10,15 @@ def calc_variability(costs: list[float]) -> float:
 
     Taken from Tierney et al. (2025) (under review).
 
-    Args:
-        costs (list[float]): List of costs.
+    Parameters
+    ----------
+    costs: list[float]
+        List of costs.
 
-    Returns:
-        float: The variability of the costs.
+    Returns
+    -------
+    float
+        The variability of the costs.
     """
     mean = np.mean(costs)
     g = len(costs)

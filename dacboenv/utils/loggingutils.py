@@ -27,8 +27,8 @@ def get_logger(logger_name: str) -> logging.Logger:
     logger_name : str
         Name of the logger.
 
-    Returns:
-    --------
+    Returns
+    -------
     logging.Logger
         Logger object.
     """
@@ -51,8 +51,8 @@ class CustomEncoder(json.JSONEncoder):
         obj : Any
             Object to be converted.
 
-        Returns:
-        --------
+        Returns
+        -------
         Any
             Pure python object.
         """

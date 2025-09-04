@@ -1,3 +1,12 @@
+"""Util functions for handling the Upper Bound Regret (UBR) [Makarova et al., 2022].
+
+The UBR is defined by the estimated worst-case function value of incumbent
+minus the estimated lowest function value across search space.
+Originally used as a stopping criterion if the difference falls under
+a certain thresold. Here we check whether the optimization process
+converges.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -19,10 +28,9 @@ if TYPE_CHECKING:
     from smac.main.smbo import SMBO
     from smac.model import AbstractModel
     from smac.runhistory import TrialInfo, TrialValue
+from collections.abc import Iterable
 
 logger = get_logger(__name__)
-
-from collections.abc import Iterable
 
 
 def model_fitted(model: AbstractModel | None) -> bool:
@@ -33,8 +41,8 @@ def model_fitted(model: AbstractModel | None) -> bool:
     model : AbstractModel
         Surrogate model.
 
-    Returns:
-    --------
+    Returns
+    -------
     bool
         Model fitted or not.
     """
@@ -54,7 +62,41 @@ def calculate_ubr(
     top_p: float = 0.5,
     smbo: SMBO | None = None,
 ) -> dict[str, Any]:
-    def dummy_fn(config: Configuration, seed: int | None) -> float:
+    """Calculate the Upper Bound Regret (UBR) from a SMAC optimizer state.
+
+    The UBR is defined by the estimated worst-case function value of incumbent
+    minus the estimated lowest function value across search space.
+    Originally used as a stopping criterion if the difference falls under
+    a certain thresold. Here we check whether the optimization process
+    converges.
+
+    Parameters
+    ----------
+    trial_infos : list[TrialInfo] | None
+        Trial information objects corresponding to previously evaluated configurations.
+    trial_values : list[TrialValue] | None
+        Trial results corresponding to ``trial_infos``.
+    configspace : ConfigurationSpace | None
+        The search space over which to optimize.
+    seed : int | None, optional
+        Random seed for reproducibility, by default None.
+    top_p : float, optional
+        Top p portion of the evaluated configs to be considered by UBR, by default 0.5.
+    smbo : SMBO | None, optional
+        An existing SMBO instance. If None, a new BlackBoxFacade is initialized with
+        the given trials, by default None.
+
+    Returns
+    -------
+    dict[str, Any]
+        A dictionary with the following keys:
+        - ``"n_evaluated"``: number of evaluated configurations.
+        - ``"ubr"``: the computed UBR.
+        - ``"min_ucb"``: negative maximum UCB over the selected evaluated configs.
+        - ``"min_lcb"``: negative maximum LCB over the config space.
+    """
+
+    def dummy_fn(config: Configuration, seed: int | None) -> float:  # noqa: ARG001
         return 0
 
     if smbo is None:

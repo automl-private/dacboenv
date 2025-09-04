@@ -24,8 +24,8 @@ def calculate_mse(smbo: SMBO, k: int = 10) -> float:
     k : int
         How many folds to use for cross-validation
 
-    Returns:
-    ----------
+    Returns
+    -------
     float
         MSE after k-fold cross-validation
     """

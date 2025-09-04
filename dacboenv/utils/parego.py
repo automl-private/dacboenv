@@ -50,7 +50,7 @@ class ParEGO:
             Input values.
 
         Returns
-        ----------
+        -------
         float
             The ParEGO value.
         """

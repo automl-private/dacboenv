@@ -45,8 +45,8 @@ def gp_nll(mean: np.array, var: np.array, y_test: np.array) -> float:
     y_test : np.array
         Ground truth target values.
 
-    Returns:
-    ----------
+    Returns
+    -------
     float
         The mean negative log-likelihood.
     """

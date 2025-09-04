@@ -28,36 +28,20 @@ class RewardType:
     compute: Callable[[SMBO], Any]
 
 
-def _sum_costs(costs: float | list[float]) -> float:
-    """Sum costs for single- or multi-objective cases.
+# Multi-objective: Handle incumbent cost
 
-    Parameters
-    ----------
-    costs : float or list of float
-        Cost(s) to sum.
-
-    Returns
-    ----------
-    float
-        The summed cost.
-    """
-    return costs if isinstance(costs, float) else sum(costs)  # TODO: Also ParEGO?
-
-
-incumbent_cost_reward = RewardType(
-    "incumbent_cost", lambda smbo: abs(_sum_costs(smbo.intensifier.trajectory[-1].costs))
-)
+incumbent_cost_reward = RewardType("incumbent_cost", lambda smbo: abs(smbo.intensifier.trajectory[-1].costs[-1]))
 incumbent_improvement_reward = RewardType(
     "incumbent_improvement",
     lambda smbo: 0
     if smbo.intensifier.trajectory[-1].trial != len(smbo.runhistory)
-    else abs(_sum_costs(smbo.intensifier.trajectory[-1].costs) - _sum_costs(smbo.intensifier.trajectory[-2].costs))
+    else abs(smbo.intensifier.trajectory[-1].costs[-1] - smbo.intensifier.trajectory[-2].costs[-1])
     if len(smbo.intensifier.trajectory) > 1
-    else abs(_sum_costs(smbo.intensifier.trajectory[-1].costs)),
+    else abs(smbo.intensifier.trajectory[-1].costs[-1]),
 )
 cum_cost_reward = RewardType(
     "cum_cost",
-    lambda smbo: -sum(_sum_costs(v.cost) for v in smbo.runhistory.values()),
+    lambda smbo: abs(sum(v.cost for v in smbo.runhistory.values())),
 )
 
 ALL_REWARDS = [incumbent_cost_reward, incumbent_improvement_reward, cum_cost_reward]
@@ -85,7 +69,7 @@ class DACBOReward:
         ParEGO scalarization utility.
 
     Methods
-    ----------
+    -------
     get_reward() -> float
         Computes the (scalarized) reward from the selected reward types.
     """
@@ -105,7 +89,7 @@ class DACBOReward:
             ParEGO scalarization parameter (default: 0.05).
 
         Raises
-        ----------
+        ------
         ValueError
             If any provided keys are not valid reward names.
         """
@@ -113,21 +97,21 @@ class DACBOReward:
         self._rho = rho
 
         # Default to all possible keys if not provided
-        self._keys = keys if keys is not None else list(DACBOReward._REWARD_MAP.keys())
+        self._keys = keys if keys is not None else list(self._REWARD_MAP.keys())
 
         # Check for invalid keys
-        invalid_keys = set(self._keys) - set(DACBOReward._REWARD_MAP.keys())
+        invalid_keys = set(self._keys) - set(self._REWARD_MAP.keys())
         if invalid_keys:
             raise ValueError(f"Invalid reward keys: {invalid_keys}")
 
-        self._reward_types = [DACBOReward._REWARD_MAP[key] for key in self._keys]
+        self._reward_types = [self._REWARD_MAP[key] for key in self._keys]
         self._parego = ParEGO(len(self._reward_types), self._smac_instance._scenario.seed, self._rho)
 
     def get_reward(self) -> float:
         """Compute the (scalarized) reward from the selected reward types.
 
         Returns
-        ----------
+        -------
         float
             The computed reward value.
         """

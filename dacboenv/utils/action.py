@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, ClassVar, TypeVar
+from typing import TYPE_CHECKING, ClassVar
 
 import numpy as np
 from gymnasium.spaces import Box, Discrete, Space
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from smac.acquisition.function.abstract_acquisition_function import AbstractAcquisitionFunction
     from smac.main.smbo import SMBO
 
-ActType = TypeVar("ActType")
+    from dacboenv.dacboenv import ActType
 
 
 @dataclass
@@ -136,7 +136,7 @@ class AcqParameterActionSpace(AbstractActionSpace):
         WEI: ParameterAction("_alpha", Box(low=0.0, high=1.0, dtype=np.float32)),
     }
 
-    def _create_action(self) -> ActionType:
+    def _create_action(self) -> ParameterAction:
         """Create a ParameterAction for the current acquisition function.
 
         Returns
@@ -164,12 +164,12 @@ class AcqParameterActionSpace(AbstractActionSpace):
         """
         action_val = np.array(action).item()
 
-        if self._action_space._action.log:
+        if self._action.log:  # type: ignore[union-attr]
             action_val **= 10
 
         setattr(
             self._smac_instance._intensifier._config_selector._acquisition_function,
-            self._action_space._action.attr,
+            self._action.attr,  # type: ignore[union-attr]
             action_val,
         )
 
@@ -185,7 +185,7 @@ class AcqFunctionActionSpace(AbstractActionSpace):
 
     _ACQUISITION_FUNCTIONS: ClassVar[dict[int, AbstractAcquisitionFunction]] = {0: EI, 1: PI, 2: UCB, 3: WEI}
 
-    def _create_action(self) -> ActionType:
+    def _create_action(self) -> FunctionAction:
         """Create a FunctionAction representing the discrete selection of acquisition functions.
 
         Returns

@@ -6,7 +6,6 @@ from typing import (
     TYPE_CHECKING,
     Any,
     SupportsFloat,
-    TypeVar,
 )
 
 import gymnasium as gym
@@ -19,7 +18,7 @@ if TYPE_CHECKING:
     from smac.main.smbo import SMBO
 
 ObsType = dict[str, Any]
-ActType = TypeVar("ActType")
+ActType = int | list[float]
 
 
 class DACBOEnv(gym.Env):
@@ -31,9 +30,15 @@ class DACBOEnv(gym.Env):
     Parameters
     ----------
     smac_instance : SMBO
-        The SMAC optimizer instance.
+        The SMAC instance.
+    observation_keys : list[str], optional
+        Which observations to compute at each step.
     action_mode : str, optional
         Action mode, either "parameter" (default) or "function".
+    reward_keys : list[str], optional
+        Which rewards to compute at each step.
+    rho : float, optional
+        ParEGO scalarization parameter.
 
     Observation Space
     ----------
@@ -73,15 +78,28 @@ class DACBOEnv(gym.Env):
         Computes the current reward from the optimizer.
     """
 
-    def __init__(self, smac_instance: SMBO, action_mode: str = "parameter"):
+    def __init__(
+        self,
+        smac_instance: SMBO,
+        observation_keys: list[str] | None = None,
+        action_mode: str = "parameter",
+        reward_keys: list[str] | None = None,
+        rho: float = 0.05,
+    ) -> None:
         """Initialize the DACBOEnv environment.
 
         Parameters
         ----------
         smac_instance : SMBO
             The SMAC instance.
+        observation_keys : list[str], optional
+            Which observations to compute at each step.
         action_mode : str, optional
             Action mode, either "parameter" (default) or "function".
+        reward_keys : list[str], optional
+            Which rewards to compute at each step.
+        rho : float, optional
+            ParEGO scalarization parameter.
         """
         super().__init__()
 
@@ -89,8 +107,14 @@ class DACBOEnv(gym.Env):
         self._n_trials = self._smac_instance._scenario.n_trials
         self._action_mode = action_mode
         self._action_space: AbstractActionSpace
+        self._observation_keys = observation_keys
+        self._reward_keys = reward_keys
+        self._rho = rho
 
-        self._observation_space = ObservationSpace(self._smac_instance)
+        if self._smac_instance._scenario.count_objectives() != 1:
+            raise NotImplementedError("Multi-objective not supported.")
+
+        self._observation_space = ObservationSpace(self._smac_instance, self._observation_keys)
         self.observation_space = self._observation_space.space
 
         if self._action_mode == "parameter":
@@ -102,7 +126,7 @@ class DACBOEnv(gym.Env):
 
         self.action_space = self._action_space.space
 
-        self._reward = DACBOReward(self._smac_instance)
+        self._reward = DACBOReward(self._smac_instance, self._reward_keys, self._rho)
 
     def update_optimizer(self, action: ActType) -> None:
         """Update the SMAC optimizer with the given action.

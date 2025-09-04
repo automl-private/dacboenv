@@ -19,6 +19,8 @@ from dacboenv.signal.ubr import calculate_ubr
 if TYPE_CHECKING:
     from smac.main.smbo import SMBO
 
+    from dacboenv.dacboenv import ObsType
+
 from ConfigSpace.hyperparameters import (
     CategoricalHyperparameter,
     FloatHyperparameter,
@@ -30,14 +32,12 @@ from scipy.stats import kurtosis, skew
 from dacboenv.utils.X_features import exploration_tsp, knn_entropy
 from dacboenv.utils.y_features import calc_variability
 
-ObsType = dict[str, Any]
-
 
 @dataclass
 class ObservationType:
     """Represents a single observation type.
 
-    Attributes:
+    Attributes
     ----------
     name : str
         Name of the observation.
@@ -184,15 +184,15 @@ class ObservationSpace:
     keys : list[str], optional
         List of observation names to include. If None, all available observations are used.
 
-    Attributes:
+    Attributes
     ----------
     observation_types : list[ObservationType]
         The list containing all selected observation types.
     observation_space : gymnasium.spaces.Dict
         The Gymnasium Dict space describing the selected observations.
 
-    Methods:
-    ----------
+    Methods
+    -------
     get_observation(optimizer: SMBO) -> ObsType
         Computes the current observation values from the given optimizer.
     """
@@ -209,8 +209,8 @@ class ObservationSpace:
         keys : list[str], optional
             List of observation names to include. If None, all available observations are used.
 
-        Raises:
-        ----------
+        Raises
+        ------
         ValueError
             If any provided key is invalid.
         """
@@ -233,8 +233,8 @@ class ObservationSpace:
     def space(self) -> Space:
         """Returns the Gymnasium Dict space for the selected observations.
 
-        Returns:
-        ----------
+        Returns
+        -------
         gymnasium.spaces.Dict
             The observation space.
         """
@@ -243,8 +243,8 @@ class ObservationSpace:
     def get_observation(self) -> ObsType:
         """Compute the current observation values from the given optimizer.
 
-        Returns:
-        ----------
+        Returns
+        -------
         ObsType
             Dictionary mapping observation names to their computed values.
         """

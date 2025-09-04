@@ -16,6 +16,14 @@ optimizer:
     smac_kwargs:
       dask_client: null
       overwrite: true
+      initial_design:
+        _target_: ${optimizer.smac_cfg.smac_class}.get_initial_design
+        _partial_: true
+        max_ratio: 0.2
+  observation_keys: null
+  action_mode: "parameter"
+  reward_keys: null
+  rho: 0.05
 
 optimizer_container_id: SMAC3
 optimizer_id: DACBOEnv-SMAC3

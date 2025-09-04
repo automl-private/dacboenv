@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from carps.optimizers.smac20 import SMAC3Optimizer
 
 from dacboenv.dacboenv import ActType, DACBOEnv, ObsType
+from dacboenv.utils.policy import Policy, RandomPolicy
 
 if TYPE_CHECKING:
     from carps.loggers.abstract_logger import AbstractLogger
@@ -35,7 +36,7 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
     expects_fidelities : bool, optional
         Whether the optimizer expects fidelity parameters.
     frequency : int, optional
-        Frequency (in trials) at which to update the RL policy.
+        Frequency (in trials) with which to take environment steps.
 
     Attributes
     ----------
@@ -46,7 +47,7 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
     _state : Any
         The current observation/state from the environment.
     _frequency : int
-        Frequency for RL policy updates.
+        Frequency for RL env steps updates.
 
     Methods
     -------
@@ -99,7 +100,7 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         super().__init__(task, smac_cfg, loggers, expects_multiple_objectives, expects_fidelities)
 
         self._dacboenv: DACBOEnv
-        self._model = None
+        self._model: Policy
         self._state: ObsType
         self._observation_keys = observation_keys
         self._action_mode = action_mode
@@ -127,7 +128,7 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         self._state, _ = self._dacboenv.reset(seed=solver.optimizer._scenario.seed)
 
         # Dummy model: Sample random action
-        self._model = lambda obs: self._dacboenv.action_space.sample()  # TODO: Insert policy here
+        self._model = RandomPolicy(self._dacboenv)  # TODO: Insert policy here
         return solver
 
     def ask(self) -> TrialInfo:

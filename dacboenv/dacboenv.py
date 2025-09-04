@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from smac.main.smbo import SMBO
 
 ObsType = dict[str, Any]
-ActType = int | list[float]
+ActType = int | float | list[float]
 
 
 class DACBOEnv(gym.Env):

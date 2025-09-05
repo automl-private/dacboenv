@@ -10,9 +10,9 @@ from typing import (
 
 import gymnasium as gym
 
-from dacboenv.utils.action import AbstractActionSpace, AcqFunctionActionSpace, AcqParameterActionSpace
-from dacboenv.utils.observation import ObservationSpace
-from dacboenv.utils.reward import DACBOReward
+from dacboenv.env.action import AbstractActionSpace, AcqFunctionActionSpace, AcqParameterActionSpace
+from dacboenv.env.observation import ObservationSpace
+from dacboenv.env.reward import DACBOReward
 
 if TYPE_CHECKING:
     from smac.main.smbo import SMBO

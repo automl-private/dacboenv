@@ -25,7 +25,7 @@ from typing import Any
 
 from smac.facade.hyperparameter_optimization_facade import HyperparameterOptimizationFacade
 
-from dacboenv.signal.ubr import calculate_ubr
+from dacboenv.features.signal.ubr import calculate_ubr
 
 logger = get_logger(__name__)
 

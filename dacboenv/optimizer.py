@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from carps.optimizers.smac20 import SMAC3Optimizer
 
 from dacboenv.dacboenv import ActType, DACBOEnv, ObsType
-from dacboenv.utils.policy import Policy, RandomPolicy
+from dacboenv.env.policy import Policy, RandomPolicy
 
 if TYPE_CHECKING:
     from carps.loggers.abstract_logger import AbstractLogger

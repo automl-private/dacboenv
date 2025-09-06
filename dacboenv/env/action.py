@@ -174,7 +174,7 @@ class AcqParameterActionSpace(AbstractActionSpace):
         action_val = np.array(action).item()
 
         if self._action.log:  # type: ignore[union-attr]
-            action_val **= 10
+            action_val = 10**action_val
 
         setattr(
             self._smac_instance._intensifier._config_selector._acquisition_function,

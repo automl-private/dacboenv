@@ -151,6 +151,8 @@ class AbstractConfidenceBound(AbstractAcquisitionFunction):
         else:
             beta_t = self._beta
 
+        beta_t = max(beta_t, 0)  # Clip negative beta values
+
         return -(m + sign * np.sqrt(self._nu * beta_t) * std)
 
 

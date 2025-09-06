@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import numpy as np
 from carps.optimizers.smac20 import SMAC3Optimizer
 
 from dacboenv.dacboenv import ActType, DACBOEnv, ObsType
@@ -15,6 +16,8 @@ if TYPE_CHECKING:
     from carps.utils.trials import TrialInfo, TrialValue
     from omegaconf import DictConfig
     from smac.facade.abstract_facade import AbstractFacade
+
+from dacboenv.utils.loggingutils import dump_logs
 
 
 class DACBOEnvOptimizer(SMAC3Optimizer):
@@ -69,6 +72,7 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         observation_keys: list[str] | None = None,
         action_mode: str = "parameter",
         reward_keys: list[str] | None = None,
+        policy: Policy | None = None,
         rho: float = 0.05,
         frequency: int = 1,
     ) -> None:
@@ -92,6 +96,8 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
             Action mode, either "parameter" (default) or "function".
         reward_keys : list[str], optional
             Which rewards to compute at each step.
+        policy : Policy, optional
+            Policy for the agent to use. If none is given, act randomly.
         rho : float, optional
             ParEGO scalarization parameter.
         frequency : int, optional
@@ -100,15 +106,17 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         super().__init__(task, smac_cfg, loggers, expects_multiple_objectives, expects_fidelities)
 
         self._dacboenv: DACBOEnv
-        self._model: Policy
         self._state: ObsType
         self._observation_keys = observation_keys
         self._action_mode = action_mode
         self._reward_keys = reward_keys
         self._rho = rho
         self._frequency = frequency
+        self._model = policy
 
         self._obs_flag = False
+        self._obsfile = "DACBOEnvLogs.jsonl"
+        self._actionfile = "DACBOEnvActions.jsonl"
 
     def _setup_optimizer(self) -> AbstractFacade:
         """Setup SMAC.
@@ -127,8 +135,9 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         )
         self._state, _ = self._dacboenv.reset(seed=solver.optimizer._scenario.seed)
 
-        # Dummy model: Sample random action
-        self._model = RandomPolicy(self._dacboenv)  # TODO: Insert policy here
+        if self._model is None:
+            self._model = RandomPolicy(self._dacboenv)
+
         return solver
 
     def ask(self) -> TrialInfo:
@@ -143,10 +152,19 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         if len(self.solver.runhistory) % self._frequency == 0 and len(self.solver.runhistory) > len(
             self.solver.intensifier.config_selector._initial_design_configs
         ):
+            assert self._model is not None, "Model must be initialized before calling ask."
             action: ActType = self._model(self._state)
-            print(action)
+            # print(action)
             self._dacboenv.update_optimizer(action)
             self._obs_flag = True
+
+            logs = {
+                "action": np.array(action).item(),
+                "action_type": self._dacboenv._action_space._action.name,
+                "n_trials": len(self.solver.runhistory),
+            }
+            dump_logs(logs, self._actionfile)
+
         return super().ask()
 
     def tell(self, trial_info: TrialInfo, trial_value: TrialValue) -> None:
@@ -161,9 +179,21 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         """
         super().tell(trial_info, trial_value)
 
-        if self._obs_flag:  # Compute obs only when needed (optimizer was updated)
-            obs = self._dacboenv.get_observation()
-            print(obs)
-            self._dacboenv.get_reward()
-            self._state = obs
-            self._obs_flag = False
+        # TODO: Reactivate
+        # if self._obs_flag:  # Compute obs only when needed (optimizer was updated)
+        obs = self._dacboenv.get_observation()
+        # print(obs)
+        # rew = self._dacboenv.get_reward()
+        full_reward = self._dacboenv._reward._get_full_reward()
+        reward = self._dacboenv._reward._parego(list(full_reward.values()))
+
+        logs = {
+            "observation": {k: v.item() if hasattr(v, "item") else v for k, v in obs.items()},
+            "full_reward": full_reward,
+            "reward": reward,
+            "n_trials": len(self.solver.runhistory),
+        }
+        dump_logs(logs, self._obsfile)
+
+        self._state = obs
+        self._obs_flag = False

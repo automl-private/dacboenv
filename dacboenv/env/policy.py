@@ -135,9 +135,11 @@ class LinearParameterPolicy(Policy):
         budget = smac._scenario.n_trials
         trials = len(smac.runhistory)
 
+        weight = trials / budget
+
         if self._high_to_low:
-            return (budget - trials) * self._high + trials * self._low
-        return trials * self._high + (budget - trials) * self._low
+            return (1 - weight) * self._high + weight * self._low
+        return weight * self._high + (1 - weight) * self._low
 
 
 class JumpParameterPolicy(Policy):

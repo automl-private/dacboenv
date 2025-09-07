@@ -1,0 +1,14 @@
+# @package _global_
+defaults:
+- base
+optimizer:
+  policy_class: dacboenv.env.policy.LinearParameterPolicy
+  policy_kwargs:
+    high: 10.0
+    high_to_low: false
+    low: 0.1
+  smac_cfg:
+    smac_kwargs:
+      acquisition_function:
+        _target_: dacboenv.utils.confidence_bound.UCB
+optimizer_id: DACBOEnv-SMAC3-beta-linear-lth

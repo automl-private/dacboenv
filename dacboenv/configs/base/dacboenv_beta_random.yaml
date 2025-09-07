@@ -1,0 +1,11 @@
+# @package _global_
+defaults:
+  - base
+
+optimizer_id: DACBOEnv-SMAC3-beta-random
+
+optimizer:
+  smac_cfg:
+    smac_kwargs:
+      acquisition_function: 
+        _target_: dacboenv.utils.confidence_bound.UCB

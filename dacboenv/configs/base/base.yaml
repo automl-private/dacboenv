@@ -19,6 +19,7 @@ optimizer:
       initial_design:
         _target_: ${optimizer.smac_cfg.smac_class}.get_initial_design
         _partial_: true
+        n_configs: 1_000_000
         max_ratio: 0.2
   observation_keys: null
   action_mode: "parameter"

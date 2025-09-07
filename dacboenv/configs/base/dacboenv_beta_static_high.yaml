@@ -1,6 +1,6 @@
 # @package _global_
 defaults:
-- base
+- dacboenv
 optimizer:
   policy_class: dacboenv.env.policy.StaticParameterPolicy
   policy_kwargs:

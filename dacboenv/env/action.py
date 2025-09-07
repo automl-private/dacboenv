@@ -138,7 +138,7 @@ class AcqParameterActionSpace(AbstractActionSpace):
         Mapping of acquisition function classes to their corresponding parameter actions.
     """
 
-    _PARAMETERS: ClassVar[dict[AbstractAcquisitionFunction, ParameterAction]] = {
+    _PARAMETERS: ClassVar[dict[type[AbstractAcquisitionFunction], ParameterAction]] = {
         EI: ParameterAction("_xi", Box(low=-10_000.0, high=10_000.0, dtype=np.float32)),
         PI: ParameterAction("_xi", Box(low=-10_000.0, high=10_000.0, dtype=np.float32)),
         UCB: ParameterAction("_beta", Box(low=-10.0, high=5.0, dtype=np.float32), log=True),
@@ -192,7 +192,7 @@ class AcqFunctionActionSpace(AbstractActionSpace):
         Mapping of integer IDs to available acquisition function classes.
     """
 
-    _ACQUISITION_FUNCTIONS: ClassVar[dict[int, AbstractAcquisitionFunction]] = {0: EI, 1: PI, 2: UCB, 3: WEI}
+    _ACQUISITION_FUNCTIONS: ClassVar[dict[int, type[AbstractAcquisitionFunction]]] = {0: EI, 1: PI, 2: UCB, 3: WEI}
 
     def _create_action(self) -> FunctionAction:
         """Create a FunctionAction representing the discrete selection of acquisition functions.

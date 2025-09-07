@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from carps.optimizers.smac20 import SMAC3Optimizer
+from hydra.utils import get_class
 
 from dacboenv.dacboenv import ActType, DACBOEnv, ObsType
 from dacboenv.env.policy import Policy, RandomPolicy
@@ -72,7 +73,8 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         observation_keys: list[str] | None = None,
         action_mode: str = "parameter",
         reward_keys: list[str] | None = None,
-        policy: Policy | None = None,
+        policy_class: type[Policy] | str = RandomPolicy,
+        policy_kwargs: dict[str, Any] | None = None,
         rho: float = 0.05,
         frequency: int = 1,
     ) -> None:
@@ -96,8 +98,11 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
             Action mode, either "parameter" (default) or "function".
         reward_keys : list[str], optional
             Which rewards to compute at each step.
-        policy : Policy, optional
-            Policy for the agent to use. If none is given, act randomly.
+        policy_class : type[Policy] | str, optional
+            The class of the policy for the agent to use.
+            If none is given, act randomly.
+        policy_kwargs : dict[str, Any], optional
+            Keyword arguments to pass to the policy class constructor.
         rho : float, optional
             ParEGO scalarization parameter.
         frequency : int, optional
@@ -112,7 +117,9 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         self._reward_keys = reward_keys
         self._rho = rho
         self._frequency = frequency
-        self._model = policy
+
+        self._model = policy_class if isinstance(policy_class, type) else get_class(policy_class)
+        self._policy_kwargs = policy_kwargs if policy_kwargs is not None else {}
 
         self._obs_flag = False
         self._obsfile = "DACBOEnvLogs.jsonl"
@@ -135,8 +142,7 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         )
         self._state, _ = self._dacboenv.reset(seed=solver.optimizer._scenario.seed)
 
-        if self._model is None:
-            self._model = RandomPolicy(self._dacboenv)
+        self._model = self._model(self._dacboenv, **self._policy_kwargs)
 
         return solver
 

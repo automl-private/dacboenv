@@ -4,7 +4,7 @@ defaults:
 optimizer:
   policy_class: dacboenv.env.policy.StaticParameterPolicy
   policy_kwargs:
-    par_val: 0.1
+    par_val: -10
   smac_cfg:
     smac_kwargs:
       acquisition_function:

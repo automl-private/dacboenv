@@ -37,7 +37,7 @@ class AbstractConfidenceBound(AbstractAcquisitionFunction):
 
     Parameters
     ----------
-    beta : float, defaults to 1.0
+    beta : float, defaults to 0.1
         Controls the balance between exploration and exploitation of the acquisition function.
 
     Attributes
@@ -64,7 +64,7 @@ class AbstractConfidenceBound(AbstractAcquisitionFunction):
 
     def __init__(
         self,
-        beta: float = 1.0,
+        beta: float = 0.1,
         nu: float = 1.0,
         update_beta: bool = True,  # noqa: FBT001, FBT002
         beta_scaling_srinivas: bool = False,  # noqa: FBT001, FBT002
@@ -145,8 +145,10 @@ class AbstractConfidenceBound(AbstractAcquisitionFunction):
         m, var_ = self._model.predict_marginalized(X)
         std = np.sqrt(var_)
         if self._update_beta and not self._beta_scaling_srinivas:
+            assert 0 < self._beta < 1, f"beta ({self._beta}) should be in (0, 1) when using update_beta=True"
             beta_t = 2 * np.log((X.shape[1] * self._num_data**2) / self._beta)
         elif self._update_beta and self._beta_scaling_srinivas:
+            assert 0 < self._beta < 1, f"beta ({self._beta}) should be in (0, 1) when using update_beta=True"
             beta_t = (2 * np.log((X.shape[1] * self._num_data**2 * np.pi**2) / (6 * self._beta))) / 5
         else:
             beta_t = self._beta

@@ -86,25 +86,25 @@ dimensions_observation = ObservationType(
 continuous_hp_observation = ObservationType(
     "continuous_hps",
     Box(low=0, high=np.inf, dtype=np.int32),
-    lambda smbo: len([hp for _, hp in smbo._scenario.configspace.items() if isinstance(hp, FloatHyperparameter)]),
+    lambda smbo: len([hp for hp in smbo._scenario.configspace.values() if isinstance(hp, FloatHyperparameter)]),
     0,
 )
 categorical_hp_observation = ObservationType(
     "categorical_hps",
     Box(low=0, high=np.inf, dtype=np.int32),
-    lambda smbo: len([hp for _, hp in smbo._scenario.configspace.items() if isinstance(hp, CategoricalHyperparameter)]),
+    lambda smbo: len([hp for hp in smbo._scenario.configspace.values() if isinstance(hp, CategoricalHyperparameter)]),
     0,
 )
 ordinal_hp_observation = ObservationType(
     "ordinal_hps",
     Box(low=0, high=np.inf, dtype=np.int32),
-    lambda smbo: len([hp for _, hp in smbo._scenario.configspace.items() if isinstance(hp, OrdinalHyperparameter)]),
+    lambda smbo: len([hp for hp in smbo._scenario.configspace.values() if isinstance(hp, OrdinalHyperparameter)]),
     0,
 )
 int_hp_observation = ObservationType(
     "int_hps",
     Box(low=0, high=np.inf, dtype=np.int32),
-    lambda smbo: len([hp for _, hp in smbo._scenario.configspace.items() if isinstance(hp, IntegerHyperparameter)]),
+    lambda smbo: len([hp for hp in smbo._scenario.configspace.values() if isinstance(hp, IntegerHyperparameter)]),
     0,
 )
 tsp_observation = ObservationType(

@@ -4,9 +4,9 @@ defaults:
 optimizer:
   policy_class: dacboenv.env.policy.JumpParameterPolicy
   policy_kwargs:
-    high: 10.0
+    high: -4.342966533881614e-06
     jump: 0.25
-    low: 0.1
+    low: -10
   smac_cfg:
     smac_kwargs:
       acquisition_function:

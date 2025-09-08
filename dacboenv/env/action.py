@@ -141,7 +141,7 @@ class AcqParameterActionSpace(AbstractActionSpace):
     _PARAMETERS: ClassVar[dict[type[AbstractAcquisitionFunction], ParameterAction]] = {
         EI: ParameterAction("_xi", Box(low=-10_000.0, high=10_000.0, dtype=np.float32)),
         PI: ParameterAction("_xi", Box(low=-10_000.0, high=10_000.0, dtype=np.float32)),
-        UCB: ParameterAction("_beta", Box(low=-10.0, high=5.0, dtype=np.float32), log=True),
+        UCB: ParameterAction("_beta", Box(low=-10.0, high=1.0, dtype=np.float32), log=True),
         WEI: ParameterAction("_alpha", Box(low=0.0, high=1.0, dtype=np.float32)),
     }
 

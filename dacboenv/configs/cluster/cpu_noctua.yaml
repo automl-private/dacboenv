@@ -1,0 +1,14 @@
+# @package _global_
+defaults:
+  - override /hydra/launcher: submitit_slurm
+
+hydra:
+  launcher:
+    partition: normal
+    cpus_per_task: 1
+    name: dacboenv
+    timeout_min: 360
+    # mem_gb: 8
+    mem_per_cpu: 4G
+    setup:
+      - module load system singularity

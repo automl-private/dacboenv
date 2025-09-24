@@ -9,4 +9,5 @@ optimizer:
     smac_kwargs:
       acquisition_function:
         _target_: dacboenv.utils.confidence_bound.UCB
+        update_beta: false
 optimizer_id: DACBOEnv-SMAC3-beta-static-low

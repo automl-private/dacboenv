@@ -2,14 +2,11 @@
 defaults:
 - dacboenv
 optimizer:
-  policy_class: dacboenv.env.policy.JumpParameterPolicy
+  policy_class: dacboenv.env.policy.StaticParameterPolicy
   policy_kwargs:
-    high: 6
-    jump: 0.25
-    low: -10
+    par_val: 0
   smac_cfg:
     smac_kwargs:
       acquisition_function:
         _target_: dacboenv.utils.confidence_bound.UCB
-        update_beta: false
-optimizer_id: DACBOEnv-SMAC3-beta-jump-lth-025
+optimizer_id: DACBOEnv-SMAC3-beta-static-high

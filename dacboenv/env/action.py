@@ -141,7 +141,7 @@ class AcqParameterActionSpace(AbstractActionSpace):
     _PARAMETERS: ClassVar[dict[type[AbstractAcquisitionFunction], ParameterAction]] = {
         EI: ParameterAction("_xi", Box(low=-10_000.0, high=10_000.0, dtype=np.float32)),
         PI: ParameterAction("_xi", Box(low=-10_000.0, high=10_000.0, dtype=np.float32)),
-        UCB: ParameterAction("_beta", Box(low=-10.0, high=1.0, dtype=np.float32), log=True),
+        UCB: ParameterAction("_beta", Box(low=-10.0, high=6.0, dtype=np.float32), log=True),
         WEI: ParameterAction("_alpha", Box(low=0.0, high=1.0, dtype=np.float32)),
     }
 
@@ -161,6 +161,10 @@ class AcqParameterActionSpace(AbstractActionSpace):
         acquisition_function = self._smac_instance._intensifier._config_selector._acquisition_function
         if type(acquisition_function) not in self._PARAMETERS:
             raise ValueError("Invalid acquisition function")
+
+        if type(acquisition_function) == UCB and acquisition_function._update_beta:
+            return ParameterAction("_nu", Box(low=-10.0, high=0.0, dtype=np.float32), log=True)
+
         return self._PARAMETERS[type(acquisition_function)]
 
     def update_optimizer(self, action: ActType) -> None:

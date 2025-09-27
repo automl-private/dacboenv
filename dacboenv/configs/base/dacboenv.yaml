@@ -21,6 +21,10 @@ optimizer:
         _partial_: true
         n_configs: 1_000_000
         max_ratio: 0.2
+      random_design:
+        _target_: ${optimizer.smac_cfg.smac_class}.get_random_design
+        scenario: ${optimizer.smac_cfg.scenario}
+        probability: 0.0
   observation_keys: null
   action_mode: "parameter"
   reward_keys: null

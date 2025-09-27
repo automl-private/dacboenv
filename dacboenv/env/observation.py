@@ -185,7 +185,7 @@ ALL_OBSERVATIONS = [
     mean_observation,
     std_observation,
     variability_observation,
-    auc_observation,
+    # auc_observation,
 ]
 
 

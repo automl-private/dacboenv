@@ -6,6 +6,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar
 
+import numpy as np
+from sklearn.metrics import auc
+
 from dacboenv.utils.parego import ParEGO
 
 if TYPE_CHECKING:
@@ -30,21 +33,26 @@ class RewardType:
 
 # Multi-objective: Handle incumbent cost
 
-incumbent_cost_reward = RewardType("incumbent_cost", lambda smbo: abs(smbo.intensifier.trajectory[-1].costs[-1]))
+incumbent_cost_reward = RewardType(
+    "incumbent_cost", lambda smbo: -smbo.intensifier.trajectory[-1].costs[-1]
+)  # Minimize cost
 incumbent_improvement_reward = RewardType(
     "incumbent_improvement",
-    lambda smbo: 0
-    if smbo.intensifier.trajectory[-1].trial != len(smbo.runhistory)
-    else abs(smbo.intensifier.trajectory[-1].costs[-1] - smbo.intensifier.trajectory[-2].costs[-1])
-    if len(smbo.intensifier.trajectory) > 1
-    else abs(smbo.intensifier.trajectory[-1].costs[-1]),
+    lambda smbo: abs(smbo.intensifier.trajectory[-1].costs[-1] - smbo.intensifier.trajectory[-2].costs[-1])
+    if len(smbo.intensifier.trajectory) > 1 and smbo.intensifier.trajectory[-1].trial == len(smbo.runhistory)
+    else 0,
 )
-cum_cost_reward = RewardType(
-    "cum_cost",
-    lambda smbo: abs(sum(v.cost for v in smbo.runhistory.values())),
+auc_reward = RewardType(
+    "trajectory_auc",
+    lambda smbo: -auc(
+        range(len(smbo.runhistory)),
+        np.minimum.accumulate([t.cost - smbo.intensifier.trajectory[0].costs[-1] for t in smbo.runhistory.values()]),
+    )
+    if len(smbo.runhistory) > 1
+    else np.nan,
 )
 
-ALL_REWARDS = [incumbent_cost_reward, incumbent_improvement_reward, cum_cost_reward]
+ALL_REWARDS = [incumbent_cost_reward, incumbent_improvement_reward, auc_reward]
 
 
 class DACBOReward:

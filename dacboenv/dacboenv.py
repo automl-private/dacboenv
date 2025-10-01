@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -15,7 +16,7 @@ from dacboenv.env.observation import ObservationSpace
 from dacboenv.env.reward import DACBOReward
 
 if TYPE_CHECKING:
-    from smac.main.smbo import SMBO
+    from smac.facade.abstract_facade import AbstractFacade
 
 ObsType = dict[str, Any]
 ActType = int | float | list[float]
@@ -29,8 +30,8 @@ class DACBOEnv(gym.Env):
 
     Parameters
     ----------
-    smac_instance : SMBO
-        The SMAC instance.
+    smac_instance_factory : Callable[[], AbstractFacade]
+        Function returning the SMAC instance. Called for each new episode.
     observation_keys : list[str], optional
         Which observations to compute at each step.
     action_mode : str, optional
@@ -80,7 +81,7 @@ class DACBOEnv(gym.Env):
 
     def __init__(
         self,
-        smac_instance: SMBO,
+        smac_instance_factory: Callable[[], AbstractFacade],
         observation_keys: list[str] | None = None,
         action_mode: str = "parameter",
         reward_keys: list[str] | None = None,
@@ -90,8 +91,8 @@ class DACBOEnv(gym.Env):
 
         Parameters
         ----------
-        smac_instance : SMBO
-            The SMAC instance.
+        smac_instance_factory : Callable[[], AbstractFacade]
+            Function returning the SMAC instance. Called for each new episode.
         observation_keys : list[str], optional
             Which observations to compute at each step.
         action_mode : str, optional
@@ -103,7 +104,9 @@ class DACBOEnv(gym.Env):
         """
         super().__init__()
 
-        self._smac_instance = smac_instance
+        self._smac_instance_factory = smac_instance_factory
+        self._solver = self._smac_instance_factory()
+        self._smac_instance = self._solver.optimizer
         self._n_trials = self._smac_instance._scenario.n_trials
         self._action_mode = action_mode
         self._action_space: AbstractActionSpace
@@ -188,19 +191,19 @@ class DACBOEnv(gym.Env):
 
         # BO step
         trial_info = self._smac_instance.ask()
-        trial_value = self._smac_instance._runner.run_wrapper(trial_info)
+        _, trial_value = self._smac_instance._runner.run_wrapper(trial_info)
         self._smac_instance.tell(trial_info, trial_value)
 
         # Compute observation + reward
         obs = self.get_observation()
         reward = self.get_reward()
 
-        return obs, reward, self._smac_instance.budget_exhausted, False, {}
+        return obs, reward, self._smac_instance.remaining_trials <= 0, False, {}
 
     def reset(
         self,
         *,
-        seed: int | None = None,
+        seed: int | None = None,  # noqa: ARG002
         options: dict[str, Any] | None = None,  # noqa: ARG002
     ) -> tuple[ObsType, dict[str, Any]]:
         """Reset the environment.
@@ -219,9 +222,22 @@ class DACBOEnv(gym.Env):
         info : dict
             Additional information (empty).
         """
-        super().reset(seed=seed)
+        # Reset SMAC instance
+        del self._smac_instance
+        del self._solver
+
+        self._solver = self._smac_instance_factory()
+        self._smac_instance = self._solver.optimizer
+
+        # XXX: The initial design configs remain the same as the initial design
+        # is part of the facade
+
+        self._observation_space._smac_instance = self._smac_instance
+        self._action_space._smac_instance = self._smac_instance
+        self._reward._smac_instance = self._smac_instance
+
+        super().reset(seed=self._smac_instance._scenario.seed)
 
         initial_obs = {obs.name: obs.default for obs in self._observation_space._observation_types}
 
-        # XXX: Going to be used to actually reset optimization?
         return initial_obs, {}

@@ -135,16 +135,14 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         SMAC4AC
             Instance of a SMAC facade.
         """
-        solver = super()._setup_optimizer()
-
         self._dacboenv = DACBOEnv(
-            solver.optimizer, self._observation_keys, self._action_mode, self._reward_keys, self._rho
+            super()._setup_optimizer, self._observation_keys, self._action_mode, self._reward_keys, self._rho
         )
-        self._state, _ = self._dacboenv.reset(seed=solver.optimizer._scenario.seed)
+        self._state, _ = self._dacboenv.reset()
 
         self._model = self._model(self._dacboenv, **self._policy_kwargs)
 
-        return solver
+        return self._dacboenv._solver
 
     def ask(self) -> TrialInfo:
         """Ask the optimizer for a new trial to evaluate.

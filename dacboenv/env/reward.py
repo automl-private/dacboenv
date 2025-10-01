@@ -49,10 +49,16 @@ auc_reward = RewardType(
         np.minimum.accumulate([t.cost - smbo.intensifier.trajectory[0].costs[-1] for t in smbo.runhistory.values()]),
     )
     if len(smbo.runhistory) > 1
-    else np.nan,
+    else 0,
+)
+auc_reward_alt = RewardType(
+    "trajectory_auc_alt",
+    lambda smbo: -auc([t.trial for t in smbo.intensifier.trajectory], costs)
+    if len(costs := [t.costs[-1] - smbo.intensifier.trajectory[0].costs[-1] for t in smbo.intensifier.trajectory]) > 1
+    else 0,
 )
 
-ALL_REWARDS = [incumbent_cost_reward, incumbent_improvement_reward, auc_reward]
+ALL_REWARDS = [incumbent_cost_reward, incumbent_improvement_reward, auc_reward_alt]
 
 
 class DACBOReward:

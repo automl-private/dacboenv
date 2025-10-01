@@ -69,13 +69,13 @@ ubr_observation = ObservationType(
     "ubr",
     Box(low=0.0, high=np.inf, dtype=np.float32),
     lambda smbo: calculate_ubr(trial_infos=None, trial_values=None, configspace=None, seed=None, smbo=smbo)["ubr"],
-    np.nan,
+    -1,
 )
 modelfit_observation = ObservationType(
     "modelfit_mse",
     Box(low=0.0, high=np.inf, dtype=np.float32),
-    lambda smbo: np.nan if np.isnan(scores := calculate_model_fit(smbo)["mean_scores"]).any() else scores[0],
-    np.nan,
+    lambda smbo: -1 if np.isnan(scores := calculate_model_fit(smbo)["mean_scores"]).any() else scores[0],
+    -1,
 )
 dimensions_observation = ObservationType(
     "searchspace_dim",
@@ -111,59 +111,59 @@ tsp_observation = ObservationType(
     "tsp",
     Box(low=0, high=np.inf, dtype=np.float32),
     lambda smbo: exploration_tsp(smbo.intensifier.config_selector._collect_data()[0])[-1],
-    np.nan,
+    -1,
 )
 knn_entropy_observation = ObservationType(
     "knn_entropy",
     Box(low=0, high=np.inf, dtype=np.float32),
     lambda smbo: knn_entropy(configs)
     if len(configs := smbo.intensifier.config_selector._collect_data()[0]) > 3  # noqa: PLR2004 (default k == 3)
-    else np.nan,
-    np.nan,
+    else 0,
+    0,
 )
 skewness_observation = ObservationType(
     "y_skewness",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo: skew(costs).item()
+    lambda smbo: np.nan_to_num(skew(costs).item(), nan=-1)
     if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 0
-    else np.nan,
-    np.nan,
+    else -1,
+    -1,
 )
 kurtosis_observation = ObservationType(
     "y_kurtosis",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo: kurtosis(costs).item()
+    lambda smbo: np.nan_to_num(kurtosis(costs).item(), nan=-1)
     if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 0
-    else np.nan,
-    np.nan,
+    else -1,
+    -1,
 )
 mean_observation = ObservationType(
     "y_mean",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo: np.mean(costs) if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 0 else np.nan,
-    np.nan,
+    lambda smbo: np.mean(costs) if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 0 else 0,
+    0,
 )
 std_observation = ObservationType(
     "y_std",
     Box(low=0, high=np.inf, dtype=np.float32),
-    lambda smbo: np.std(costs) if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 0 else np.nan,
-    np.nan,
+    lambda smbo: np.std(costs) if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 0 else -1,
+    -1,
 )
 variability_observation = ObservationType(
     "y_variability",
     Box(low=0, high=np.inf, dtype=np.float32),
     lambda smbo: calc_variability(costs)
     if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 3  # noqa: PLR2004
-    else np.nan,
-    np.nan,
+    else -1,
+    -1,
 )
 auc_observation = ObservationType(
     "trajectory_auc",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
     lambda smbo: auc([t.trial for t in smbo.intensifier.trajectory], costs)
     if len(costs := [t.costs[-1] for t in smbo.intensifier.trajectory]) > 1
-    else np.nan,
-    np.nan,
+    else 0,
+    0,
 )
 
 

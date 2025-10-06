@@ -10,6 +10,7 @@ from typing import (
 )
 
 import gymnasium as gym
+import numpy as np
 
 from dacboenv.env.action import AbstractActionSpace, AcqFunctionActionSpace, AcqParameterActionSpace
 from dacboenv.env.observation import ObservationSpace
@@ -238,6 +239,9 @@ class DACBOEnv(gym.Env):
 
         super().reset(seed=self._smac_instance._scenario.seed)
 
-        initial_obs = {obs.name: obs.default for obs in self._observation_space._observation_types}
+        initial_obs = {
+            obs.name: np.atleast_1d(obs.default).astype(np.float32)
+            for obs in self._observation_space._observation_types
+        }
 
         return initial_obs, {}

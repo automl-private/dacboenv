@@ -192,7 +192,14 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         reward = self._dacboenv._reward._parego(list(full_reward.values()))
 
         logs = {
-            "observation": {k: v.item() if hasattr(v, "item") else v for k, v in obs.items()},
+            "observation": {
+                k: v.item()
+                if hasattr(v, "item") and np.ndim(v) == 0
+                else v.tolist()
+                if isinstance(v, np.ndarray)
+                else v
+                for k, v in obs.items()
+            },
             "full_reward": full_reward,
             "reward": reward,
             "n_trials": len(self.solver.runhistory),

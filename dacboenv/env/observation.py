@@ -28,10 +28,23 @@ from ConfigSpace.hyperparameters import (
     OrdinalHyperparameter,
 )
 from scipy.stats import kurtosis, skew
-from sklearn.metrics import auc
 
 from dacboenv.features.X_features import exploration_tsp, knn_entropy
 from dacboenv.features.y_features import calc_variability
+
+
+def get_best_percentile_configs(smbo: SMBO, p: int = 10) -> np.ndarray:
+    """Returns the best 1/p percent of configs."""
+    configs_sorted = [k.config_id for k, _ in sorted(smbo.runhistory._data.items(), key=lambda x: x[1].cost)]
+    n = max(1, len(configs_sorted) // p)
+    return np.array([smbo.runhistory.get_config(config_id).get_array() for config_id in configs_sorted[:n]])
+
+
+def get_best_percentile_costs(smbo: SMBO, p: int = 10) -> np.ndarray:
+    """Returns the best 1/p percent of costs."""
+    costs_sorted = [v.cost for _, v in sorted(smbo.runhistory._data.items(), key=lambda x: x[1].cost)]
+    n = max(1, len(costs_sorted) // p)
+    return np.array(costs_sorted[:n])
 
 
 @dataclass
@@ -53,7 +66,7 @@ class ObservationType:
     name: str
     space: Space
     compute: Callable[[SMBO], Any]
-    default: int | float
+    default: Any
 
 
 incumbent_change_observation = ObservationType(
@@ -157,22 +170,67 @@ variability_observation = ObservationType(
     else -1,
     -1,
 )
-auc_observation = ObservationType(
-    "trajectory_auc",
-    Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo: auc([t.trial for t in smbo.intensifier.trajectory], costs)
-    if len(costs := [t.costs[-1] for t in smbo.intensifier.trajectory]) > 1
+tsp_best_observation = ObservationType(
+    "tsp_best",
+    Box(low=0, high=np.inf, dtype=np.float32),
+    lambda smbo: exploration_tsp(get_best_percentile_configs(smbo))[-1],
+    -1,
+)
+knn_entropy_best_observation = ObservationType(
+    "knn_entropy_best",
+    Box(low=0, high=np.inf, dtype=np.float32),
+    lambda smbo: knn_entropy(configs)
+    if len(configs := get_best_percentile_configs(smbo)) > 3  # noqa: PLR2004 (default k == 3)
     else 0,
     0,
 )
-
+skewness_best_observation = ObservationType(
+    "y_skewness_best",
+    Box(low=-np.inf, high=np.inf, dtype=np.float32),
+    lambda smbo: np.nan_to_num(skew(costs).item(), nan=-1) if len(costs := get_best_percentile_costs(smbo)) > 0 else -1,
+    -1,
+)
+kurtosis_best_observation = ObservationType(
+    "y_kurtosis_best",
+    Box(low=-np.inf, high=np.inf, dtype=np.float32),
+    lambda smbo: np.nan_to_num(kurtosis(costs).item(), nan=-1)
+    if len(costs := get_best_percentile_costs(smbo)) > 0
+    else -1,
+    -1,
+)
+mean_best_observation = ObservationType(
+    "y_mean_best",
+    Box(low=-np.inf, high=np.inf, dtype=np.float32),
+    lambda smbo: np.mean(costs) if len(costs := get_best_percentile_costs(smbo)) > 0 else 0,
+    0,
+)
+std_best_observation = ObservationType(
+    "y_std_best",
+    Box(low=0, high=np.inf, dtype=np.float32),
+    lambda smbo: np.std(costs) if len(costs := get_best_percentile_costs(smbo)) > 0 else -1,
+    -1,
+)
+variability_best_observation = ObservationType(
+    "y_variability_best",
+    Box(low=0, high=np.inf, dtype=np.float32),
+    lambda smbo: calc_variability(costs)
+    if len(costs := get_best_percentile_costs(smbo)) > 3  # noqa: PLR2004
+    else -1,
+    -1,
+)
+gp_hp_observation = ObservationType(
+    "gp_hp_observation",
+    Dict({}),
+    lambda smbo: smbo._intensifier._config_selector._acquisition_function.model._kernel.theta,
+    [],
+)
 
 ALL_OBSERVATIONS = [
     incumbent_change_observation,
     trials_passed_observation,
     trials_left_observation,
     ubr_observation,
-    modelfit_observation,
+    # modelfit_observation,
     dimensions_observation,
     continuous_hp_observation,
     categorical_hp_observation,
@@ -185,7 +243,14 @@ ALL_OBSERVATIONS = [
     mean_observation,
     std_observation,
     variability_observation,
-    # auc_observation,
+    tsp_best_observation,
+    knn_entropy_best_observation,
+    skewness_best_observation,
+    kurtosis_best_observation,
+    mean_best_observation,
+    std_best_observation,
+    variability_best_observation,
+    gp_hp_observation,
 ]
 
 
@@ -266,4 +331,7 @@ class ObservationSpace:
         ObsType
             Dictionary mapping observation names to their computed values.
         """
-        return {obs.name: obs.compute(self._smac_instance) for obs in self._observation_types}
+        return {
+            obs.name: np.atleast_1d(obs.compute(self._smac_instance)).astype(np.float32)
+            for obs in self._observation_types
+        }

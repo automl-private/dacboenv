@@ -183,7 +183,7 @@ def calculate_model_fit(  # noqa: C901, PLR0912, PLR0915
 
     mean_str = " ".join(f"{x:.4f}" for x in mean_scores)
     rel_str = " ".join(f"{x:.4f}" for x in rel_means)
-    logger.info(f"CV ({k} folds): means: [{mean_str}], rel_means: [{rel_str}], time: {duration:.2f}s")
+    logger.debug(f"CV ({k} folds): means: [{mean_str}], rel_means: [{rel_str}], time: {duration:.2f}s")
 
     # How to assess that we have a globally good model?
     return {

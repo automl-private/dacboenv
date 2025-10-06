@@ -33,6 +33,12 @@ class RewardType:
 
 # Multi-objective: Handle incumbent cost
 
+auc_reward = RewardType(
+    "trajectory_auc",
+    lambda smbo: -auc([t.trial for t in smbo.intensifier.trajectory], costs)
+    if len(costs := [t.costs[-1] - smbo.intensifier.trajectory[0].costs[-1] for t in smbo.intensifier.trajectory]) > 1
+    else 0,
+)
 incumbent_cost_reward = RewardType(
     "incumbent_cost", lambda smbo: -smbo.intensifier.trajectory[-1].costs[-1]
 )  # Minimize cost
@@ -42,8 +48,8 @@ incumbent_improvement_reward = RewardType(
     if len(smbo.intensifier.trajectory) > 1 and smbo.intensifier.trajectory[-1].trial == len(smbo.runhistory)
     else 0,
 )
-auc_reward = RewardType(
-    "trajectory_auc",
+auc_reward_alt = RewardType(
+    "trajectory_auc_alt",
     lambda smbo: -auc(
         range(len(smbo.runhistory)),
         np.minimum.accumulate([t.cost - smbo.intensifier.trajectory[0].costs[-1] for t in smbo.runhistory.values()]),
@@ -51,14 +57,8 @@ auc_reward = RewardType(
     if len(smbo.runhistory) > 1
     else 0,
 )
-auc_reward_alt = RewardType(
-    "trajectory_auc_alt",
-    lambda smbo: -auc([t.trial for t in smbo.intensifier.trajectory], costs)
-    if len(costs := [t.costs[-1] - smbo.intensifier.trajectory[0].costs[-1] for t in smbo.intensifier.trajectory]) > 1
-    else 0,
-)
 
-ALL_REWARDS = [incumbent_cost_reward, incumbent_improvement_reward, auc_reward_alt]
+ALL_REWARDS = [auc_reward]  # [incumbent_cost_reward, incumbent_improvement_reward, auc_reward_alt]
 
 
 class DACBOReward:

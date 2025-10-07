@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -47,6 +47,14 @@ def get_best_percentile_costs(smbo: SMBO, p: int = 10) -> np.ndarray:
     return np.array(costs_sorted[:n])
 
 
+def enumerate_offset(hyperparameters: Sequence[Any]) -> Iterator[tuple[int, Any]]:
+    """Enumerates the given hyperparameters along with their running length as offset."""
+    offset = 0
+    for hp in hyperparameters:
+        yield offset, hp
+        offset += hp.n_elements
+
+
 @dataclass
 class ObservationType:
     """Represents a single observation type.
@@ -67,6 +75,23 @@ class ObservationType:
     space: Space
     compute: Callable[[SMBO], Any]
     default: Any
+
+
+@dataclass
+class MultiObservationType:
+    """Represents a multi observation type.
+    A multi observation is a collection of observation types that are created together.
+
+    Attributes
+    ----------
+    name : str
+        Name of the observation.
+    create : Callable[[SMBO], Sequence[ObservationType]]
+        Function to create the collection of ObservervationTypes from a SMAC instance.
+    """
+
+    name: str
+    create: Callable[[SMBO], Sequence[ObservationType]]
 
 
 incumbent_change_observation = ObservationType(
@@ -218,11 +243,23 @@ variability_best_observation = ObservationType(
     else -1,
     -1,
 )
-gp_hp_observation = ObservationType(
-    "gp_hp_observation",
-    Dict({}),  # XXX: Number of HPs depends on kernel, i.e. the optimizer
-    lambda smbo: smbo._intensifier._config_selector._acquisition_function.model._kernel.theta,
-    [],
+gp_hp_observation = MultiObservationType(
+    "gp_hp_observations",
+    lambda smbo: [
+        ObservationType(
+            f"gp_hp_{hp.name}{i}_observation",
+            Box(hp.bounds[i][0], hp.bounds[i][1]),
+            lambda smbo_, idx=i + offset: smbo_._intensifier._config_selector._acquisition_function.model._kernel.theta[  # type: ignore
+                idx
+            ],
+            0,
+        )
+        for offset, hp in enumerate_offset(
+            smbo._intensifier._config_selector._acquisition_function.model._kernel.hyperparameters
+        )
+        for i in range(hp.n_elements)
+        if not hp.fixed
+    ],
 )
 
 ALL_OBSERVATIONS = [
@@ -250,8 +287,9 @@ ALL_OBSERVATIONS = [
     mean_best_observation,
     std_best_observation,
     variability_best_observation,
-    gp_hp_observation,
 ]
+
+MULTI_OBSERVATIONS = [gp_hp_observation]
 
 
 class ObservationSpace:
@@ -281,6 +319,7 @@ class ObservationSpace:
     """
 
     _OBSERVATION_MAP: ClassVar[dict[str, ObservationType]] = {obs.name: obs for obs in ALL_OBSERVATIONS}
+    _MULTI_OBSERVATION_MAP: ClassVar[dict[str, MultiObservationType]] = {obs.name: obs for obs in MULTI_OBSERVATIONS}
 
     def __init__(self, smac_instance: SMBO, keys: list[str] | None = None) -> None:
         """Initialize the ObservationSpace.
@@ -300,17 +339,30 @@ class ObservationSpace:
         self._smac_instance = smac_instance
 
         # Default to all possible keys if not provided
-        self._keys = keys if keys is not None else list(ObservationSpace._OBSERVATION_MAP.keys())
+        self._keys = (
+            keys
+            if keys is not None
+            else list(ObservationSpace._OBSERVATION_MAP.keys()) + list(ObservationSpace._MULTI_OBSERVATION_MAP.keys())
+        )
 
         # Check for invalid keys
-        invalid_keys = set(self._keys) - set(ObservationSpace._OBSERVATION_MAP.keys())
+        invalid_keys = (
+            set(self._keys)
+            - set(ObservationSpace._OBSERVATION_MAP.keys())
+            - set(ObservationSpace._MULTI_OBSERVATION_MAP.keys())
+        )
         if invalid_keys:
             raise ValueError(f"Invalid observation keys: {invalid_keys}")
 
-        self._observation_types = [ObservationSpace._OBSERVATION_MAP[key] for key in self._keys]
-        self._observation_space = Dict(
-            {name: obs.space for name, obs in zip(self._keys, self._observation_types, strict=False)}
-        )
+        self._observation_types = [
+            ObservationSpace._OBSERVATION_MAP[key] for key in self._keys if key in ObservationSpace._OBSERVATION_MAP
+        ] + [
+            space
+            for key in self._keys
+            if key in ObservationSpace._MULTI_OBSERVATION_MAP
+            for space in ObservationSpace._MULTI_OBSERVATION_MAP[key].create(smac_instance)
+        ]
+        self._observation_space = Dict({obs.name: obs.space for obs in self._observation_types})
 
     @property
     def space(self) -> Space:
@@ -331,6 +383,13 @@ class ObservationSpace:
         ObsType
             Dictionary mapping observation names to their computed values.
         """
+        print(
+            {
+                obs.name: np.atleast_1d(obs.compute(self._smac_instance)).astype(np.float32)
+                for obs in self._observation_types
+            }
+        )
+        print(self._smac_instance._intensifier.config_selector._acquisition_function.model._kernel.theta)
         return {
             obs.name: np.atleast_1d(obs.compute(self._smac_instance)).astype(np.float32)
             for obs in self._observation_types

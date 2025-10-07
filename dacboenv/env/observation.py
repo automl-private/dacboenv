@@ -33,17 +33,17 @@ from dacboenv.features.X_features import exploration_tsp, knn_entropy
 from dacboenv.features.y_features import calc_variability
 
 
-def get_best_percentile_configs(smbo: SMBO, p: int = 10) -> np.ndarray:
+def get_best_percentile_configs(smbo: SMBO, p: int = 10, min_samples: int = 1) -> np.ndarray:
     """Returns the best 1/p percent of configs."""
     configs_sorted = [k.config_id for k, _ in sorted(smbo.runhistory._data.items(), key=lambda x: x[1].cost)]
-    n = max(1, len(configs_sorted) // p)
+    n = max(min_samples, len(configs_sorted) // p)
     return np.array([smbo.runhistory.get_config(config_id).get_array() for config_id in configs_sorted[:n]])
 
 
-def get_best_percentile_costs(smbo: SMBO, p: int = 10) -> np.ndarray:
+def get_best_percentile_costs(smbo: SMBO, p: int = 10, min_samples: int = 1) -> np.ndarray:
     """Returns the best 1/p percent of costs."""
     costs_sorted = [v.cost for _, v in sorted(smbo.runhistory._data.items(), key=lambda x: x[1].cost)]
-    n = max(1, len(costs_sorted) // p)
+    n = max(min_samples, len(costs_sorted) // p)
     return np.array(costs_sorted[:n])
 
 
@@ -162,7 +162,7 @@ knn_entropy_observation = ObservationType(
 skewness_observation = ObservationType(
     "y_skewness",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo: np.nan_to_num(skew(costs).item(), nan=-1)
+    lambda smbo: np.nan_to_num(skew(costs).item(), nan=0)
     if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 0
     else 0,
     0,
@@ -170,7 +170,7 @@ skewness_observation = ObservationType(
 kurtosis_observation = ObservationType(
     "y_kurtosis",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo: np.nan_to_num(kurtosis(costs).item(), nan=-1)
+    lambda smbo: np.nan_to_num(kurtosis(costs).item(), nan=0)
     if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 0
     else 0,
     0,
@@ -205,20 +205,20 @@ knn_entropy_best_observation = ObservationType(
     "knn_entropy_best",
     Box(low=0, high=np.inf, dtype=np.float32),
     lambda smbo: knn_entropy(configs)
-    if len(configs := get_best_percentile_configs(smbo)) > 3  # noqa: PLR2004 (default k == 3)
+    if len(configs := get_best_percentile_configs(smbo, min_samples=4)) > 3  # noqa: PLR2004 (default k == 3)
     else 0,
     0,
 )
 skewness_best_observation = ObservationType(
     "y_skewness_best",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo: np.nan_to_num(skew(costs).item(), nan=-1) if len(costs := get_best_percentile_costs(smbo)) > 0 else 0,
+    lambda smbo: np.nan_to_num(skew(costs).item(), nan=0) if len(costs := get_best_percentile_costs(smbo)) > 0 else 0,
     0,
 )
 kurtosis_best_observation = ObservationType(
     "y_kurtosis_best",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo: np.nan_to_num(kurtosis(costs).item(), nan=-1)
+    lambda smbo: np.nan_to_num(kurtosis(costs).item(), nan=0)
     if len(costs := get_best_percentile_costs(smbo)) > 0
     else 0,
     0,
@@ -239,7 +239,7 @@ variability_best_observation = ObservationType(
     "y_variability_best",
     Box(low=0, high=np.inf, dtype=np.float32),
     lambda smbo: calc_variability(costs)
-    if len(costs := get_best_percentile_costs(smbo)) > 3  # noqa: PLR2004
+    if len(costs := get_best_percentile_costs(smbo, min_samples=4)) > 3  # noqa: PLR2004
     else -1,
     -1,
 )
@@ -383,13 +383,6 @@ class ObservationSpace:
         ObsType
             Dictionary mapping observation names to their computed values.
         """
-        print(
-            {
-                obs.name: np.atleast_1d(obs.compute(self._smac_instance)).astype(np.float32)
-                for obs in self._observation_types
-            }
-        )
-        print(self._smac_instance._intensifier.config_selector._acquisition_function.model._kernel.theta)
         return {
             obs.name: np.atleast_1d(obs.compute(self._smac_instance)).astype(np.float32)
             for obs in self._observation_types

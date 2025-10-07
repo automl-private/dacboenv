@@ -139,16 +139,16 @@ skewness_observation = ObservationType(
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
     lambda smbo: np.nan_to_num(skew(costs).item(), nan=-1)
     if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 0
-    else -1,
-    -1,
+    else 0,
+    0,
 )
 kurtosis_observation = ObservationType(
     "y_kurtosis",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
     lambda smbo: np.nan_to_num(kurtosis(costs).item(), nan=-1)
     if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 0
-    else -1,
-    -1,
+    else 0,
+    0,
 )
 mean_observation = ObservationType(
     "y_mean",
@@ -187,16 +187,16 @@ knn_entropy_best_observation = ObservationType(
 skewness_best_observation = ObservationType(
     "y_skewness_best",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo: np.nan_to_num(skew(costs).item(), nan=-1) if len(costs := get_best_percentile_costs(smbo)) > 0 else -1,
-    -1,
+    lambda smbo: np.nan_to_num(skew(costs).item(), nan=-1) if len(costs := get_best_percentile_costs(smbo)) > 0 else 0,
+    0,
 )
 kurtosis_best_observation = ObservationType(
     "y_kurtosis_best",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
     lambda smbo: np.nan_to_num(kurtosis(costs).item(), nan=-1)
     if len(costs := get_best_percentile_costs(smbo)) > 0
-    else -1,
-    -1,
+    else 0,
+    0,
 )
 mean_best_observation = ObservationType(
     "y_mean_best",

@@ -129,6 +129,7 @@ class DACBOEnv(gym.Env):
             raise ValueError("Invalid action mode given")
 
         self.action_space = self._action_space.space
+        self.action_space.seed(self._smac_instance._scenario.seed)
 
         self._reward = DACBOReward(self._smac_instance, self._reward_keys, self._rho)
 

@@ -8,7 +8,7 @@ import numpy as np
 from carps.optimizers.smac20 import SMAC3Optimizer
 from hydra.utils import get_class
 
-from dacboenv.dacboenv import ActType, DACBOEnv, ObsType
+from dacboenv.dacboenv import DACBOEnv, ObsType
 from dacboenv.env.policy import Policy, RandomPolicy
 
 if TYPE_CHECKING:
@@ -118,7 +118,8 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         self._rho = rho
         self._frequency = frequency
 
-        self._model = policy_class if isinstance(policy_class, type) else get_class(policy_class)
+        self._policy = policy_class if isinstance(policy_class, type) else get_class(policy_class)
+
         self._policy_kwargs = policy_kwargs if policy_kwargs is not None else {}
 
         self._obs_flag = False
@@ -140,7 +141,7 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         )
         self._state, _ = self._dacboenv.reset()
 
-        self._model = self._model(self._dacboenv, **self._policy_kwargs)
+        self._policy = self._policy(self._dacboenv, **self._policy_kwargs)
 
         return self._dacboenv._solver
 
@@ -156,9 +157,9 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         if len(self.solver.runhistory) % self._frequency == 0 and len(self.solver.runhistory) > len(
             self.solver.intensifier.config_selector._initial_design_configs
         ):
-            assert self._model is not None, "Model must be initialized before calling ask."
-            action: ActType = self._model(self._state)
-            # print(action)
+            assert self._policy is not None, "Policy must be initialized before calling ask."
+            action = self._policy(self._state)
+
             self._dacboenv.update_optimizer(action)
             self._obs_flag = True
 

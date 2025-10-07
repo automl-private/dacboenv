@@ -58,7 +58,7 @@ auc_reward_alt = RewardType(
     else 0,
 )
 
-ALL_REWARDS = [auc_reward]  # [incumbent_cost_reward, incumbent_improvement_reward, auc_reward_alt]
+ALL_REWARDS = [auc_reward]  # [incumbent_cost_reward, incumbent_improvement_reward, auc_reward]
 
 
 class DACBOReward:

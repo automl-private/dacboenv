@@ -220,7 +220,7 @@ variability_best_observation = ObservationType(
 )
 gp_hp_observation = ObservationType(
     "gp_hp_observation",
-    Dict({}),
+    Dict({}),  # XXX: Number of HPs depends on kernel, i.e. the optimizer
     lambda smbo: smbo._intensifier._config_selector._acquisition_function.model._kernel.theta,
     [],
 )
@@ -230,7 +230,7 @@ ALL_OBSERVATIONS = [
     trials_passed_observation,
     trials_left_observation,
     ubr_observation,
-    # modelfit_observation,
+    # modelfit_observation, # Disabled due to high computation time, behavior similar to UBR
     dimensions_observation,
     continuous_hp_observation,
     categorical_hp_observation,

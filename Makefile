@@ -6,18 +6,34 @@ NAME := dacboenv
 PACKAGE_NAME := dacboenv
 VERSION := 0.0.1
 DIST := dist
+UV ?= uv
+SMACBRANCH ?= development 
+CARPSBRANCH ?= development
 
 env:
-	pip install uv
-	uv venv --python=3.12 venvdacboenv
-
-welcome:
-	. venvdacboenv/bin/activate
+	$(PIP) install uv
+	$(PYTHON) -m $(UV) venv --python=3.12 .env --clear
+	. .env/bin/activate && $(PYTHON) -m ensurepip --upgrade && $(PYTHON) -m $(PIP) install uv --upgrade && $(UV) $(PIP) install setuptools wheel
+	# Manually activate env. Does not work with make somehow
 
 install:
-	uv pip install setuptools wheel swig
-	uv pip install -e ".[dev]"
+	$(UV) $(PIP) install setuptools wheel swig
+	$(UV) $(PIP) install -e ".[dev]"
 	pre-commit install
+	$(MAKE) carps
+	$(MAKE) smac
+
+carps:
+	#git clone --branch $(CARPSBRANCH) git@github.com:automl/CARP-S.git lib/CARP-S
+	#cd lib/CARP-S && $(UV) pip install -e '.[dev]' && pre-commit install
+	export PIP="uv pip" && $(PYTHON) -m carps.build.make benchmark_bbob benchmark_yahpo benchmark_mfpbench optimizer_optuna optimizer_ax
+	$(PYTHON) -m carps.utils.index_configs
+
+smac:
+	git clone --branch $(SMACBRANCH) git@github.com:automl/SMAC3.git lib/SMAC3
+	$(UV) pip install swig
+	cd lib/SMAC3 && $(UV) pip install -e '.[dev]' && pre-commit install
+
 
 test:
 	$(PYTHON) -m pytest tests/test_configs.py tests/test_optimizers.py tests/test_tasks.py -n 8

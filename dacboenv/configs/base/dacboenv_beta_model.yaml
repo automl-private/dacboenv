@@ -1,0 +1,14 @@
+# @package _global_
+defaults:
+- dacboenv
+optimizer:
+  policy_class: dacboenv.env.policy.ModelPolicy
+  policy_kwargs:
+    model: /scratch/hpc-prf-intexml/tklenke/ppo_dacbo_single
+    model_class: stable_baselines3.PPO
+  smac_cfg:
+    smac_kwargs:
+      acquisition_function:
+        _target_: dacboenv.utils.confidence_bound.UCB
+        update_beta: false
+optimizer_id: DACBOEnv-SMAC3-beta-static-mid

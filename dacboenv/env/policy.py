@@ -6,7 +6,11 @@ from abc import abstractmethod
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from stable_baselines3.common.base_class import BaseAlgorithm
+
     from dacboenv.dacboenv import ActType, DACBOEnv, ObsType
+
+from hydra.utils import get_class
 
 
 class Policy:
@@ -187,3 +191,45 @@ class JumpParameterPolicy(Policy):
         if trials < self._jump * budget:
             return self._low
         return self._high
+
+
+class ModelPolicy(Policy):
+    """Policy that uses a pre-trained RL model to select actions."""
+
+    def __init__(
+        self, env: DACBOEnv, model: BaseAlgorithm | str, model_class: type[BaseAlgorithm] | str | None = None
+    ) -> None:
+        """Initialize the jump parameter policy.
+
+        Parameters
+        ----------
+        env : DACBOEnv
+            The environment in which the policy operates.
+        model : BaseAlgorithm | str
+            The RL model instance or path to a saved model.
+        model_class : type[BaseAlgorithm] | str | None, optional
+            The class of the RL model, required if loading from a path.
+        """
+        super().__init__(env)
+
+        if isinstance(model, str):
+            assert model_class is not None, "If model is loaded from path, model_class must be provided."
+            model_class = model_class if isinstance(model_class, type) else get_class(model_class)
+            self._model = model_class.load(model)
+        else:
+            self._model = model
+
+    def __call__(self, obs: ObsType | None = None) -> ActType:
+        """Call the model for the action to take.
+
+        Parameters
+        ----------
+        obs : ObsType | None, optional
+            The current environment observation.
+
+        Returns
+        -------
+        ActType
+            Action predicted by the model
+        """
+        return self._model.predict(obs)[0]

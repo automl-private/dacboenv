@@ -133,6 +133,9 @@ class DACBOEnv(gym.Env):
 
         self._reward = DACBOReward(self._smac_instance, self._reward_keys, self._rho)
 
+        self._episode_reward = 0.0
+        self._episode_length = 0
+
     def update_optimizer(self, action: ActType) -> None:
         """Update the SMAC optimizer with the given action.
 
@@ -200,7 +203,18 @@ class DACBOEnv(gym.Env):
         obs = self.get_observation()
         reward = self.get_reward()
 
-        return obs, reward, self._smac_instance.remaining_trials <= 0, False, {}
+        self._episode_reward += reward
+        self._episode_length += 1
+
+        done = self._smac_instance.remaining_trials <= 0
+        info = {}
+
+        if done:
+            info["episode"] = {"r": self._episode_reward, "l": self._episode_length}
+            self._episode_reward = 0
+            self._episode_length = 0
+
+        return obs, reward, done, False, info
 
     def reset(
         self,

@@ -19,6 +19,8 @@ if TYPE_CHECKING:
 
     from dacboenv.dacboenv import ActType
 
+import os
+
 
 @dataclass
 class ParameterAction:
@@ -165,6 +167,13 @@ class AcqParameterActionSpace(AbstractActionSpace):
         if type(acquisition_function) == UCB and acquisition_function._update_beta:
             return ParameterAction("_nu", Box(low=-10.0, high=0.0, dtype=np.float32), log=True)
 
+        # TODO: Only for testing
+        if os.environ["DACBOENV"] == "BUCKET":
+            self._PARAMETERS[UCB] = ParameterAction("_beta", Discrete(10), log=True)
+        elif os.environ["DACBOENV"] == "STEP":
+            self._PARAMETERS[UCB] = ParameterAction("_beta", Discrete(3), log=True)
+            self._last = 0
+
         return self._PARAMETERS[type(acquisition_function)]
 
     def update_optimizer(self, action: ActType) -> None:
@@ -176,6 +185,28 @@ class AcqParameterActionSpace(AbstractActionSpace):
             A single numeric action value for the parameter.
         """
         action_val = np.array(action).item()
+
+        # TODO: Only for testing
+        if os.environ["DACBOENV"] == "STEP":
+            if action_val == 0:
+                self._last -= 1
+            elif action_val == 1:
+                self._last = self._last
+            elif action_val == 2:  # noqa: PLR2004
+                self._last += 1
+
+            if self._action.log:  # type: ignore[union-attr]
+                action_val = 10**self._last
+            setattr(
+                self._smac_instance._intensifier._config_selector._acquisition_function,
+                self._action.attr,  # type: ignore[union-attr]
+                action_val,
+            )
+            return
+
+        # TODO: Only for testing
+        if os.environ["DACBOENV"] == "BUCKET":
+            action_val -= 6
 
         if self._action.log:  # type: ignore[union-attr]
             action_val = 10**action_val

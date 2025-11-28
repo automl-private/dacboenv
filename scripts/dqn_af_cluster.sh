@@ -7,4 +7,4 @@
 
 cd /scratch/hpc-prf-intexml/tklenke/repos/dacboenv/scripts
 source /scratch/hpc-prf-intexml/tklenke/repos/dacboenv/.venv/bin/activate
-python dqn_step.py --reward "$1" --seed "$2" --fid "$3" --obs "$4"
+python dqn_af.py --reward "$1" --seed "$2" --fid "$3" --obs "$4"

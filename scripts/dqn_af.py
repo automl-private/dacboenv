@@ -5,7 +5,7 @@ os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
-os.environ["DACBOENV"] = "STEP"
+os.environ["DACBOENV"] = ""
 
 import argparse
 
@@ -43,7 +43,7 @@ cs = ConfigurationSpace()
 n_episodes = 150
 n_workers = len(psutil.Process().cpu_affinity()) # Number of cores      
 len_episode = 77
-run_name = f"dqn_step_{SEED}_{FID}_{os.environ["OBS"]}"
+run_name = f"dqn_af_{SEED}_{FID}_{os.environ["OBS"]}"
 
 for i in range(D):
     cs.add(
@@ -90,7 +90,7 @@ def create(seed):
 
 def make_env(seed_offset=0):
     def _init():
-        env = DACBOEnv(create, seed=SEED + seed_offset)
+        env = DACBOEnv(create, seed=SEED + seed_offset, action_mode="function")
         return env
     return _init
 
@@ -100,7 +100,7 @@ if __name__ == "__main__":
     vec_env = SubprocVecEnv(env_fns)
 
     print("Evaluating random policy...")
-    mean_reward, std_reward = evaluate_random_policy(DACBOEnv(create, seed=0), 2)
+    mean_reward, std_reward = evaluate_random_policy(DACBOEnv(create, seed=0, action_mode="function"), 2)
     print(f"Random policy mean reward: {mean_reward:.2f} +/- {std_reward:.2f}")
     
     with open(f"../training/results_{run_name}.txt", "w") as out:

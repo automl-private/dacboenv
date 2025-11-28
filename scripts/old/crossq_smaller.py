@@ -7,8 +7,18 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
 os.environ["DACBOENV"] = ""
 
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--reward", type=str, default="", help="Reward function to use: '', 'SQRT'")
+parser.add_argument("--seed", type=int, default=0, help="Seed")
+args = parser.parse_args()
+
+os.environ["REWARD"] = args.reward
+SEED = args.seed
+
 from dacboenv.dacboenv import DACBOEnv
-from stable_baselines3 import PPO
+from sb3_contrib import CrossQ
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.logger import configure
@@ -23,12 +33,11 @@ import psutil
 from dacboenv.utils.confidence_bound import UCB
 
 D = 2
-SEED = 1
 cs = ConfigurationSpace()
 n_episodes = 150
 n_workers = len(psutil.Process().cpu_affinity()) # Number of cores      
 len_episode = 77
-run_name = "ppo_default"
+run_name = f"crossq_smaller_{os.environ["REWARD"]}_{SEED}"
 
 for i in range(D):
     cs.add(
@@ -81,7 +90,7 @@ def make_env(seed_offset=0):
 
 if __name__ == "__main__": 
 
-    env_fns = [make_env(i) for i in range(n_workers)] 
+    env_fns = [make_env(0) for i in range(n_workers)] # TODO: No offset, same env for all workers
     vec_env = SubprocVecEnv(env_fns)
 
     print("Evaluating random policy...")
@@ -91,15 +100,15 @@ if __name__ == "__main__":
     with open(f"../training/results_{run_name}.txt", "w") as out:
         out.write(f"Random policy mean reward: {mean_reward:.2f} +/- {std_reward:.2f}\n")
 
-    model = PPO(
-        "MultiInputPolicy",
+    model = CrossQ(
+        "MlpPolicy",
         vec_env,
         verbose=1,
         seed=SEED,
-        n_steps=len_episode,
+        n_steps=len_episode // 7,
         batch_size=n_workers * len_episode // 11,
-        n_epochs=4,
-        tensorboard_log=f"../training/dacbo_{run_name}_tensorboard/"
+        tensorboard_log=f"../training/dacbo_{run_name}_tensorboard/",
+        policy_kwargs=dict(net_arch={"pi": [64, 64], "qf": [256, 256]}) # pi = actor, qf = critic
     )
     
     logger = configure(f"../training/dacbo_{run_name}_logs/", ["stdout", "tensorboard"])

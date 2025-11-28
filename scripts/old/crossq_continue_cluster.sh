@@ -7,4 +7,4 @@
 
 cd /scratch/hpc-prf-intexml/tklenke/repos/dacboenv/scripts
 source /scratch/hpc-prf-intexml/tklenke/repos/dacboenv/.venv/bin/activate
-python ppo_default.py
+python crossq_continue.py

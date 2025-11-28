@@ -5,10 +5,13 @@ os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
-os.environ["DACBOENV"] = "BUCKET"
+os.environ["DACBOENV"] = ""
+
+os.environ["REWARD"] = "SQRT"
+SEED = 2
 
 from dacboenv.dacboenv import DACBOEnv
-from stable_baselines3 import PPO
+from sb3_contrib import CrossQ
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.logger import configure
@@ -23,12 +26,11 @@ import psutil
 from dacboenv.utils.confidence_bound import UCB
 
 D = 2
-SEED = 1
 cs = ConfigurationSpace()
 n_episodes = 150
 n_workers = len(psutil.Process().cpu_affinity()) # Number of cores      
 len_episode = 77
-run_name = "ppo_bucket"
+run_name = f"crossq_{os.environ["REWARD"]}_{SEED}_contd"
 
 for i in range(D):
     cs.add(
@@ -81,7 +83,7 @@ def make_env(seed_offset=0):
 
 if __name__ == "__main__": 
 
-    env_fns = [make_env(i) for i in range(n_workers)] 
+    env_fns = [make_env(0) for i in range(n_workers)] # TODO: No offset, same env for all workers
     vec_env = SubprocVecEnv(env_fns)
 
     print("Evaluating random policy...")
@@ -91,15 +93,9 @@ if __name__ == "__main__":
     with open(f"../training/results_{run_name}.txt", "w") as out:
         out.write(f"Random policy mean reward: {mean_reward:.2f} +/- {std_reward:.2f}\n")
 
-    model = PPO(
-        "MultiInputPolicy",
-        vec_env,
-        verbose=1,
-        seed=SEED,
-        n_steps=len_episode,
-        batch_size=n_workers * len_episode // 11,
-        n_epochs=4,
-        tensorboard_log=f"../training/dacbo_{run_name}_tensorboard/"
+    model = CrossQ.load(
+        path="/scratch/hpc-prf-intexml/tklenke/repos/dacboenv/training_sqrt_step/dacbo_crossq_step_SQRT_2",
+        env=vec_env,
     )
     
     logger = configure(f"../training/dacbo_{run_name}_logs/", ["stdout", "tensorboard"])

@@ -1,0 +1,14 @@
+# @package _global_
+defaults:
+- dacboenv
+optimizer:
+  policy_class: dacboenv.env.policy.ModelPolicy
+  policy_kwargs:
+    model: /scratch/hpc-prf-intexml/tklenke/repos/dacboenv/training/dacbo_crossq_step
+    model_class: sb3_contrib.CrossQ
+  smac_cfg:
+    smac_kwargs:
+      acquisition_function:
+        _target_: dacboenv.utils.confidence_bound.UCB
+        update_beta: false
+optimizer_id: DACBOEnv-SMAC3-beta-model-crossq-step

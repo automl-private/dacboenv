@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+- dacboenv
+optimizer:
+  policy_class: dacboenv.env.policy.JumpFunctionPolicy
+  policy_kwargs:
+    high: 1
+    jump: 0.5
+    low: 0
+optimizer_id: DACBOEnv-SMAC3-function-jump

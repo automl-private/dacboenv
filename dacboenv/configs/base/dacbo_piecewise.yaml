@@ -1,0 +1,13 @@
+# @package _global_
+
+optimizer:
+  smac_cfg:
+    smac_kwargs:
+      callbacks:
+        - _target_: dacboenv.utils.piecewise_callback.PiecewiseCallback
+          splity: [1,1,1,1,1]
+      acquisition_function:
+        _target_: dacboenv.utils.confidence_bound.UCB
+        update_beta: false
+
+optimizer_id: DACBO-Piecewise

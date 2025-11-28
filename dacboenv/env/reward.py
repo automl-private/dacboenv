@@ -48,6 +48,12 @@ incumbent_improvement_reward = RewardType(
     if len(smbo.intensifier.trajectory) > 1 and smbo.intensifier.trajectory[-1].trial == len(smbo.runhistory)
     else 0,
 )
+sqrt_incumbent_improvement_reward = RewardType(
+    "sqrt_incumbent_improvement",
+    lambda smbo: np.sqrt(abs(smbo.intensifier.trajectory[-1].costs[-1] - smbo.intensifier.trajectory[-2].costs[-1]))
+    if len(smbo.intensifier.trajectory) > 1 and smbo.intensifier.trajectory[-1].trial == len(smbo.runhistory)
+    else 0,
+)
 auc_reward_alt = RewardType(
     "trajectory_auc_alt",
     lambda smbo: -auc(
@@ -58,7 +64,7 @@ auc_reward_alt = RewardType(
     else 0,
 )
 
-ALL_REWARDS = [auc_reward]  # [incumbent_cost_reward, incumbent_improvement_reward, auc_reward]
+ALL_REWARDS = [incumbent_improvement_reward]  # [incumbent_cost_reward, incumbent_improvement_reward, auc_reward]
 
 
 class DACBOReward:
@@ -119,6 +125,7 @@ class DACBOReward:
             raise ValueError(f"Invalid reward keys: {invalid_keys}")
 
         self._reward_types = [self._REWARD_MAP[key] for key in self._keys]
+
         self._parego = ParEGO(len(self._reward_types), self._smac_instance._scenario.seed, self._rho)
 
     def _get_full_reward(self) -> dict[str, float]:
@@ -129,6 +136,8 @@ class DACBOReward:
         dict[str, float]
             All sub-rewards.
         """
+        if len(self._reward_types) == 1:
+            return self._reward_types[0].compute(self._smac_instance)
         return {rew.name: rew.compute(self._smac_instance) for rew in self._reward_types}
 
     def get_reward(self) -> float:

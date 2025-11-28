@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from typing import (
     TYPE_CHECKING,
@@ -21,6 +22,11 @@ if TYPE_CHECKING:
 
 ObsType = dict[str, Any]
 ActType = int | float | list[float]
+
+# each seed 1
+THRESHOLD_2_1_0 = -92.64999983345098
+THRESHOLD_2_8_0 = -133.59630637351353
+THRESHOLD_2_20_0 = 183.90958853932779
 
 
 class DACBOEnv(gym.Env):
@@ -82,11 +88,12 @@ class DACBOEnv(gym.Env):
 
     def __init__(
         self,
-        smac_instance_factory: Callable[[], AbstractFacade],
+        smac_instance_factory: Callable[[int], AbstractFacade],
         observation_keys: list[str] | None = None,
         action_mode: str = "parameter",
         reward_keys: list[str] | None = None,
         rho: float = 0.05,
+        seed: int = -1,
     ) -> None:
         """Initialize the DACBOEnv environment.
 
@@ -106,7 +113,8 @@ class DACBOEnv(gym.Env):
         super().__init__()
 
         self._smac_instance_factory = smac_instance_factory
-        self._solver = self._smac_instance_factory()
+        self._seed = seed
+        self._solver = self._smac_instance_factory(self._seed)
         self._smac_instance = self._solver.optimizer
         self._n_trials = self._smac_instance._scenario.n_trials
         self._action_mode = action_mode
@@ -114,6 +122,9 @@ class DACBOEnv(gym.Env):
         self._observation_keys = observation_keys
         self._reward_keys = reward_keys
         self._rho = rho
+
+        # Create seed generator for resetting for new episodes
+        self._seeder = np.random.default_rng(self._seed)
 
         if self._smac_instance._scenario.count_objectives() != 1:
             raise NotImplementedError("Multi-objective not supported.")
@@ -129,7 +140,7 @@ class DACBOEnv(gym.Env):
             raise ValueError("Invalid action mode given")
 
         self.action_space = self._action_space.space
-        self.action_space.seed(self._smac_instance._scenario.seed)
+        self.action_space.seed(self._seed)
 
         self._reward = DACBOReward(self._smac_instance, self._reward_keys, self._rho)
 
@@ -201,12 +212,25 @@ class DACBOEnv(gym.Env):
 
         # Compute observation + reward
         obs = self.get_observation()
-        reward = self.get_reward()
+        # reward = self.get_reward()
+
+        curr_incumbent = self._smac_instance.runhistory.get_min_cost(self._smac_instance.intensifier.get_incumbent())
+
+        if os.environ["FID"] == "1":
+            threshold = THRESHOLD_2_1_0
+        elif os.environ["FID"] == "8":
+            threshold = THRESHOLD_2_8_0
+        elif os.environ["FID"] == "20":
+            threshold = THRESHOLD_2_20_0
+        else:
+            threshold = float("-inf")
+
+        reward = -1 if curr_incumbent >= threshold else 1
 
         self._episode_reward += reward
         self._episode_length += 1
 
-        done = self._smac_instance.remaining_trials <= 0
+        done = self._smac_instance.remaining_trials <= 0 or reward == 1
         info = {}
 
         if done:
@@ -242,21 +266,27 @@ class DACBOEnv(gym.Env):
         del self._smac_instance
         del self._solver
 
-        self._solver = self._smac_instance_factory()
-        self._smac_instance = self._solver.optimizer
+        new_seed = int(self._seeder.integers(low=0, high=2**32 - 1))
 
-        # XXX: The initial design configs remain the same as the initial design
-        # is part of the facade
+        self._solver = self._smac_instance_factory(new_seed)  # Update seed for new episode
+        self._smac_instance = self._solver.optimizer
 
         self._observation_space._smac_instance = self._smac_instance
         self._action_space._smac_instance = self._smac_instance
         self._reward._smac_instance = self._smac_instance
 
-        super().reset(seed=self._smac_instance._scenario.seed)
+        if hasattr(self._action_space, "_last"):
+            self._action_space._last = 0
 
-        initial_obs = {
-            obs.name: np.atleast_1d(obs.default).astype(np.float32)
-            for obs in self._observation_space._observation_types
-        }
+        super().reset(seed=new_seed)
+
+        initial_obs = (
+            np.atleast_1d(self._observation_space._observation_types[0].default).astype(np.float32)
+            if len(self._observation_space._observation_types) == 1
+            else {
+                obs.name: np.atleast_1d(obs.default).astype(np.float32)
+                for obs in self._observation_space._observation_types
+            }
+        )
 
         return initial_obs, {}

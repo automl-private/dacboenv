@@ -193,6 +193,53 @@ class JumpParameterPolicy(Policy):
         return self._high
 
 
+class JumpFunctionPolicy(Policy):
+    """Policy that switches the optimizer's acquisition function
+    after a fraction of the optimization budget.
+    """
+
+    def __init__(self, env: DACBOEnv, low: int, high: int, jump: float) -> None:
+        """Initialize the jump function policy.
+
+        Parameters
+        ----------
+        env : DACBOEnv
+            The environment in which the policy operates.
+        low : int
+            Acquisition function index before the jump.
+        high : int
+            Acquisition function index after the jump.
+        jump : float
+            Fraction of the optimization budget at which to switch
+            from ``low`` to ``high``.
+        """
+        super().__init__(env)
+        self._low = low
+        self._high = high
+        self._jump = jump
+
+    def __call__(self, obs: ObsType | None = None) -> ActType:  # noqa: ARG002
+        """Return the acquisition function index based on progress and jump threshold.
+
+        Parameters
+        ----------
+        obs : ObsType | None, optional
+            The current environment observation (unused). Default is None.
+
+        Returns
+        -------
+        ActType
+            ``low`` before the jump threshold, otherwise ``high``.
+        """
+        smac = self._env._smac_instance
+        budget = smac._scenario.n_trials
+        trials = len(smac.runhistory)
+
+        if trials < self._jump * budget:
+            return self._low
+        return self._high
+
+
 class ModelPolicy(Policy):
     """Policy that uses a pre-trained RL model to select actions."""
 

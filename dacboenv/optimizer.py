@@ -110,6 +110,7 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         """
         super().__init__(task, smac_cfg, loggers, expects_multiple_objectives, expects_fidelities)
 
+        self._seed = self.smac_cfg.scenario.seed
         self._dacboenv: DACBOEnv
         self._state: ObsType
         self._observation_keys = observation_keys
@@ -136,8 +137,13 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         SMAC4AC
             Instance of a SMAC facade.
         """
+
+        def _smac_factory(seed: int) -> AbstractFacade:
+            self.smac_cfg.scenario.seed = seed
+            return super(type(self), self)._setup_optimizer()
+
         self._dacboenv = DACBOEnv(
-            super()._setup_optimizer, self._observation_keys, self._action_mode, self._reward_keys, self._rho
+            _smac_factory, self._observation_keys, self._action_mode, self._reward_keys, self._rho, self._seed
         )
         self._state, _ = self._dacboenv.reset()
 
@@ -189,23 +195,27 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         obs = self._dacboenv.get_observation()
         # print(obs)
         # rew = self._dacboenv.get_reward()
-        full_reward = self._dacboenv._reward._get_full_reward()
-        reward = self._dacboenv._reward._parego(list(full_reward.values()))
+        # full_reward = self._dacboenv._reward._get_full_reward()
 
-        logs = {
-            "observation": {
-                k: v.item()
-                if hasattr(v, "item") and np.ndim(v) == 0
-                else v.tolist()
-                if isinstance(v, np.ndarray)
-                else v
-                for k, v in obs.items()
-            },
-            "full_reward": full_reward,
-            "reward": reward,
-            "n_trials": len(self.solver.runhistory),
-        }
-        dump_logs(logs, self._obsfile)
+        # if len(self._dacboenv._reward._reward_types) == 1:
+        #     reward = full_reward
+        # else:
+        #     reward = self._dacboenv._reward._parego(list(full_reward.values()))
+
+        # logs = {
+        #     "observation": {
+        #         k: v.item()
+        #         if hasattr(v, "item") and np.ndim(v) == 0
+        #         else v.tolist()
+        #         if isinstance(v, np.ndarray)
+        #         else v
+        #         for k, v in obs.items()
+        #     },
+        #     "full_reward": full_reward,
+        #     "reward": reward,
+        #     "n_trials": len(self.solver.runhistory),
+        # }
+        # dump_logs(logs, self._obsfile)
 
         self._state = obs
         self._obs_flag = False

@@ -227,7 +227,10 @@ class AcqFunctionActionSpace(AbstractActionSpace):
         Mapping of integer IDs to available acquisition function classes.
     """
 
-    _ACQUISITION_FUNCTIONS: ClassVar[dict[int, type[AbstractAcquisitionFunction]]] = {0: EI, 1: PI, 2: UCB, 3: WEI}
+    _ACQUISITION_FUNCTIONS: ClassVar[dict[int, type[AbstractAcquisitionFunction]]] = {
+        0: EI,
+        1: PI,
+    }  # , 2: UCB, 3: WEI} # TODO: Reenable
 
     def _create_action(self) -> FunctionAction:
         """Create a FunctionAction representing the discrete selection of acquisition functions.

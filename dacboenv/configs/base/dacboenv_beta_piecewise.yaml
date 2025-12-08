@@ -1,0 +1,13 @@
+# @package _global_
+defaults:
+- dacboenv
+optimizer:
+  policy_class: dacboenv.env.policy.PiecewiseParameterPolicy
+  policy_kwargs:
+    splits: [0.5, 0.5, 0.5]
+  smac_cfg:
+    smac_kwargs:
+      acquisition_function:
+        _target_: dacboenv.utils.confidence_bound.UCB
+        update_beta: false
+optimizer_id: DACBOEnv-SMAC3-beta-piecewise

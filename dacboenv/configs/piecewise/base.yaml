@@ -1,0 +1,8 @@
+# @package _global_
+seed: 1
+
+experiment:
+  n_workers: 5
+  n_episodes: 500
+  instances: ["1_2", "8_2", "20_2"]
+  experiment_id: "1_2-8_2-20_2"

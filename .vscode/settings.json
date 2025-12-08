@@ -1,0 +1,6 @@
+{
+    "python.analysis.extraPaths": [
+        "lib/SMAC3",
+        "lib/CARP-S",
+    ]
+}

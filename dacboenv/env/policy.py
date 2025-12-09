@@ -141,6 +141,8 @@ class LinearParameterPolicy(Policy):
 
         weight = trials / budget
 
+        # TODO: fix: interpolation should be only for model-based part. also counts for the others
+
         if self._high_to_low:
             return (1 - weight) * self._high + weight * self._low
         return weight * self._high + (1 - weight) * self._low

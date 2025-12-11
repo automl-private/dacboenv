@@ -304,7 +304,6 @@ def build_command(optimizer_override: str, task_override: str, seed: int | str, 
     overrides = [f"seed={seed}" if isinstance(seed, int) else seed, task_override, optimizer_override]
     if is_slurm_cluster():
         overrides.append("+cluster=cpu_noctua")
-    overrides.append("++task.optimization_resources.n_trials=3")
     overrides.append(f"baserundir={baserundir}")
     overrides.append("--multirun")
     command.extend(overrides)

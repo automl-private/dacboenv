@@ -182,3 +182,5 @@ training*/
 tmp/
 outputs/
 *.out
+reference_performance
+*.parquet

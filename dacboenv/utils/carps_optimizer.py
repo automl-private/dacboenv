@@ -27,8 +27,8 @@ def load_optimizer_config(optimizer_cfg_fn: str) -> DictConfig:
     optimizer_cfg_fn : str
         The filename of the optimizer config (yaml).
 
-    Raise
-    -----
+    Raises
+    ------
     ValueError:
         If defaults present, but anything other than ['base'].
 

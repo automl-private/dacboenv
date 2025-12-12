@@ -11,7 +11,7 @@ from typing import (
 import gymnasium as gym
 import numpy as np
 
-from dacboenv.env.action import AbstractActionSpace, AcqFunctionActionSpace, AcqParameterActionSpace
+from dacboenv.env.action import AbstractActionSpace, AcqParameterActionSpace
 from dacboenv.env.instance import InstanceSelector, RoundRobinInstanceSelector
 from dacboenv.env.observation import ObservationSpace
 from dacboenv.env.reward import DACBOReward
@@ -75,7 +75,8 @@ class DACBOEnv(gym.Env):
         task_ids: list[str],
         optimizer_id: str = "SMAC3-BlackBoxFacade",
         observation_keys: list[str] | None = None,
-        action_mode: str = "parameter",
+        action_space_class: type[AbstractActionSpace] = AcqParameterActionSpace,
+        action_space_kwargs: dict[str, Any] | None = None,
         reward_keys: list[str] | None = None,
         rho: float = 0.05,
         seed: int = -1,
@@ -95,8 +96,10 @@ class DACBOEnv(gym.Env):
             facade with a GP. Can also be a yaml file, containing a custom carps optimizer config.
         observation_keys : list[str], optional
             Which observations to compute at each step.
-        action_mode : str, optional
-            Action mode, either "parameter" (default) or "function".
+        action_space_class : type[AbstractActionSpace], optional
+            Which action space, either parameter control or acquisition function selection.
+        action_space_kwargs : dict[str, Any], optional
+            Keyword arguments for the action space class.
         reward_keys : list[str], optional
             Which rewards to compute at each step.
         rho : float, optional
@@ -106,6 +109,8 @@ class DACBOEnv(gym.Env):
         terminate_after_reference_performance_reached : bool, False
             Terminate episode after a certain reference performance on a task/seed has been reached.
         """
+        if action_space_kwargs is None:
+            action_space_kwargs = {}
         super().__init__()
 
         self._seed = seed
@@ -113,7 +118,8 @@ class DACBOEnv(gym.Env):
         self._seeder = np.random.default_rng(self._seed)
 
         self._optimizer_id = optimizer_id
-        self._action_mode = action_mode
+        self._action_space_class = action_space_class
+        self._action_space_kwargs = action_space_kwargs
         self._action_space: AbstractActionSpace
         self._observation_keys = observation_keys
         self._reward_keys = reward_keys
@@ -301,12 +307,7 @@ class DACBOEnv(gym.Env):
         self.observation_space = self._dacbo_observation_space.space  # gym observation space
 
         # Setup action space
-        if self._action_mode == "parameter":
-            self._action_space = AcqParameterActionSpace(self._smac_instance)
-        elif self._action_mode == "function":
-            self._action_space = AcqFunctionActionSpace(self._smac_instance)
-        else:
-            raise ValueError("Invalid action mode given")
+        self._action_space = self._action_space_class(smac_instance=self._smac_instance, **self._action_space_kwargs)
         self.action_space = self._action_space.space
         self.action_space.seed(seed)  # Seed with current seed
 

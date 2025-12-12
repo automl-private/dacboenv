@@ -137,7 +137,7 @@ class DACBOEnv(gym.Env):
                 optimizer_id=self.reference_performance_optimizer_id,
                 task_ids=self.task_ids,
                 seeds=self._inner_seeds,
-                reference_performance_fn="reference_performance/reference_performance.parquet",
+                reference_performance_fn=self.reference_performance_fn,
             )
 
         self.instance_selector = (

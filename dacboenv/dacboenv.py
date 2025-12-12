@@ -10,6 +10,7 @@ from typing import (
 
 import gymnasium as gym
 import numpy as np
+from carps.utils.loggingutils import get_logger
 
 from dacboenv.env.action import AbstractActionSpace, AcqParameterActionSpace
 from dacboenv.env.instance import InstanceSelector, RoundRobinInstanceSelector
@@ -25,6 +26,25 @@ if TYPE_CHECKING:
 
 ObsType = dict[str, Any]
 ActType = int | float | list[float]
+
+logger = get_logger("dacboenv")
+
+
+def safe_log10(x: np.ndarray | float, eps: float = 1e-10) -> float:
+    """
+    Computes a numerically safe logarithm of x.
+
+    Parameters
+    ----------
+    - x : array-like or scalar
+    - eps : float, small value to avoid log10(0)
+
+    Returns
+    -------
+    - log10(x) safely
+    """
+    x = np.asarray(x)
+    return np.log10(np.maximum(x, eps))
 
 
 class DACBOEnv(gym.Env):
@@ -102,7 +122,8 @@ class DACBOEnv(gym.Env):
         action_space_kwargs : dict[str, Any], optional
             Keyword arguments for the action space class.
         reward_keys : list[str], optional
-            Which rewards to compute at each step.
+            Which rewards to compute at each step. If nothing provided, will be `incumbent_cost`. Beware,
+            this might not make sense for DAC as the tasks live on different scales.
         rho : float, optional
             ParEGO scalarization parameter.
         inner_seeds : list[int], optional
@@ -110,6 +131,8 @@ class DACBOEnv(gym.Env):
         terminate_after_reference_performance_reached : bool, optional
             Terminate episode after a certain reference performance on a task/seed has been reached. Defaults to False.
         """
+        if reward_keys is None:
+            reward_keys = ["incumbent_cost"]
         if action_space_kwargs is None:
             action_space_kwargs = {
                 # SMAC's default acquisition function is EI, thus we adjust xi, thus those are sensible default bounds
@@ -251,6 +274,8 @@ class DACBOEnv(gym.Env):
                 task_id=self.current_task_id,
                 seed=self.current_seed,
             )
+            log_distance = safe_log10(abs(curr_incumbent - threshold))
+            logger.info(f"Current: {curr_incumbent:.4f}, threshold: {threshold:.4f}, log distance: {log_distance:.4f}")
             terminated = curr_incumbent < threshold  # We minimize
 
         truncated = self._smac_instance.remaining_trials <= 0

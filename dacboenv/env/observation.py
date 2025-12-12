@@ -160,7 +160,7 @@ knn_entropy_observation = ObservationType(
     else 0,
     0,
 )
-skewness_observation = ObservationType(
+y_skewness_observation = ObservationType(
     "y_skewness",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
     lambda smbo: np.nan_to_num(skew(costs).item(), nan=0)
@@ -168,7 +168,7 @@ skewness_observation = ObservationType(
     else 0,
     0,
 )
-kurtosis_observation = ObservationType(
+y_kurtosis_observation = ObservationType(
     "y_kurtosis",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
     lambda smbo: np.nan_to_num(kurtosis(costs).item(), nan=0)
@@ -176,7 +176,7 @@ kurtosis_observation = ObservationType(
     else 0,
     0,
 )
-mean_observation = ObservationType(
+y_mean_observation = ObservationType(
     "y_mean",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
     lambda smbo: np.mean(costs) if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 0 else 0,
@@ -276,9 +276,9 @@ ALL_OBSERVATIONS = [
     int_hp_observation,
     tsp_observation,
     knn_entropy_observation,
-    skewness_observation,
-    kurtosis_observation,
-    mean_observation,
+    y_skewness_observation,
+    y_kurtosis_observation,
+    y_mean_observation,
     std_observation,
     variability_observation,
     tsp_best_observation,

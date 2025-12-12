@@ -211,8 +211,10 @@ class AcqParameterActionSpace(AbstractActionSpace):
         elif self._adjustment_type == "step":
             dacbo_action_space = ParameterAction(attr=attribute, space=Discrete(n=3), log=is_log)
         elif self._adjustment_type == "bucket":
-            assert isinstance(self._bounds[0], int)
-            assert isinstance(self._bounds[1], int)
+            if not isinstance(self._bounds[0], int):
+                raise ValueError(f"Expected self._bounds[0] to be int for 'bucket' adjustment type, got {type(self._bounds[0]).__name__}")
+            if not isinstance(self._bounds[1], int):
+                raise ValueError(f"Expected self._bounds[1] to be int for 'bucket' adjustment type, got {type(self._bounds[1]).__name__}")
             n = abs(self._bounds[0]) + self._bounds[1] + 1
             dacbo_action_space = ParameterAction(attr=attribute, space=Discrete(n=n), log=is_log)
         else:

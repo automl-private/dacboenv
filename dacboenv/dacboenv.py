@@ -106,8 +106,8 @@ class DACBOEnv(gym.Env):
             ParEGO scalarization parameter.
         inner_seeds : list[int], optional
             The seeds that the inner BO will run on.
-        terminate_after_reference_performance_reached : bool, False
-            Terminate episode after a certain reference performance on a task/seed has been reached.
+        terminate_after_reference_performance_reached : bool, optional
+            Terminate episode after a certain reference performance on a task/seed has been reached. Defaults to False.
         """
         if action_space_kwargs is None:
             action_space_kwargs = {}
@@ -137,7 +137,7 @@ class DACBOEnv(gym.Env):
                 optimizer_id=self.reference_performance_optimizer_id,
                 task_ids=self.task_ids,
                 seeds=self._inner_seeds,
-                reference_performance_fn="reference_performance/reference_performance.parquet",
+                reference_performance_fn=self.reference_performance_fn,
             )
 
         self.instance_selector = (
@@ -281,8 +281,10 @@ class DACBOEnv(gym.Env):
             Additional information (empty).
         """
         # Reset SMAC instance
-        del self._carps_solver
-        del self._smac_instance
+        if hasattr(self, "_carps_solver"):
+            del self._carps_solver
+        if hasattr(self, "_smac_instance"):
+            del self._smac_instance
 
         # Get next instance which is a combo of task id and seed
         self.instance = self.get_next_instance()

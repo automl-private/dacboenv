@@ -166,7 +166,7 @@ class AcqParameterActionSpace(AbstractActionSpace):
             For EI and PI, usually the bounds are (-10, 10). For UCB: -6 to 3 in log10 space
             (for continuous and bucket).
         adjustment_type : str, optional
-            The adjustment, by default "continuous". Can be continous, bucket or step.
+            The adjustment, by default "continuous". Can be continuous, bucket or step.
             For bucket, we have discrete choices with bounds as bounds.
             For step, the lower bound is interpreted as the
             decrease (but put a negative number as everything is just added), the upper as increase, and there will be
@@ -211,8 +211,10 @@ class AcqParameterActionSpace(AbstractActionSpace):
         elif self._adjustment_type == "step":
             dacbo_action_space = ParameterAction(attr=attribute, space=Discrete(n=3), log=is_log)
         elif self._adjustment_type == "bucket":
-            assert isinstance(self._bounds[0], int)
-            assert isinstance(self._bounds[1], int)
+            if not isinstance(self._bounds[0], int):
+                raise ValueError(f"Expected self._bounds[0] to be int for 'bucket' adjustment type, got {type(self._bounds[0]).__name__}")
+            if not isinstance(self._bounds[1], int):
+                raise ValueError(f"Expected self._bounds[1] to be int for 'bucket' adjustment type, got {type(self._bounds[1]).__name__}")
             n = abs(self._bounds[0]) + self._bounds[1] + 1
             dacbo_action_space = ParameterAction(attr=attribute, space=Discrete(n=n), log=is_log)
         else:

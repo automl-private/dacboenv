@@ -97,7 +97,7 @@ def get_reward_for_episode_finished(smbo: SMBO, scale_by_budget: bool = False) -
     Returns
     -------
     float
-        _description_
+        Reward value: -1 if the episode is not finished, or -1 divided by the model-based budget if `scale_by_budget` is True.
     """
     if not scale_by_budget:
         return -1

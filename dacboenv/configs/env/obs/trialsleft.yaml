@@ -1,0 +1,6 @@
+# @package _global_
+
+optimizer:
+  dacboenv:
+    observation_keys:
+      - trials_left

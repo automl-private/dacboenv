@@ -1,0 +1,8 @@
+# @package _global_
+
+optimizer_id: Random
+optimizer:
+  policy_class:
+    _target_: dacboenv.env.policy.RandomPolicy
+    _partial_: true
+  policy_kwargs: {}

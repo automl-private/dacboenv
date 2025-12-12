@@ -185,13 +185,13 @@ class DACBOEnv(gym.Env):
         """
         return self._reward.get_reward()
 
-    def get_next_instance(self) -> tuple[str, int]:
+    def get_next_instance(self) -> tuple[int, str]:
         """Get the next instance.
 
         Returns
         -------
-        tuple[str,int]
-            (task_id, seed)
+        tuple[int,str]
+            (seed,task_id)
         """
         return self.instance_selector.select_instance()
 
@@ -280,7 +280,7 @@ class DACBOEnv(gym.Env):
 
         # Get next instance which is a combo of task id and seed
         self.instance = self.get_next_instance()
-        task_id, seed = self.instance
+        seed, task_id = self.instance
         if seed is None:
             seed = int(self._seeder.integers(low=0, high=2**32 - 1))
 

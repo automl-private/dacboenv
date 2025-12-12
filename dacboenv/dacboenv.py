@@ -308,7 +308,7 @@ class DACBOEnv(gym.Env):
 
         # Setup action space
         self._action_space = self._action_space_class(smac_instance=self._smac_instance, **self._action_space_kwargs)
-        self.action_space = self._action_space.space
+        self.action_space = self._action_space.space  # gym action space
         self.action_space.seed(seed)  # Seed with current seed
 
         # Setup reward

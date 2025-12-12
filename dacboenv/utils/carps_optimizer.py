@@ -97,6 +97,6 @@ def build_carps_optimizer(optimizer_id: str, task_id: str, seed: int) -> Optimiz
 
 
 if __name__ == "__main__":
-    build_carps_optimizer(
-        "/home/numina/Documents/repos/dacboenv/lib/CARP-S/carps/configs/optimizer/smac20/blackbox.yaml", "bbob/2/1/0", 2
-    )
+    # Use a relative path to the optimizer config for portability
+    optimizer_config_path = Path(__file__).parent.parent.parent / "lib" / "CARP-S" / "carps" / "configs" / "optimizer" / "smac20" / "blackbox.yaml"
+    build_carps_optimizer(str(optimizer_config_path), "bbob/2/1/0", 2)

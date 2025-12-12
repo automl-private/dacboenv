@@ -67,6 +67,27 @@ class ReferencePerformance:
             reference_performance_fn=self.reference_performance_fn,
         )
 
+    def query_cost(self, optimizer_id: str, task_id: str, seed: int) -> float:
+        """Query cost from reference performance data.
+
+        Parameters
+        ----------
+        optimizer_id : str
+            The optimizer id.
+        task_id : str
+            The task id.
+        seed : int
+            The seed.
+
+        Returns
+        -------
+        float
+            Cost of final incumbent.
+        """
+        ids = [(optimizer_id, task_id, seed)]
+        index_columns = ["optimizer_id", "task_id", "seed"]
+        return self.perf_df.set_index(index_columns).loc[ids].iloc[0]["trial_value__cost_inc"]
+
 
 def get_seed_override(seeds: list[int]) -> str:
     """Get seed override.
@@ -411,4 +432,4 @@ def run_reference_optimizer(
 
 if __name__ == "__main__":
     # get_reference_performance(["+optimizer/smac20=blackbox", "+task/BBOB=cfg_2_1_0", "seed=1234"])
-    ReferencePerformance(optimizer_id="SMAC3-BlackBoxFacade", task_ids=["bbob/2/6/0"], seeds=[1, 2])
+    ReferencePerformance(optimizer_id="SMAC3-BlackBoxFacade", task_ids=["bbob/2/1/0"], seeds=[1, 2, 3])

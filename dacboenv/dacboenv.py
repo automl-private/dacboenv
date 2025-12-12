@@ -21,6 +21,7 @@ from dacboenv.utils.reference_performance import ReferencePerformance
 
 if TYPE_CHECKING:
     from carps.optimizers.optimizer import Optimizer
+    from omegaconf import DictConfig
     from smac.facade.abstract_facade import AbstractFacade
     from smac.main.smbo import SMBO
 
@@ -94,14 +95,14 @@ class DACBOEnv(gym.Env):
     def __init__(  # noqa: PLR0913
         self,
         task_ids: list[str],
-        optimizer_id: str = "SMAC3-BlackBoxFacade",
+        optimizer_cfg: DictConfig | None = None,
         observation_keys: list[str] | None = None,
         action_space_class: type[AbstractActionSpace] = AcqParameterActionSpace,
         action_space_kwargs: dict[str, Any] | None = None,
         reward_keys: list[str] | None = None,
         rho: float = 0.05,
         seed: int | None = None,
-        reference_performance_fn: str = "reference_performance.parquet",
+        reference_performance_fn: str = "reference_performance/reference_performance.parquet",
         inner_seeds: list[int] | None = None,
         terminate_after_reference_performance_reached: bool = False,  # noqa: FBT001, FBT002
         instance_selector: InstanceSelector | None = None,
@@ -112,9 +113,9 @@ class DACBOEnv(gym.Env):
         ----------
         task_ids : list[str], optional
             The carps task ids that BO should run on.
-        optimizer_id : str, optional
-            The carps (SMAC) optimizer to use. Defaults to `SMAC3-BlackBoxFacade` which is the standard blackbox
-            facade with a GP. Can also be a yaml file, containing a custom carps optimizer config.
+        optimizer_cfg : DictCOnfig, optional
+            The carps (SMAC) optimizer config. Defaults to `SMAC3-BlackBoxFacade` which is the standard blackbox
+            facade with a GP.
         observation_keys : list[str], optional
             Which observations to compute at each step.
         action_space_class : type[AbstractActionSpace], optional
@@ -144,7 +145,7 @@ class DACBOEnv(gym.Env):
         # Create seed generator for resetting for new episodes
         self._seeder = np.random.default_rng(self._seed)
 
-        self._optimizer_id = optimizer_id
+        self._optimizer_cfg = optimizer_cfg
         self._action_space_class = action_space_class
         self._action_space_kwargs = action_space_kwargs
         self._action_space: AbstractActionSpace
@@ -331,10 +332,12 @@ class DACBOEnv(gym.Env):
             seed = int(self._seeder.integers(low=0, high=2**32 - 1))
 
         # Build carps optimizer (wrapper around smac) with appropriate objective function
+        optimizer_id = "SMAC3-BlackBoxFacade" if self._optimizer_cfg is None else None
         self._carps_solver = build_carps_optimizer(
-            optimizer_id=self._optimizer_id,
+            optimizer_id=optimizer_id,
             task_id=task_id,
             seed=seed,
+            optimizer_cfg=self._optimizer_cfg,
         )
         # Get the smac instance
         self._smac_facade = self._carps_solver.solver

@@ -166,7 +166,7 @@ class AcqParameterActionSpace(AbstractActionSpace):
             For EI and PI, usually the bounds are (-10, 10). For UCB: -6 to 3 in log10 space
             (for continuous and bucket).
         adjustment_type : str, optional
-            The adjustment, by default "continuous". Can be continous, bucket or step.
+            The adjustment, by default "continuous". Can be continuous, bucket or step.
             For bucket, we have discrete choices with bounds as bounds.
             For step, the lower bound is interpreted as the
             decrease (but put a negative number as everything is just added), the upper as increase, and there will be

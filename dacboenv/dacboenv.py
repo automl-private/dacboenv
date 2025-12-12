@@ -266,9 +266,7 @@ class DACBOEnv(gym.Env):
 
         terminated = False
         if self._terminate_after_reference_performance_reached:
-            curr_incumbent = self._smac_instance.runhistory.get_min_cost(
-                self._smac_instance.intensifier.get_incumbent()
-            )
+            curr_incumbent = self.get_incumbent_cost()
             threshold = self._reference_performance.query_cost(  # type: ignore[attr-defined]
                 optimizer_id=self.reference_performance_optimizer_id,
                 task_id=self.current_task_id,
@@ -287,6 +285,16 @@ class DACBOEnv(gym.Env):
             self._episode_length = 0
 
         return obs, reward, terminated, truncated, info
+
+    def get_incumbent_cost(self) -> float:
+        """Get the current incumbent cost.
+
+        Returns
+        -------
+        float
+            Minimum cost found so far on this target function (not necessarily the reward).
+        """
+        return self._smac_instance.runhistory.get_min_cost(self._smac_instance.intensifier.get_incumbent())
 
     def reset(
         self,

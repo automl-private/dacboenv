@@ -281,8 +281,10 @@ class DACBOEnv(gym.Env):
             Additional information (empty).
         """
         # Reset SMAC instance
-        del self._carps_solver
-        del self._smac_instance
+        if hasattr(self, "_carps_solver"):
+            del self._carps_solver
+        if hasattr(self, "_smac_instance"):
+            del self._smac_instance
 
         # Get next instance which is a combo of task id and seed
         self.instance = self.get_next_instance()

@@ -20,6 +20,7 @@ from dacboenv.utils.reference_performance import ReferencePerformance
 
 if TYPE_CHECKING:
     from carps.optimizers.optimizer import Optimizer
+    from smac.facade.abstract_facade import AbstractFacade
     from smac.main.smbo import SMBO
 
 ObsType = dict[str, Any]
@@ -79,7 +80,7 @@ class DACBOEnv(gym.Env):
         action_space_kwargs: dict[str, Any] | None = None,
         reward_keys: list[str] | None = None,
         rho: float = 0.05,
-        seed: int = -1,
+        seed: int | None = None,
         reference_performance_fn: str = "reference_performance.parquet",
         inner_seeds: list[int] | None = None,
         terminate_after_reference_performance_reached: bool = False,  # noqa: FBT001, FBT002
@@ -110,7 +111,10 @@ class DACBOEnv(gym.Env):
             Terminate episode after a certain reference performance on a task/seed has been reached. Defaults to False.
         """
         if action_space_kwargs is None:
-            action_space_kwargs = {}
+            action_space_kwargs = {
+                # SMAC's default acquisition function is EI, thus we adjust xi, thus those are sensible default bounds
+                "bounds": (-10, 10)
+            }
         super().__init__()
 
         self._seed = seed
@@ -147,6 +151,7 @@ class DACBOEnv(gym.Env):
         )
 
         self._carps_solver: Optimizer
+        self._smac_facade: AbstractFacade
         self._smac_instance: SMBO
         self._n_trials = None
 
@@ -299,7 +304,8 @@ class DACBOEnv(gym.Env):
             seed=seed,
         )
         # Get the smac instance
-        self._smac_instance = self._carps_solver.solver
+        self._smac_facade = self._carps_solver.solver
+        self._smac_instance = self._carps_solver.solver.optimizer
 
         if self._smac_instance._scenario.count_objectives() != 1:
             raise NotImplementedError("Multi-objective not supported.")

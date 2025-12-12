@@ -47,6 +47,15 @@ class Policy:
         """
         raise NotImplementedError
 
+    def set_seed(self, seed: int | None) -> None:
+        """Set seed for stochastic policies.
+
+        Parameters
+        ----------
+        seed : int | None
+            Seed
+        """
+
 
 class RandomPolicy(Policy):
     """Policy that samples actions uniformly at random."""
@@ -65,6 +74,16 @@ class RandomPolicy(Policy):
             A randomly sampled action.
         """
         return self._env.action_space.sample()
+
+    def set_seed(self, seed: int | None) -> None:
+        """Set seed for the action space.
+
+        Parameters
+        ----------
+        seed : int | None
+            Seed
+        """
+        self._env.action_space.seed(seed=seed)
 
 
 class StaticParameterPolicy(Policy):
@@ -321,3 +340,13 @@ class ModelPolicy(Policy):
             Action predicted by the model
         """
         return self._model.predict(obs)[0]
+
+    def set_seed(self, seed: int | None) -> None:
+        """Set seed for the model.
+
+        Parameters
+        ----------
+        seed : int | None
+            Seed
+        """
+        self._model.set_random_seed(seed=seed)

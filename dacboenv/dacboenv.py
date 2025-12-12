@@ -106,8 +106,8 @@ class DACBOEnv(gym.Env):
             ParEGO scalarization parameter.
         inner_seeds : list[int], optional
             The seeds that the inner BO will run on.
-        terminate_after_reference_performance_reached : bool, False
-            Terminate episode after a certain reference performance on a task/seed has been reached.
+        terminate_after_reference_performance_reached : bool, optional
+            Terminate episode after a certain reference performance on a task/seed has been reached. Defaults to False.
         """
         if action_space_kwargs is None:
             action_space_kwargs = {}

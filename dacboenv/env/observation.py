@@ -21,7 +21,6 @@ if TYPE_CHECKING:
 
     from dacboenv.dacboenv import ObsType
 
-import os
 
 from ConfigSpace.hyperparameters import (
     CategoricalHyperparameter,
@@ -264,49 +263,34 @@ gp_hp_observation = MultiObservationType(
     ],
 )
 
-if os.environ["OBS"] == "SINGLE":
-    ALL_OBSERVATIONS = [
-        trials_left_observation,
-    ]
-    MULTI_OBSERVATIONS: list[MultiObservationType] = []
-elif os.environ["OBS"] == "SMART":
-    ALL_OBSERVATIONS = [
-        trials_passed_observation,
-        trials_left_observation,
-        ubr_observation,
-        knn_entropy_observation,
-        mean_observation,
-    ]
-    MULTI_OBSERVATIONS = []
-else:
-    ALL_OBSERVATIONS = [
-        incumbent_change_observation,
-        trials_passed_observation,
-        trials_left_observation,
-        ubr_observation,
-        # modelfit_observation, # Disabled due to high computation time, behavior similar to UBR
-        # dimensions_observation,
-        # continuous_hp_observation,
-        # categorical_hp_observation,
-        # ordinal_hp_observation,
-        # int_hp_observation,
-        tsp_observation,
-        knn_entropy_observation,
-        skewness_observation,
-        kurtosis_observation,
-        mean_observation,
-        std_observation,
-        variability_observation,
-        tsp_best_observation,
-        knn_entropy_best_observation,
-        skewness_best_observation,
-        kurtosis_best_observation,
-        mean_best_observation,
-        std_best_observation,
-        variability_best_observation,
-    ]
+ALL_OBSERVATIONS = [
+    incumbent_change_observation,
+    trials_passed_observation,
+    trials_left_observation,
+    ubr_observation,
+    # modelfit_observation, # Disabled due to high computation time, behavior similar to UBR
+    dimensions_observation,
+    continuous_hp_observation,
+    categorical_hp_observation,
+    ordinal_hp_observation,
+    int_hp_observation,
+    tsp_observation,
+    knn_entropy_observation,
+    skewness_observation,
+    kurtosis_observation,
+    mean_observation,
+    std_observation,
+    variability_observation,
+    tsp_best_observation,
+    knn_entropy_best_observation,
+    skewness_best_observation,
+    kurtosis_best_observation,
+    mean_best_observation,
+    std_best_observation,
+    variability_best_observation,
+]
 
-    MULTI_OBSERVATIONS = [gp_hp_observation]
+MULTI_OBSERVATIONS = [gp_hp_observation]
 
 
 class ObservationSpace:

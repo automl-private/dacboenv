@@ -4,6 +4,10 @@ dacboenv:
   observation_keys:
     - trials_passed
     - trials_left
+    - has_categorical_hps
     - ubr
+    - ubr_difference
     - knn_entropy
-    - y_mean
+    - knn_difference
+    - inc_improvement_scaled
+

@@ -34,7 +34,7 @@ from scipy.stats import kurtosis, skew
 from dacboenv.features.X_features import exploration_tsp, knn_entropy
 from dacboenv.features.y_features import calc_variability
 
-last_ubr = None
+last_ubr = {"val": None}
 
 
 def get_best_percentile_configs(smbo: SMBO, p: int = 10, min_samples: int = 1) -> np.ndarray:
@@ -62,7 +62,9 @@ def enumerate_offset(hyperparameters: Sequence[Any]) -> Iterator[tuple[int, Any]
 def ubr_difference(smbo: SMBO) -> float:
     """Computes the difference between the last two UBR values."""
     ubr = calculate_ubr(trial_infos=None, trial_values=None, configspace=None, seed=None, smbo=smbo)["ubr"]
-    return 0 if last_ubr is None else last_ubr - ubr
+    diff = 0 if last_ubr["val"] is None else last_ubr["val"] - ubr
+    last_ubr["val"] = ubr
+    return diff
 
 
 @dataclass

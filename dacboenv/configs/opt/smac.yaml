@@ -1,7 +1,7 @@
 # @package _global_
 
 dacboenv:
-  terminate_after_reference_performance_reached: false  # TODO set to true
+  terminate_after_reference_performance_reached: true
 
 benchmark_id: DACBO
 task_id: ${task.name}
@@ -70,7 +70,7 @@ optimizer:
       instances: ${dacboenv.task_ids}
       instance_features: ${get_instance_features:${dacboenv.task_ids}}
       adaptive_capping: true
-      runtime_cutoff: 1
+      runtime_cutoff: null
       n_workers: 1  # TODO
     smac_kwargs:
       dask_client: null

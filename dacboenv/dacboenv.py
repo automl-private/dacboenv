@@ -17,6 +17,7 @@ from dacboenv.env.instance import InstanceSelector, RoundRobinInstanceSelector
 from dacboenv.env.observation import ObservationSpace
 from dacboenv.env.reward import DACBOReward
 from dacboenv.utils.carps_optimizer import build_carps_optimizer
+from dacboenv.utils.math import safe_log10
 from dacboenv.utils.reference_performance import ReferencePerformance
 
 if TYPE_CHECKING:
@@ -29,23 +30,6 @@ ObsType = dict[str, Any]
 ActType = int | float | list[float]
 
 logger = get_logger("dacboenv")
-
-
-def safe_log10(x: np.ndarray | float, eps: float = 1e-10) -> float:
-    """
-    Computes a numerically safe logarithm of x.
-
-    Parameters
-    ----------
-    - x : array-like or scalar
-    - eps : float, small value to avoid log10(0)
-
-    Returns
-    -------
-    - log10(x) safely
-    """
-    x = np.asarray(x)
-    return np.log10(np.maximum(x, eps))
 
 
 class DACBOEnv(gym.Env):

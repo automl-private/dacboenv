@@ -12,7 +12,7 @@ task:
   objective_function:
     _target_: dacboenv.task.PerceptronDACBOObjectiveFunction
     env: ${dacboenv}
-    weight_bounds: [-10, 10]
+    weight_bounds: [-5, 5]
     policy_kwargs:
       seed: ${seed}
   input_space:

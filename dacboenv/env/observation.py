@@ -33,6 +33,8 @@ from scipy.stats import kurtosis, skew
 from dacboenv.features.X_features import exploration_tsp, knn_entropy
 from dacboenv.features.y_features import calc_variability
 
+last_state: Dict[str, float | None] = {"ubr": None, "knn": None}
+
 
 def get_best_percentile_configs(smbo: SMBO, p: int = 10, min_samples: int = 1) -> np.ndarray:
     """Returns the best 1/p percent of configs."""
@@ -54,6 +56,22 @@ def enumerate_offset(hyperparameters: Sequence[Any]) -> Iterator[tuple[int, Any]
     for hp in hyperparameters:
         yield offset, hp
         offset += hp.n_elements
+
+
+def ubr_difference(smbo: SMBO) -> float:
+    """Computes the difference between the last two UBR values."""
+    ubr = calculate_ubr(trial_infos=None, trial_values=None, configspace=None, seed=None, smbo=smbo)["ubr"]
+    diff = 0 if last_state["ubr"] is None else last_state["ubr"] - ubr
+    last_state["ubr"] = ubr
+    return diff
+
+
+def knn_difference(configs: np.ndarray) -> float:
+    """Computes the difference between the last two KNN values."""
+    knn = knn_entropy(configs)
+    diff = 0 if last_state["knn"] is None else last_state["knn"] - knn
+    last_state["knn"] = knn
+    return diff
 
 
 @dataclass
@@ -244,6 +262,40 @@ variability_best_observation = ObservationType(
     else -1,
     -1,
 )
+budget_percentage_observation = ObservationType(
+    "budget_percentage",
+    Box(low=0, high=1, dtype=np.float32),
+    lambda smbo: len(smbo.runhistory) / smbo._scenario.n_trials,
+    0,
+)
+inc_improvement_scaled_observation = ObservationType(
+    "inc_improvement_scaled",
+    Box(low=0, high=1, dtype=np.float32),
+    lambda smbo: 1 - min(curr, prev) / max(curr, prev)
+    if len(t := smbo.intensifier.trajectory) > 1
+    and t[-1].trial == len(smbo.runhistory)
+    and max(curr := abs(t[-1].costs[-1]), prev := abs(t[-2].costs[-1])) != 0
+    else 0,
+    0,
+)
+has_categorical_hps = ObservationType(
+    "has_categorical_hps",
+    Box(low=0, high=1, dtype=bool),
+    lambda smbo: len([hp for hp in smbo._scenario.configspace.values() if isinstance(hp, CategoricalHyperparameter)])
+    > 0,
+    False,  # noqa: FBT003
+)
+knn_difference_observation = ObservationType(
+    "knn_difference",
+    Box(low=-np.inf, high=np.inf, dtype=np.float32),
+    lambda smbo: knn_difference(configs)
+    if len(configs := smbo.intensifier.config_selector._collect_data()[0]) > 3  # noqa: PLR2004 (default k == 3)
+    else 0,
+    0,
+)
+ubr_difference_observation = ObservationType(
+    "ubr_difference", Box(low=-np.inf, high=np.inf, dtype=np.float32), lambda smbo: ubr_difference(smbo), 0
+)
 gp_hp_observation = MultiObservationType(
     "gp_hp_observations",
     lambda smbo: [
@@ -288,6 +340,11 @@ ALL_OBSERVATIONS = [
     mean_best_observation,
     std_best_observation,
     variability_best_observation,
+    budget_percentage_observation,
+    inc_improvement_scaled_observation,
+    has_categorical_hps,
+    knn_difference_observation,
+    ubr_difference_observation,
 ]
 
 MULTI_OBSERVATIONS = [gp_hp_observation]

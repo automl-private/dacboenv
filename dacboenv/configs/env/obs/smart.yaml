@@ -1,10 +1,9 @@
 # @package _global_
 
-optimizer:
-  dacboenv:
-    observation_keys:
-      - trials_passed
-      - trials_left
-      - ubr
-      - knn_entropy
-      - y_mean
+dacboenv:
+  observation_keys:
+    - trials_passed
+    - trials_left
+    - ubr
+    - knn_entropy
+    - y_mean

@@ -1,6 +1,5 @@
 # @package _global_
 
-optimizer:
-  dacboenv:
-    reward_keys:
-      - episode_finished_scaled
+dacboenv:
+  reward_keys:
+    - episode_finished_scaled

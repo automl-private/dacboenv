@@ -1,6 +1,5 @@
 # @package _global_
 
-optimizer:
-  dacboenv:
-    observation_keys:
-      - trials_left
+dacboenv:
+  observation_keys:
+    - trials_left

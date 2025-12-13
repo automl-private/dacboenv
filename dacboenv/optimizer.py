@@ -119,7 +119,7 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         self._dacboenv: DACBOEnv = dacboenv
         self._state: ObsType
 
-        self._policy = policy_class if isinstance(policy_class, type | partial) else get_class(policy_class)
+        self._policy_class = policy_class if isinstance(policy_class, type | partial) else get_class(policy_class)
 
         self._policy_kwargs = policy_kwargs if policy_kwargs is not None else {}
 
@@ -147,7 +147,7 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
                 "Inner seed and task id not matching: "
                 f"{self._dacboenv.instance_selector.instances} != {[(self._seed, self.task.name)]}"
             )
-        self._policy = self._policy(self._dacboenv, **self._policy_kwargs)
+        self._policy = self._policy_class(self._dacboenv, **self._policy_kwargs)
         return self._dacboenv._smac_facade
 
     def ask(self) -> TrialInfo:

@@ -3,21 +3,19 @@
 
 dacboenv:
   _target_: dacboenv.dacboenv.DACBOEnv
-  task_ids:
-    - ${task.name}
+  task_ids: ???
+  inner_seeds: ???
   observation_keys: ???
   action_space_class: ???
   action_space_kwargs: ???
   reward_keys: ???
   seed: ${seed}
   reference_performance_fn: reference_performance/reference_performance.parquet
-  inner_seeds:
-    - ${seed}
   terminate_after_reference_performance_reached: False
   instance_selector:
     _target_: dacboenv.env.instance.RoundRobinInstanceSelector
-    task_ids: ${optimizer.dacboenv.task_ids}
-    seeds: ${optimizer.dacboenv.inner_seeds}
+    task_ids: ${dacboenv.task_ids}
+    seeds: ${dacboenv.inner_seeds}
   optimizer_cfg:
     # CARPS SMAC3 Optimizer Config
     smac_cfg:
@@ -32,11 +30,11 @@ dacboenv:
         dask_client: null
         overwrite: true
         initial_design:
-          _target_: ${optimizer.dacboenv.optimizer_cfg.smac_cfg.smac_class}.get_initial_design
+          _target_: ${dacboenv.optimizer_cfg.smac_cfg.smac_class}.get_initial_design
           _partial_: true
           n_configs: 1_000_000
           max_ratio: 0.2
         random_design:
-          _target_: ${optimizer.dacboenv.optimizer_cfg.smac_cfg.smac_class}.get_random_design
-          scenario: ${optimizer.dacboenv.optimizer_cfg.smac_cfg.scenario}
+          _target_: ${dacboenv.optimizer_cfg.smac_cfg.smac_class}.get_random_design
+          scenario: ${dacboenv.optimizer_cfg.smac_cfg.scenario}
           probability: 0.0

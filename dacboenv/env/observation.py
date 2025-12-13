@@ -34,7 +34,7 @@ from scipy.stats import kurtosis, skew
 from dacboenv.features.X_features import exploration_tsp, knn_entropy
 from dacboenv.features.y_features import calc_variability
 
-last_ubr = {"val": None}
+last_state: Dict[str, float | None] = {"ubr": None, "knn": None}
 
 
 def get_best_percentile_configs(smbo: SMBO, p: int = 10, min_samples: int = 1) -> np.ndarray:
@@ -62,8 +62,16 @@ def enumerate_offset(hyperparameters: Sequence[Any]) -> Iterator[tuple[int, Any]
 def ubr_difference(smbo: SMBO) -> float:
     """Computes the difference between the last two UBR values."""
     ubr = calculate_ubr(trial_infos=None, trial_values=None, configspace=None, seed=None, smbo=smbo)["ubr"]
-    diff = 0 if last_ubr["val"] is None else last_ubr["val"] - ubr
-    last_ubr["val"] = ubr
+    diff = 0 if last_state["ubr"] is None else last_state["ubr"] - ubr
+    last_state["ubr"] = ubr
+    return diff
+
+
+def knn_difference(configs: np.ndarray) -> float:
+    """Computes the difference between the last two KNN values."""
+    knn = knn_entropy(configs)
+    diff = 0 if last_state["knn"] is None else last_state["knn"] - knn
+    last_state["knn"] = knn
     return diff
 
 
@@ -281,7 +289,7 @@ has_categorical_hps = ObservationType(
 knn_difference_observation = ObservationType(
     "knn_difference",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo: knn_entropy(configs[:-1]) - knn_entropy(configs)
+    lambda smbo: knn_difference(configs)
     if len(configs := smbo.intensifier.config_selector._collect_data()[0]) > 3  # noqa: PLR2004 (default k == 3)
     else 0,
     0,

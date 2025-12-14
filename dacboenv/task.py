@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from abc import abstractmethod
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
@@ -107,10 +108,10 @@ def rollout(env: DACBOEnv, policy: Policy, max_episode_length: int = 100000) -> 
     }
 
 
-class PerceptronDACBOObjectiveFunction(ObjectiveFunction):
-    """Perceptron policy for DACBO env objective function.
+class DACBOObjectiveFunction(ObjectiveFunction):
+    """DACBO objective function.
 
-    Optimize the weight vector and bias for controlling a DACBO env.
+    Goal: Optimize a policy for a DACBO env.
     """
 
     def __init__(
@@ -119,8 +120,6 @@ class PerceptronDACBOObjectiveFunction(ObjectiveFunction):
         loggers: list[AbstractLogger] | None = None,
         policy_class: type[Policy] | str = PerceptronPolicy,
         policy_kwargs: dict[str, Any] | None = None,
-        weight_bounds: tuple[float, float] = (-5, 5),
-        weight_in_log: bool = True,  # noqa: FBT001, FBT002
         cost: str = "episode_length_scaled",
     ) -> None:
         """Init.
@@ -135,10 +134,6 @@ class PerceptronDACBOObjectiveFunction(ObjectiveFunction):
             The policy class, by default PerceptronPolicy
         policy_kwargs : dict[str, Any] | None, optional
             Policy kwargs, by default None
-        weight_bounds : tuple[float,float], optional
-            Bounds for the weights of the perceptron, by default (-5, 5)
-        weight_in_log : bool, optional
-            Bounds are in log space, by default True
         cost : str, optional
             Which type of cost to return, by default `episode_length_scaled`, which is the (episode length - n_initial
             design) / n_model_based_budget. Can also be `cost_inc`, which is simply the cost of the incumbent.
@@ -148,28 +143,31 @@ class PerceptronDACBOObjectiveFunction(ObjectiveFunction):
         self._policy_class = policy_class if isinstance(policy_class, type | partial) else get_class(policy_class)
         self._policy_kwargs = policy_kwargs if policy_kwargs is not None else {}
 
-        self._weight_bounds = weight_bounds
-        self._weight_in_log = weight_in_log
+        self._internal_seeds = self._env._inner_seeds
+        self._seed_map: dict[int, int] = {}
 
         assert cost in ["episode_length_scaled", "cost_inc"]
         self._cost = cost
 
-        self._internal_seeds = self._env._inner_seeds
-        self._seed_map: dict[int, int] = {}
-
         # Create action space and observation space
         _, _ = self._env.reset()
 
-    @property
-    def configspace(self) -> ConfigurationSpace:
-        """Get the configuration space for the perceptron.
+    @abstractmethod
+    def make_policy(self, config: Configuration, seed: int | None = None) -> Policy:
+        """Make perceptron policy.
+
+        Parameters
+        ----------
+        config : Configuration
+            The configuration containing the weights.
+        seed : int | None, optional
+            Seed, by default None
 
         Returns
         -------
-        ConfigurationSpace
-            Configuration space (continuous, n_obs + 1 HPs)
+        PerceptronPolicy
+            Instantiated perceptron policy.
         """
-        return get_perceptron_configspace_from_env(self._env, self._weight_bounds)
 
     def _evaluate(self, trial_info: TrialInfo) -> TrialValue:
         starttime = time.time()
@@ -188,30 +186,6 @@ class PerceptronDACBOObjectiveFunction(ObjectiveFunction):
         return TrialValue(
             cost=cost, time=duration, starttime=starttime, endtime=endtime, additional_info=additional_info
         )
-
-    def make_perceptron_policy(self, config: Configuration, seed: int | None = None) -> PerceptronPolicy:
-        """Make perceptron policy.
-
-        Parameters
-        ----------
-        config : Configuration
-            The configuration containing the weights.
-        seed : int | None, optional
-            Seed, by default None
-
-        Returns
-        -------
-        PerceptronPolicy
-            Instantiated perceptron policy.
-        """
-        weights = list(config.values())
-        if self._weight_in_log:
-            weights = list(10 ** np.array(weights))
-        policy_kwargs = self._policy_kwargs.copy()
-        policy_kwargs.update({"weights": weights})
-        policy = self._policy_class(env=None, **policy_kwargs)
-        policy.set_seed(seed=seed)
-        return policy
 
     def set_dacbo_env_instance(self, instance: str | None = None, seed: int | None = None) -> None:
         """Set instance in DACBO env.
@@ -291,7 +265,7 @@ class PerceptronDACBOObjectiveFunction(ObjectiveFunction):
         n_smbo = smbo._scenario.n_trials
         n_model_based = n_smbo - n_initial_design
 
-        policy = self.make_perceptron_policy(config=config, seed=internal_seed)
+        policy = self.make_policy(config=config, seed=internal_seed)
 
         max_episode_length = 10000
         if cutoff is not None:
@@ -304,3 +278,80 @@ class PerceptronDACBOObjectiveFunction(ObjectiveFunction):
         if self._cost == "cost_inc":
             return result["cost_inc"]
         raise ValueError(f"Cannot handle request cost: {self._cost}.")
+
+
+class PerceptronDACBOObjectiveFunction(DACBOObjectiveFunction):
+    """Perceptron policy for DACBO env objective function.
+
+    Optimize the weight vector and bias for controlling a DACBO env.
+    """
+
+    def __init__(
+        self,
+        env: DACBOEnv,
+        loggers: list[AbstractLogger] | None = None,
+        policy_class: type[Policy] | str = PerceptronPolicy,
+        policy_kwargs: dict[str, Any] | None = None,
+        weight_bounds: tuple[float, float] = (-5, 5),
+        weight_in_log: bool = True,  # noqa: FBT001, FBT002
+        cost: str = "episode_length_scaled",
+    ) -> None:
+        """Init.
+
+        Parameters
+        ----------
+        env : DACBOEnv
+            DACBO env.
+        loggers : list[AbstractLogger] | None, optional
+            Carps loggers, by default None
+        policy_class : type[Policy] | str, optional
+            The policy class, by default PerceptronPolicy
+        policy_kwargs : dict[str, Any] | None, optional
+            Policy kwargs, by default None
+        weight_bounds : tuple[float,float], optional
+            Bounds for the weights of the perceptron, by default (-5, 5)
+        weight_in_log : bool, optional
+            Bounds are in log space, by default True
+        cost : str, optional
+            Which type of cost to return, by default `episode_length_scaled`, which is the (episode length - n_initial
+            design) / n_model_based_budget. Can also be `cost_inc`, which is simply the cost of the incumbent.
+        """
+        super().__init__(env=env, loggers=loggers, policy_class=policy_class, policy_kwargs=policy_kwargs, cost=cost)
+
+        self._weight_bounds = weight_bounds
+        self._weight_in_log = weight_in_log
+
+    @property
+    def configspace(self) -> ConfigurationSpace:
+        """Get the configuration space for the perceptron.
+
+        Returns
+        -------
+        ConfigurationSpace
+            Configuration space (continuous, n_obs + 1 HPs)
+        """
+        return get_perceptron_configspace_from_env(self._env, self._weight_bounds)
+
+    def make_policy(self, config: Configuration, seed: int | None = None) -> PerceptronPolicy:
+        """Make perceptron policy.
+
+        Parameters
+        ----------
+        config : Configuration
+            The configuration containing the weights.
+        seed : int | None, optional
+            Seed, by default None
+
+        Returns
+        -------
+        PerceptronPolicy
+            Instantiated perceptron policy.
+        """
+        weights = list(config.values())
+        if self._weight_in_log:
+            weights = list(10 ** np.array(weights))
+        policy_kwargs = self._policy_kwargs.copy()
+        policy_kwargs.update({"weights": weights})
+        policy = self._policy_class(env=None, **policy_kwargs)
+        policy.set_seed(seed=seed)
+        return policy

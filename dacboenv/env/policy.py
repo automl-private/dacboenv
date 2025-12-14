@@ -67,6 +67,25 @@ class RandomPolicy(Policy):
         return self._env.action_space.sample()
 
 
+class DefaultPolicy(Policy):
+    """Default policy that does nothing."""
+
+    def __call__(self, obs: ObsType | None = None) -> None:  # noqa: ARG002
+        """Returns None.
+
+        Parameters
+        ----------
+        obs : ObsType | None, optional
+            The current environment observation (unused). Default is None.
+
+        Returns
+        -------
+        ActType
+            None.
+        """
+        return
+
+
 class StaticParameterPolicy(Policy):
     """Policy that always returns a fixed parameter value."""
 
@@ -141,8 +160,6 @@ class LinearParameterPolicy(Policy):
         trials = len(smac.runhistory)
 
         weight = trials / budget
-
-        # TODO: fix: interpolation should be only for model-based part. also counts for the others
 
         if self._high_to_low:
             return (1 - weight) * self._high + weight * self._low

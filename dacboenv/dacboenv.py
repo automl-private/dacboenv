@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from smac.facade.abstract_facade import AbstractFacade
 
 ObsType = dict[str, Any]
-ActType = int | float | list[float]
+ActType = int | float | list[float] | None
 
 # each seed 1
 THRESHOLD_2_1_0 = -92.64999983345098
@@ -160,7 +160,8 @@ class DACBOEnv(gym.Env):
         ValueError
             If the action type is invalid.
         """
-        self._action_space.update_optimizer(action)
+        if action is not None:
+            self._action_space.update_optimizer(action)
 
     def get_observation(self) -> ObsType:
         """Compute the current observation from the optimizer.

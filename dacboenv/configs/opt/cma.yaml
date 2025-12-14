@@ -1,6 +1,6 @@
 # @package _global_
 worker_config: {}
-n_workers: 5  # TODO set higher
+n_workers: 10
 seed: ???
 
 n_trials: 4000

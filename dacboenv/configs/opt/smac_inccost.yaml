@@ -76,7 +76,7 @@ optimizer:
       n_workers: 1  # TODO
     smac_kwargs:
       dask_client: null
-      overwrite: true
+      overwrite: false
       intensifier:
         _target_: smac.intensifier.intensifier.Intensifier
         _partial_: true

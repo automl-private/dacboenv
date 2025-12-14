@@ -25,15 +25,25 @@ class Policy:
     the DACBO environment.
     """
 
-    def __init__(self, env: DACBOEnv) -> None:
+    def __init__(self, env: DACBOEnv, **kwargs: Any) -> None:
         """Initialize the policy.
 
         Parameters
         ----------
         env : DACBOEnv
             The environment in which the policy operates.
+        **kwargs : Any
+            Keyword arguments from child classes.
         """
         self._env = env
+        self._init_kwargs = kwargs.copy()
+
+    def get_init_kwargs(self) -> dict:
+        """Get kwargs from initialization.
+
+        Requirement is that each child class passes their kwargs to super.
+        """
+        return self._init_kwargs
 
     @abstractmethod
     def __call__(self, obs: ObsType) -> ActType:
@@ -103,7 +113,7 @@ class StaticParameterPolicy(Policy):
         par_val : float
             Fixed parameter value to return for every action.
         """
-        super().__init__(env)
+        super().__init__(env, par_val=par_val)
         self._par_val = par_val
 
     def __call__(self, obs: ObsType | None = None) -> ActType:  # noqa: ARG002
@@ -141,7 +151,7 @@ class LinearParameterPolicy(Policy):
         high : float
             Upper bound of the parameter value.
         """
-        super().__init__(env)
+        super().__init__(env, high_to_low=high_to_low, low=low, high=high)
         self._high_to_low = high_to_low
         self._low = low
         self._high = high
@@ -192,7 +202,7 @@ class JumpParameterPolicy(Policy):
             Fraction of the optimization budget at which to switch
             from ``low`` to ``high``.
         """
-        super().__init__(env)
+        super().__init__(env, low=low, high=high, jump=jump)
         self._low = low
         self._high = high
         self._jump = jump
@@ -232,7 +242,7 @@ class PiecewiseParameterPolicy(Policy):
         splits : np.ndarray
             y values of the splits between the linear sections.
         """
-        super().__init__(env)
+        super().__init__(env, splits=splits)
         self._splitsy = splits
 
     def __call__(self, obs: ObsType | None = None) -> ActType:  # noqa: ARG002
@@ -277,7 +287,7 @@ class JumpFunctionPolicy(Policy):
             Fraction of the optimization budget at which to switch
             from ``low`` to ``high``.
         """
-        super().__init__(env)
+        super().__init__(env, low=low, high=high, jump=jump)
         self._low = low
         self._high = high
         self._jump = jump
@@ -337,6 +347,8 @@ class PerceptronPolicy(Policy):
         bias : float, optional
             The bias (scalar). Can be given instead of weights.
         """
+        super().__init__(env, weights=weights, theta=theta, bias=bias, seed=seed)
+
         self._seed = seed
         rng = np.random.default_rng(seed=self._seed)
 
@@ -351,7 +363,6 @@ class PerceptronPolicy(Policy):
 
         self._theta = np.array(theta)
         self._bias = bias
-        super().__init__(env)
 
     def __call__(self, obs: dict[str, Any]) -> int | float | list[float]:
         """Apply policy.
@@ -388,7 +399,7 @@ class ModelPolicy(Policy):
         model_class : type[BaseAlgorithm] | str | None, optional
             The class of the RL model, required if loading from a path.
         """
-        super().__init__(env)
+        super().__init__(env, model=model, model_class=model_class)
 
         if isinstance(model, str):
             assert model_class is not None, "If model is loaded from path, model_class must be provided."

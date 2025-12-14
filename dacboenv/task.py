@@ -154,7 +154,7 @@ class DACBOObjectiveFunction(ObjectiveFunction):
 
     @abstractmethod
     def make_policy(self, config: Configuration, seed: int | None = None) -> Policy:
-        """Make perceptron policy.
+        """Make policy.
 
         Parameters
         ----------
@@ -165,9 +165,27 @@ class DACBOObjectiveFunction(ObjectiveFunction):
 
         Returns
         -------
-        PerceptronPolicy
-            Instantiated perceptron policy.
+        Policy
+            Instantiated policy.
         """
+
+    def make_policy_from_config_dict(self, config_dict: dict[str, Any], seed: int | None = None) -> Policy:
+        """Make policy.
+
+        Parameters
+        ----------
+        config_dict : Configuration
+            The configuration containing the weights.
+        seed : int | None, optional
+            Seed, by default None
+
+        Returns
+        -------
+        Policy
+            Instantiated policy.
+        """
+        config = Configuration(configuration_space=self.configspace, values=config_dict)
+        return self.make_policy(config=config, seed=seed)
 
     def _evaluate(self, trial_info: TrialInfo) -> TrialValue:
         starttime = time.time()

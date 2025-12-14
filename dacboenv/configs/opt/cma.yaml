@@ -1,0 +1,35 @@
+# @package _global_
+worker_config: {}
+n_workers: 5  # TODO set higher
+seed: ???
+
+n_trials: 4000
+n_generations: ${divide:${n_trials},${optimizer.population_size}}
+
+task: ???
+task_id: ???
+benchmark_id: ???
+dacboenv: ???
+
+optimizer_id: CMA
+optimizer:
+  _target_: cmaes.CMA
+  mean: ${zeros:${task.metadata.dimensions}}
+  sigma: 10
+  seed: ${seed}
+  population_size: ${multiply:${task.metadata.dimensions},3}
+  lr_adapt: true
+     
+
+timestamp: ${now:%Y-%m-%d}/${now:%H-%M-%S}
+
+baserundir: runs
+outdir: ${baserundir}/${optimizer_id}/${benchmark_id}/${task_id}/${seed}
+hydra:
+  run:
+    dir: ${outdir}  # /${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ${baserundir}  # /${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${optimizer_id}/${benchmark_id}/${task_id}/${seed}  # those variables are set for individual jobs, therefore can only be in the subdir
+
+

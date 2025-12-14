@@ -432,4 +432,33 @@ def run_reference_optimizer(
 
 if __name__ == "__main__":
     # get_reference_performance(["+optimizer/smac20=blackbox", "+task/BBOB=cfg_2_1_0", "seed=1234"])
-    ReferencePerformance(optimizer_id="SMAC3-BlackBoxFacade", task_ids=["bbob/2/1/0"], seeds=[1, 2, 3])
+    ReferencePerformance(
+        optimizer_id="SMAC3-BlackBoxFacade",
+        task_ids=[
+            "bbob/2/1/0",
+            "bbob/2/2/0",
+            "bbob/2/3/0",
+            "bbob/2/4/0",
+            "bbob/2/5/0",
+            "bbob/2/6/0",
+            "bbob/2/7/0",
+            "bbob/2/8/0",
+            "bbob/2/9/0",
+            "bbob/2/10/0",
+            "bbob/2/11/0",
+            "bbob/2/12/0",
+            "bbob/2/13/0",
+            "bbob/2/14/0",
+            "bbob/2/15/0",
+            "bbob/2/16/0",
+            "bbob/2/17/0",
+            "bbob/2/18/0",
+            "bbob/2/19/0",
+            "bbob/2/20/0",
+            "bbob/2/21/0",
+            "bbob/2/22/0",
+            "bbob/2/23/0",
+            "bbob/2/24/0",
+        ],
+        seeds=[1, 2, 3, 4, 5],
+    )

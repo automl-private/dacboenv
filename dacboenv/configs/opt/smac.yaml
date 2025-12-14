@@ -7,7 +7,7 @@ benchmark_id: DACBO
 task_id: ${task.name}
 task:
   _target_: carps.utils.task.Task
-  name: dacbo_default_on_2dbbob
+  name: dacbo_${task.objective_function.cost}_on_${instance_set_id}
   seed: ${seed}
   objective_function:
     _target_: dacboenv.task.PerceptronDACBOObjectiveFunction
@@ -71,7 +71,7 @@ optimizer:
       instance_features: ${get_instance_features:${dacboenv.task_ids}}
       adaptive_capping: true
       runtime_cutoff: null
-      n_workers: 1  # TODO
+      n_workers: 1
     smac_kwargs:
       dask_client: null
       overwrite: true

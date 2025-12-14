@@ -7,7 +7,7 @@ benchmark_id: DACBO
 task_id: ${task.name}
 task:
   _target_: carps.utils.task.Task
-  name: dacbo_default_on_2dbbob
+  name: dacbo_${task.objective_function.cost}_on_${instance_set_id}
   seed: ${seed}
   objective_function:
     _target_: dacboenv.task.PerceptronDACBOObjectiveFunction
@@ -55,7 +55,7 @@ task:
 
 
 optimizer_container_id: SMAC3
-optimizer_id: SMAC-AC-CostInc
+optimizer_id: SMAC-AC
 optimizer:
   _target_: carps.optimizers.smac20.SMAC3Optimizer
   _partial_: true

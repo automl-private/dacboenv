@@ -225,7 +225,12 @@ class DACBOEnv(gym.Env):
         else:
             threshold = float("-inf")
 
-        reward = -1 if curr_incumbent >= threshold else 1
+        budget = self._smac_instance._scenario.n_trials
+        init_des_size = len(self._smac_instance.intensifier.config_selector._initial_design_configs)
+
+        b = budget - init_des_size
+
+        reward = -1 / b if curr_incumbent >= threshold else 0
 
         self._episode_reward += reward
         self._episode_length += 1
@@ -279,6 +284,12 @@ class DACBOEnv(gym.Env):
             self._action_space._last = 0
 
         super().reset(seed=new_seed)
+
+        # Work off new initial design
+        for _ in self._smac_instance.intensifier.config_selector._initial_design_configs:
+            trial_info = self._smac_instance.ask()
+            _, trial_value = self._smac_instance._runner.run_wrapper(trial_info)
+            self._smac_instance.tell(trial_info, trial_value)
 
         initial_obs = (
             np.atleast_1d(self._observation_space._observation_types[0].default).astype(np.float32)

@@ -6,6 +6,7 @@ dacboenv:
   inner_seeds:
     - ${seed}
 
+baserundir: runs_eval
 optimizer_container_id: SMAC3
 optimizer:
   _target_: dacboenv.optimizer.DACBOEnvOptimizer

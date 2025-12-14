@@ -1,0 +1,83 @@
+# @package _global_
+
+dacboenv:
+  terminate_after_reference_performance_reached: false
+
+benchmark_id: DACBO
+task_id: ${task.name}
+task:
+  _target_: carps.utils.task.Task
+  name: dacbo_default_on_2dbbob
+  seed: ${seed}
+  objective_function:
+    _target_: dacboenv.task.PerceptronDACBOObjectiveFunction
+    env: ${dacboenv}
+    weight_bounds: [-10, 10]
+    weight_in_log: false
+    cost: cost_inc
+    policy_kwargs:
+      seed: ${seed}
+  input_space:
+    _target_: carps.utils.task.InputSpace
+    configuration_space: ${get_perceptron_configspace:${len:${dacboenv.observation_keys}},${task.objective_function.weight_bounds}}
+    fidelity_space:
+      _target_: carps.utils.task.FidelitySpace
+      is_multifidelity: false
+      fidelity_type: null
+      min_fidelity: null
+      max_fidelity: null
+    instance_space: null
+  output_space:
+    _target_: carps.utils.task.OutputSpace
+    n_objectives: 1
+    objectives:
+      - episode_finished_scaled
+  optimization_resources:
+    _target_: carps.utils.task.OptimizationResources
+    n_trials: 1000
+    time_budget: null
+    n_workers: 1
+  metadata:
+    _target_: carps.utils.task.TaskMetadata
+    has_constraints: false
+    domain: DAC
+    objective_function_approximation: real
+    has_virtual_time: false
+    deterministic: true
+    dimensions: ${len:dacboenv.observation_keys}
+    search_space_n_categoricals: 0
+    search_space_n_ordinals: 0
+    search_space_n_integers: 0
+    search_space_n_floats: ${len:dacboenv.observation_keys}
+    search_space_has_conditionals: false
+    search_space_has_forbiddens: false
+    search_space_has_priors: false
+
+
+optimizer_container_id: SMAC3
+optimizer_id: SMAC-AC-CostInc
+optimizer:
+  _target_: carps.optimizers.smac20.SMAC3Optimizer
+  _partial_: true
+  smac_cfg:
+    smac_class: smac.facade.algorithm_configuration_facade.AlgorithmConfigurationFacade
+    scenario:
+      seed: ${seed}
+      n_trials: ${task.optimization_resources.n_trials}
+      objectives: ${task.output_space.objectives}
+      deterministic: false
+      output_directory: ${outdir}/${seed}/smac3_output
+      min_budget: ${task.input_space.fidelity_space.min_fidelity}
+      max_budget: ${task.input_space.fidelity_space.max_fidelity}
+      instances: ${dacboenv.task_ids}
+      instance_features: ${get_instance_features:${dacboenv.task_ids}}
+      adaptive_capping: true
+      runtime_cutoff: null
+      n_workers: 1  # TODO
+    smac_kwargs:
+      dask_client: null
+      overwrite: true
+      intensifier:
+        _target_: smac.intensifier.intensifier.Intensifier
+        _partial_: true
+        max_config_calls: ${multiply:${len:${dacboenv.task_ids}},${len:${dacboenv.inner_seeds}}}

@@ -9,7 +9,6 @@ import pandas as pd
 from carps.utils.env_vars import CARPS_ROOT
 from carps.utils.running import make_optimizer, make_task
 from omegaconf import OmegaConf
-from rich import inspect
 
 if TYPE_CHECKING:
     from carps.optimizers.optimizer import Optimizer
@@ -141,13 +140,12 @@ def build_carps_optimizer(
     if hasattr(cfg, "loggers"):
         del cfg.loggers
     task = make_task(cfg=cfg)
-    inspect(task)
 
     if OmegaConf.select(cfg, "optimizer.smac_cfg.scenario.n_trials") is not None:
         cfg.optimizer.smac_cfg.scenario.n_trials = cfg.task.optimization_resources.n_trials
+        cfg.optimizer.smac_cfg.scenario.n_trials = 5
 
     optimizer = make_optimizer(cfg=cfg, task=task)
-    inspect(optimizer)
     optimizer.setup_optimizer()
     return optimizer
 

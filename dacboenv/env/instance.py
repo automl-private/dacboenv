@@ -45,12 +45,17 @@ class InstanceSelector(ABC):
         self.rng = np.random.default_rng(seed=selector_seed)
 
     @abstractmethod
-    def select_instance(self) -> tuple[int, str]:
+    def select_instance(self, size: int = 1) -> tuple[int, str] | list[tuple[int, str]]:
         """Select next instance.
+
+        Parameters
+        ----------
+        size : int, optional
+            The number of instances, by default 1.
 
         Returns
         -------
-        tuple[int,str]
+        tuple[int, str] | list[tuple[int, str]]
             (seed, task_id)
         """
 
@@ -61,29 +66,48 @@ class RoundRobinInstanceSelector(InstanceSelector):
     Rotate through instances.
     """
 
-    def select_instance(self) -> tuple[int, str]:
+    def select_instance(self, size: int = 1) -> tuple[int, str] | list[tuple[int, str]]:
         """Select next instance.
+
+        Parameters
+        ----------
+        size : int, optional
+            The number of instances, by default 1.
 
         Returns
         -------
-        tuple[int,str]
+        tuple[int, str] | list[tuple[int, str]]
             (seed, task_id)
         """
         n_instances = len(self.instances)
-        instance = self.instances[self.idx]
-        self.idx = (self.idx + 1) % n_instances
+        if size == 1:
+            instance = self.instances[self.idx]
+        else:
+            indexer = np.arange(self.idx, self.idx + size) % n_instances
+            instance = self.instances[indexer]
+        self.idx = (self.idx + size) % n_instances
         return instance
 
 
 class RandomInstanceSelector(InstanceSelector):
     """Random instance selector."""
 
-    def select_instance(self) -> tuple[int, str]:
+    def select_instance(self, size: int = 1) -> tuple[int, str] | list[tuple[int, str]]:
         """Select next instance.
+
+        Parameters
+        ----------
+        size : int, optional
+            The number of instances, by default 1.
 
         Returns
         -------
-        tuple[int,str]
+        tuple[int, str] | list[tuple[int, str]]
             (seed, task_id)
         """
-        return self.rng.choice(self.instances)
+        indices = np.arange(0, len(self.instances))
+        if size == 1:
+            idx = self.rng.choice(indices)
+            return self.instances[idx]
+        ids = self.rng.choice(indices, size=size)
+        return self.instances[ids]

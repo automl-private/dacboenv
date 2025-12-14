@@ -212,7 +212,7 @@ class DACBOEnv(gym.Env):
         tuple[int,str]
             (seed,task_id)
         """
-        return self.instance_selector.select_instance()
+        return self.instance_selector.select_instance()  # type: ignore[return-value]
 
     def step(self, action: ActType) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
         """Execute one optimization step using the selected acquisition function and parameters.

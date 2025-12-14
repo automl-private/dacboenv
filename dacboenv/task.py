@@ -121,6 +121,7 @@ class PerceptronDACBOObjectiveFunction(ObjectiveFunction):
         policy_kwargs: dict[str, Any] | None = None,
         weight_bounds: tuple[float, float] = (-5, 5),
         weight_in_log: bool = True,  # noqa: FBT001, FBT002
+        cost: str = "episode_length_scaled",
     ) -> None:
         """Init.
 
@@ -138,6 +139,9 @@ class PerceptronDACBOObjectiveFunction(ObjectiveFunction):
             Bounds for the weights of the perceptron, by default (-5, 5)
         weight_in_log : bool, optional
             Bounds are in log space, by default True
+        cost : str, optional
+            Which type of cost to return, by default `episode_length_scaled`, which is the (episode length - n_initial
+            design) / n_model_based_budget. Can also be `cost_inc`, which is simply the cost of the incumbent.
         """
         super().__init__(loggers)
         self._env = env
@@ -146,6 +150,9 @@ class PerceptronDACBOObjectiveFunction(ObjectiveFunction):
 
         self._weight_bounds = weight_bounds
         self._weight_in_log = weight_in_log
+
+        assert cost in ["episode_length_scaled", "cost_inc"]
+        self._cost = cost
 
         self._internal_seeds = self._env._inner_seeds
         self._seed_map: dict[int, int] = {}
@@ -291,5 +298,9 @@ class PerceptronDACBOObjectiveFunction(ObjectiveFunction):
             max_episode_length = cutoff * n_model_based + n_initial_design
         result = rollout(env=self._env, policy=policy, max_episode_length=max_episode_length)
 
-        ep_length = result["episode_length"] - n_initial_design
-        return ep_length / n_model_based
+        if self._cost == "episode_length_scaled":
+            ep_length = result["episode_length"] - n_initial_design
+            return ep_length / n_model_based
+        if self._cost == "cost_inc":
+            return result["cost_inc"]
+        raise ValueError(f"Cannot handle request cost: {self._cost}.")

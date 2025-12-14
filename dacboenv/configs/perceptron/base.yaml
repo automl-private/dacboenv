@@ -1,0 +1,8 @@
+# @package _global_
+seed: 1
+
+experiment:
+  n_workers: 1
+  n_episodes: 10
+  task_id: "8_2"
+  experiment_id: "8_2"

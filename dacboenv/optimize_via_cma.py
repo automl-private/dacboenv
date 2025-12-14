@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pickle
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import hydra
@@ -15,6 +17,7 @@ from dask.base import compute
 from dask.delayed import delayed
 from dask.distributed import Client, LocalCluster, SpecCluster
 from dask_jobqueue.slurm import SLURMCluster
+from hydra.core.hydra_config import HydraConfig
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 from rich import (
@@ -132,6 +135,7 @@ def optimize(
 ) -> list[dict[str, Any]]:
     """Run ask and tell with CMA-ES."""
     config["cfg"] = OmegaConf.to_container(cfg, resolve=False)
+    all_results = []
     for generation in range(n_generations):
         printr(generation)
         config["n_generation"] = generation
@@ -139,8 +143,9 @@ def optimize(
         results = run_parallel(client=client, cluster=cluster, inputs=inputs, config=config, n_workers=n_workers)
         solutions = [(res["trial_info"]["config"], res["trial_value"]["cost"]) for res in results]
         optimizer.tell(solutions)
+        all_results.append({"generation": generation, "result": results})
 
-    return results
+    return all_results
 
 
 @hydra.main(version_base=None, config_path="configs")  # type: ignore[misc]
@@ -169,7 +174,20 @@ def main(cfg: DictConfig) -> None:
     printr("[bold blue]Results:[/bold blue]")
     printr(results)
 
-    # TODO save results
+    hydra_cfg = HydraConfig.instance().get()
+    rundir = hydra_cfg.run.dir
+    try:
+        results = OmegaConf.create(results)
+        outstr = OmegaConf.to_yaml(results)
+        with open(Path(rundir) / "results.yaml", "w") as file:
+            file.write(outstr)
+    except Exception as e:
+        fn = Path(rundir) / "results.pickle"
+        with open(fn, "wb") as file:
+            pickle.dump(results, file)
+
+        printr(e)
+        raise e
 
 
 if __name__ == "__main__":

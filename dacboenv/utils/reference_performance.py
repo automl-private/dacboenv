@@ -252,12 +252,13 @@ def lookup_performance(
 
     # Convert to list of tuples if needed
     missing_combos = list(missing_idx)
-    grouped_missing_combos = group_tuples(missing_combos)
-    run_reference_optimizer(
-        reference_performance_fn=reference_performance_fn,
-        grouped_tuples=grouped_missing_combos,
-        n_processes=n_processes,
-    )
+    if len(missing_combos) > 0:
+        grouped_missing_combos = group_tuples(missing_combos)
+        run_reference_optimizer(
+            reference_performance_fn=reference_performance_fn,
+            grouped_tuples=grouped_missing_combos,
+            n_processes=n_processes,
+        )
     reference_df = pd.read_parquet(reference_performance_fn)
 
     # Select matching rows

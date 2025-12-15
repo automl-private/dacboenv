@@ -11,11 +11,11 @@ task_id: ???
 benchmark_id: ???
 dacboenv: ???
 
-optimizer_id: CMA
+optimizer_id: CMA-${optimizer.sigma}
 optimizer:
   _target_: cmaes.CMA
   mean: ${zeros:${task.metadata.dimensions}}
-  sigma: 10
+  sigma: 20
   seed: ${seed}
   population_size: ${multiply:${task.metadata.dimensions},3}
   lr_adapt: true

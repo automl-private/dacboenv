@@ -1,0 +1,57 @@
+# @package _global_
+defaults:
+  - ../env: default
+  - ../env/action: wei_alpha_continuous
+
+dacboenv:
+  terminate_after_reference_performance_reached: true
+
+benchmark_id: DACBO
+task_id: ${task.name}
+task:
+  _target_: carps.utils.task.Task
+  name: dacbo_${task.objective_function.cost}_on_${instance_set_id}_obs${observations_id}
+  seed: ${seed}
+  objective_function:
+    _target_: dacboenv.task.PerceptronDACBOObjectiveFunction
+    env: ${dacboenv}
+    weight_bounds: [-10, 10]
+    weight_in_log: false
+    cost: episode_length_scaled_plus_logregret
+    policy_kwargs:
+      seed: ${seed}
+  input_space:
+    _target_: carps.utils.task.InputSpace
+    configuration_space: ${get_perceptron_configspace:${len:${dacboenv.observation_keys}},${task.objective_function.weight_bounds}}
+    fidelity_space:
+      _target_: carps.utils.task.FidelitySpace
+      is_multifidelity: false
+      fidelity_type: null
+      min_fidelity: null
+      max_fidelity: null
+    instance_space: null
+  output_space:
+    _target_: carps.utils.task.OutputSpace
+    n_objectives: 1
+    objectives:
+      - episode_finished_scaled
+  optimization_resources:
+    _target_: carps.utils.task.OptimizationResources
+    n_trials: 5000
+    time_budget: null
+    n_workers: 1
+  metadata:
+    _target_: carps.utils.task.TaskMetadata
+    has_constraints: false
+    domain: DAC
+    objective_function_approximation: real
+    has_virtual_time: false
+    deterministic: true
+    dimensions: ${add:${len:${dacboenv.observation_keys}},1}
+    search_space_n_categoricals: 0
+    search_space_n_ordinals: 0
+    search_space_n_integers: 0
+    search_space_n_floats: ${add:${len:${dacboenv.observation_keys}},1}
+    search_space_has_conditionals: false
+    search_space_has_forbiddens: false
+    search_space_has_priors: false

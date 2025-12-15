@@ -11,7 +11,8 @@ BASE="carps.run hydra.searchpath=[pkg://dacboenv/configs]"
 SEED="seed=range(1,11)"
 CLUSTER="+cluster=cpu_noctua"
 
-# python -m $BASE seed=$SLURM_ARRAY_TASK_ID +opt=smac +env=default +instances=bbob2d_5seeds optimizer.smac_cfg.scenario.n_workers=1
-# python -m $BASE seed=$SLURM_ARRAY_TASK_ID +opt=smac_inccost +env=default +instances=bbob2d_3seeds optimizer.smac_cfg.scenario.n_workers=1
 # python -m $BASE seed=$SLURM_ARRAY_TASK_ID +opt=smac +task=dacboenv_epdonescaledpluslogregret +instances=bbob2d_1_3seeds optimizer.smac_cfg.scenario.n_workers=10
-python -m $BASE seed=$SLURM_ARRAY_TASK_ID +opt=smac +task=dacboenv_epdonescaledpluslogregret_trialsleft +instances=bbob2d_1_3seeds optimizer.smac_cfg.scenario.n_workers=10
+# python -m $BASE seed=$SLURM_ARRAY_TASK_ID +opt=smac +task=dacboenv_epdonescaledpluslogregret +instances=bbob2d_3seeds optimizer.smac_cfg.scenario.n_workers=10
+# python -m $BASE seed=$SLURM_ARRAY_TASK_ID +opt=smac +task=dacboenv_epdonescaledpluslogregret_wei +instances=bbob2d_3seeds optimizer.smac_cfg.scenario.n_workers=10
+python -m $BASE seed=$SLURM_ARRAY_TASK_ID +opt=smac +task=dacboenv_epdonescaledpluslogregret_wei +instances=bbob2d_1_3seeds optimizer.smac_cfg.scenario.n_workers=10
+# python -m $BASE seed=$SLURM_ARRAY_TASK_ID +opt=smac +task=dacboenv_epdonescaledpluslogregret_trialsleft +instances=bbob2d_1_3seeds optimizer.smac_cfg.scenario.n_workers=10

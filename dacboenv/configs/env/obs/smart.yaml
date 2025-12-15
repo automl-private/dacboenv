@@ -1,5 +1,6 @@
 # @package _global_
 
+observations_id: smart
 dacboenv:
   observation_keys:
     - trials_passed

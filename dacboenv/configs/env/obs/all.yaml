@@ -1,4 +1,5 @@
 # @package _global_
 
+observations_id: all
 dacboenv:
   observation_keys: null

@@ -9,7 +9,7 @@ benchmark_id: DACBO
 task_id: ${task.name}
 task:
   _target_: carps.utils.task.Task
-  name: dacbo_${task.objective_function.cost}_on_${instance_set_id}
+  name: dacbo_${task.objective_function.cost}_on_${instance_set_id}_obs${observations_id}
   seed: ${seed}
   objective_function:
     _target_: dacboenv.task.PerceptronDACBOObjectiveFunction

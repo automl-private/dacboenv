@@ -24,6 +24,7 @@ from rich import (
     print as printr,
 )
 
+import dacboenv  # noqa: F401
 from dacboenv.utils.reference_performance import is_slurm_cluster
 
 if TYPE_CHECKING:
@@ -37,6 +38,9 @@ def worker(x: list[float], config: dict[str, Any]) -> dict[str, Any]:
     Example worker function to evaluate a task.
     Replace with your actual computation.
     """
+    # Import dacboenv again for custom resolvers
+    import dacboenv  # noqa: F401, PLC0415
+
     cfg = OmegaConf.create(config["cfg"])
     # The instance is selected randomly
     assert (

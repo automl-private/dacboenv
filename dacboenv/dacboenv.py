@@ -349,13 +349,9 @@ class DACBOEnv(gym.Env):
         self.current_seed = seed
         self.current_task_id = task_id
 
-        initial_obs = (
-            np.atleast_1d(self._dacbo_observation_space._observation_types[0].default).astype(np.float32)
-            if len(self._dacbo_observation_space._observation_types) == 1
-            else {
-                obs.name: np.atleast_1d(obs.default).astype(np.float32)
-                for obs in self._dacbo_observation_space._observation_types
-            }
-        )
+        initial_obs = {
+            obs.name: np.atleast_1d(obs.default).astype(np.float32)
+            for obs in self._dacbo_observation_space._observation_types
+        }
 
         return initial_obs, {}

@@ -441,8 +441,6 @@ class ObservationSpace:
         ObsType
             Dictionary mapping observation names to their computed values.
         """
-        if len(self._observation_types) == 1:
-            return np.atleast_1d(self._observation_types[0].compute(self._smac_instance)).astype(np.float32)
         return {
             obs.name: np.atleast_1d(obs.compute(self._smac_instance)).astype(np.float32)
             for obs in self._observation_types

@@ -11,7 +11,7 @@ import numpy as np
 from carps.loggers.file_logger import convert_trials, dump_logs, get_run_directory
 from carps.utils.loggingutils import get_logger
 from carps.utils.running import make_task
-from carps.utils.trials import TrialInfo, TrialValue
+from carps.utils.trials import TrialInfo
 from ConfigSpace import Configuration
 from dask.base import compute
 from dask.delayed import delayed
@@ -38,7 +38,6 @@ def worker(x: list[float], config: dict[str, Any]) -> dict[str, Any]:
     Replace with your actual computation.
     """
     # Import dacboenv again for custom resolvers
-    import dacboenv  # noqa: F401, PLC0415
 
     cfg = OmegaConf.create(config["cfg"])
     # The instance is selected randomly
@@ -54,8 +53,7 @@ def worker(x: list[float], config: dict[str, Any]) -> dict[str, Any]:
         seed=seed,
         instance=instance,
     )
-    # trial_value = task.objective_function.evaluate(trial_info=trial_info) # TODO uncomment
-    trial_value = TrialValue(cost=234)
+    trial_value = task.objective_function.evaluate(trial_info=trial_info)
     n_trials = config["n_generation"] + config["worker_idx"] + config["n_previous_trials"]
     n_function_calls = None
     info = convert_trials(n_trials, trial_info, trial_value, n_function_calls)

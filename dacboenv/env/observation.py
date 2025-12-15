@@ -420,10 +420,7 @@ class ObservationSpace:
             if key in ObservationSpace._MULTI_OBSERVATION_MAP
             for space in ObservationSpace._MULTI_OBSERVATION_MAP[key].create(smac_instance)
         ]
-        if len(self._observation_types) == 1:
-            self._observation_space = self._observation_types[0].space
-        else:
-            self._observation_space = Dict({obs.name: obs.space for obs in self._observation_types})
+        self._observation_space = Dict({obs.name: obs.space for obs in self._observation_types})
 
     @property
     def space(self) -> Space:

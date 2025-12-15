@@ -38,6 +38,7 @@ def worker(x: list[float], config: dict[str, Any]) -> dict[str, Any]:
     Replace with your actual computation.
     """
     # Import dacboenv again for custom resolvers
+    import dacboenv  # noqa: F401, F811
 
     cfg = OmegaConf.create(config["cfg"])
     # The instance is selected randomly
@@ -85,41 +86,39 @@ def run_parallel(
     return list(results)
 
 
-def setup_client(n_workers: int, seed: int) -> tuple[SpecCluster, Client]:
+def setup_client(n_workers: int, seed: int, use_local: bool = False) -> tuple[SpecCluster, Client]:  # noqa: FBT001, FBT002
     """Setup client and cluster, either local or slurm."""
-    if True:
-        # TODO: scenario_kwargs["n_workers"] = n_workers + 1
-        if is_slurm_cluster():
-            cluster = SLURMCluster(
-                queue="normal",  # Name of the partition
-                cores=1,  # CPU cores requested
-                memory="8 GB",  # RAM requested
-                walltime="48:00:00",  # Walltime limit for a runner job.
-                processes=1,  # Number of processes per worker
-                log_directory=f"tmp/smac_dask_slurm/{seed}",  # Logging directory
-                nanny=False,  # False unless you want to use pynisher
-                worker_extra_args=[
-                    "--worker-port",  # Worker port range
-                    "60010:60100",
-                ],  # Worker port range
-                scheduler_options={
-                    "port": 60001 + seed,  # Main Job Port
-                    "dashboard_address": 40550 + seed,
-                },
-            )
-            cluster.scale(jobs=n_workers + 1)
-        else:
-            cluster = LocalCluster(n_workers=n_workers, threads_per_worker=1)
-
-        # Dask creates n_workers jobs on the cluster which stay open.
-        client = Client(
-            address=cluster,
+    if is_slurm_cluster() and not use_local:
+        cluster = SLURMCluster(
+            queue="normal",  # Name of the partition
+            cores=1,  # CPU cores requested
+            memory="8 GB",  # RAM requested
+            walltime="48:00:00",  # Walltime limit for a runner job.
+            processes=1,  # Number of processes per worker
+            log_directory=f"tmp/smac_dask_slurm/{seed}",  # Logging directory
+            nanny=False,  # False unless you want to use pynisher
+            worker_extra_args=[
+                "--worker-port",  # Worker port range
+                "60010:60100",
+            ],  # Worker port range
+            scheduler_options={
+                "port": 60001 + seed,  # Main Job Port
+                "dashboard_address": 40550 + seed,
+            },
         )
+        cluster.scale(jobs=n_workers + 1)
+    else:
+        cluster = LocalCluster(n_workers=n_workers, threads_per_worker=1)
 
-        if is_slurm_cluster():
-            # Dask waits for n_workers workers to be created
-            logger.info("Waiting for workers to connect...")
-            client.wait_for_workers(n_workers=n_workers + 1)
+    # Dask creates n_workers jobs on the cluster which stay open.
+    client = Client(
+        address=cluster,
+    )
+
+    if is_slurm_cluster():
+        # Dask waits for n_workers workers to be created
+        logger.info("Waiting for workers to connect...")
+        client.wait_for_workers(n_workers=n_workers + 1)
     return cluster, client
 
 
@@ -201,7 +200,7 @@ def main(cfg: DictConfig) -> None:
 
     logger.info("Starting Dask cluster...")
 
-    client, cluster = setup_client(cfg.n_workers, cfg.seed)
+    client, cluster = setup_client(cfg.n_workers, cfg.seed, cfg.use_local)
 
     # Run parallel tasks
     logger.info("Run in parallel...")

@@ -3,6 +3,8 @@ worker_config: {}
 n_workers: 10
 seed: ???
 
+use_local: false  # Use LocalCLuster instead of slurm
+
 n_trials: 4000
 n_generations: ${divide:${n_trials},${optimizer.population_size}}
 
@@ -15,7 +17,7 @@ optimizer_id: CMA-${optimizer.sigma}
 optimizer:
   _target_: cmaes.CMA
   mean: ${zeros:${task.metadata.dimensions}}
-  sigma: 20
+  sigma: 5
   seed: ${seed}
   population_size: ${multiply:${task.metadata.dimensions},3}
   lr_adapt: true

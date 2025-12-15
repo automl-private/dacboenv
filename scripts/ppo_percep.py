@@ -56,7 +56,7 @@ def main(cfg: DictConfig) -> None:
     run_name = f"ppo_perceptron_{SEED}__{RUN_ID}"
     
     def evaluate(config_dict, seed):
-        f = get_problem(FID, 1, D, ProblemClass.BBOB)
+        f = get_problem(FID, 0, D, ProblemClass.BBOB)
         x = list(config_dict.values())
         return f(x)
 

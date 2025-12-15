@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import pickle
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import hydra
 import numpy as np
-from carps.loggers.file_logger import convert_trials
+from carps.loggers.file_logger import convert_trials, dump_logs, get_run_directory
 from carps.utils.loggingutils import get_logger
 from carps.utils.running import make_task
 from carps.utils.trials import TrialInfo, TrialValue
@@ -17,7 +17,6 @@ from dask.base import compute
 from dask.delayed import delayed
 from dask.distributed import Client, LocalCluster, SpecCluster
 from dask_jobqueue.slurm import SLURMCluster
-from hydra.core.hydra_config import HydraConfig
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 from rich import (
@@ -53,19 +52,19 @@ def worker(x: list[float], config: dict[str, Any]) -> dict[str, Any]:
     )
     # trial_value = task.objective_function.evaluate(trial_info=trial_info) # TODO uncomment
     trial_value = TrialValue(cost=234)
-    n_trials = config["n_generation"]
+    n_trials = config["n_generation"] + config["worker_idx"] + config["n_previous_trials"]
     n_function_calls = None
     info = convert_trials(n_trials, trial_info, trial_value, n_function_calls)
     info["worker_idx"] = config["worker_idx"]
+    info["n_generation"] = config["n_generation"]
     return info
 
 
 def run_parallel(
-    client: Client,
-    cluster: SpecCluster,
     inputs: list[list[float]],
     config: dict[str, Any],
     n_workers: int = 4,
+    n_previous_trials: int = 0,
 ) -> list[dict[str, Any]]:
     """Run tasks in parallel using Dask."""
     printr(f"Running {len(inputs)} tasks on {n_workers} workers using Dask")
@@ -75,13 +74,11 @@ def run_parallel(
     for i, x in enumerate(inputs):
         _cfg = config.copy()
         _cfg["worker_idx"] = i
+        _cfg["n_previous_trials"] = n_previous_trials
         delayed_tasks.append(delayed(worker)(x, _cfg))
 
     # Compute results in parallel
     results = compute(*delayed_tasks)
-
-    client.close()
-    cluster.close()
 
     return list(results)
 
@@ -136,16 +133,61 @@ def optimize(
     """Run ask and tell with CMA-ES."""
     config["cfg"] = OmegaConf.to_container(cfg, resolve=False)
     all_results = []
+    n_previous_trials = 0
     for generation in range(n_generations):
         printr(generation)
         config["n_generation"] = generation
         inputs = [optimizer.ask() for _ in range(optimizer.population_size)]
-        results = run_parallel(client=client, cluster=cluster, inputs=inputs, config=config, n_workers=n_workers)
+        results = run_parallel(
+            inputs=inputs,
+            config=config,
+            n_workers=n_workers,
+            n_previous_trials=n_previous_trials,
+        )
         solutions = [(res["trial_info"]["config"], res["trial_value"]["cost"]) for res in results]
         optimizer.tell(solutions)
-        all_results.append({"generation": generation, "result": results})
-
+        all_results.extend(results)
+        for res in results:
+            dump_logs(log_data=res, filename="results.jsonl", directory=None)
+        n_previous_trials += len(inputs)
+    client.close()
+    cluster.close()
     return all_results
+
+
+def maybe_remove_logs(directory: str | None = None, overwrite: bool = True, logfile: str = "results.jsonl") -> None:  # noqa: FBT001, FBT002
+    """Maybe remove log files.
+
+    Parameters
+    ----------
+    directory : str | None, optional
+        The log directory, by default None
+    overwrite : bool, optional
+        Whether to overwrite logs or not, by default True
+    logfile : str, optional
+        The log filename to look out for, by default "results.jsonl"
+
+    Raises
+    ------
+    RuntimeError
+        When logs are found in directory but overwrite is false.
+    """
+    _directory = Path(directory) if directory is not None else get_run_directory()
+    assert _directory is not None, "Directory must be specified in FileLogger or hydra run dir must be available."
+    if (_directory / logfile).is_file():
+        if overwrite:
+            logger.info(f"Found previous run. Removing '{_directory}'.")
+            for root, _dirs, files in os.walk(_directory):
+                for f in files:
+                    full_fn = Path(root) / f
+                    if ".hydra" not in str(full_fn):
+                        Path(full_fn).unlink()
+                        logger.debug(f"Removed {full_fn}")
+        else:
+            raise RuntimeError(
+                f"Found previous run at '{_directory}'. Stopping run. If you want to overwrite, specify overwrite "
+                f"for the file logger in the config (CARP-S/carps/configs/logger.yaml)."
+            )
 
 
 @hydra.main(version_base=None, config_path="configs")  # type: ignore[misc]
@@ -153,6 +195,7 @@ def main(cfg: DictConfig) -> None:
     """Hydra-decorated main function."""
     printr("[bold green]Starting Dask parallel evaluations[/bold green]")
     printr(OmegaConf.to_yaml(cfg))
+    maybe_remove_logs(directory=None, overwrite=True, logfile="results.jsonl")
 
     logger.info("Starting Dask cluster...")
 
@@ -174,20 +217,18 @@ def main(cfg: DictConfig) -> None:
     printr("[bold blue]Results:[/bold blue]")
     printr(results)
 
-    hydra_cfg = HydraConfig.instance().get()
-    rundir = hydra_cfg.run.dir
-    try:
-        results = OmegaConf.create(results)
-        outstr = OmegaConf.to_yaml(results)
-        with open(Path(rundir) / "results.yaml", "w") as file:
-            file.write(outstr)
-    except Exception as e:
-        fn = Path(rundir) / "results.pickle"
-        with open(fn, "wb") as file:
-            pickle.dump(results, file)
+    # try:
+    #     results = OmegaConf.create(results)
+    #     outstr = OmegaConf.to_yaml(results)
+    #     with open(Path(rundir) / "results.yaml", "w") as file:
+    #         file.write(outstr)
+    # except Exception as e:
+    #     fn = Path(rundir) / "results.pickle"
+    #     with open(fn, "wb") as file:
+    #         pickle.dump(results, file)
 
-        printr(e)
-        raise e
+    #     printr(e)
+    #     raise e
 
 
 if __name__ == "__main__":

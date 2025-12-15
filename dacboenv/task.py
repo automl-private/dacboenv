@@ -15,6 +15,7 @@ from hydra.utils import get_class
 
 from dacboenv.env.policy import PerceptronPolicy, Policy
 from dacboenv.env.reward import get_initial_design_size
+from dacboenv.utils.math import safe_log10
 
 if TYPE_CHECKING:
     from carps.loggers.abstract_logger import AbstractLogger
@@ -137,6 +138,7 @@ class DACBOObjectiveFunction(ObjectiveFunction):
         cost : str, optional
             Which type of cost to return, by default `episode_length_scaled`, which is the (episode length - n_initial
             design) / n_model_based_budget. Can also be `cost_inc`, which is simply the cost of the incumbent.
+            Or `episode_length_scaled_plus_logregret` which is episode_length_scaled + max(0, log regret).
         """
         super().__init__(loggers)
         self._env = env
@@ -146,7 +148,7 @@ class DACBOObjectiveFunction(ObjectiveFunction):
         self._internal_seeds = self._env._inner_seeds
         self._seed_map: dict[int, int] = {}
 
-        assert cost in ["episode_length_scaled", "cost_inc"]
+        assert cost in ["episode_length_scaled", "cost_inc", "episode_length_scaled_plus_logregret"]
         self._cost = cost
 
         # Create action space and observation space
@@ -293,6 +295,11 @@ class DACBOObjectiveFunction(ObjectiveFunction):
         if self._cost == "episode_length_scaled":
             ep_length = result["episode_length"] - n_initial_design
             return ep_length / n_model_based
+        if self._cost == "episode_length_scaled_plus_logregret":
+            ep_done_scaled = (result["episode_length"] - n_initial_design) / n_model_based
+            regret = abs(result["cost_inc"] - self._env.current_threshold)
+            log_regret = safe_log10(regret)
+            return ep_done_scaled + max(0, log_regret)
         if self._cost == "cost_inc":
             return result["cost_inc"]
         raise ValueError(f"Cannot handle request cost: {self._cost}.")

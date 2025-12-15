@@ -168,6 +168,7 @@ class DACBOEnv(gym.Env):
 
         self.current_task_id = ""
         self.current_seed = -1
+        self.current_threshold: float | None = None
 
     def update_optimizer(self, action: ActType) -> None:
         """Update the SMAC optimizer with the given action.
@@ -257,7 +258,9 @@ class DACBOEnv(gym.Env):
                 task_id=self.current_task_id,
                 seed=self.current_seed,
             )
-            log_distance = safe_log10(abs(curr_incumbent - threshold))
+            self.current_threshold = threshold
+            distance = abs(curr_incumbent - threshold)
+            log_distance = safe_log10(distance)
             logger.info(f"Current: {curr_incumbent:.4f}, threshold: {threshold:.4f}, log distance: {log_distance:.4f}")
             terminated = curr_incumbent < threshold  # We minimize
 

@@ -3,8 +3,7 @@
 observations_id: smart
 dacboenv:
   observation_keys:
-    - trials_passed
-    - trials_left
+    - budget_percentage
     - has_categorical_hps
     - ubr
     - ubr_difference

@@ -1,5 +1,5 @@
 # flake8: noqa: E402
-"""Train PPO on DABOEnv."""
+"""Train PPO on DACBOEnv."""
 
 from __future__ import annotations
 
@@ -71,7 +71,7 @@ def main(cfg: DictConfig) -> None:
 
     n_workers = cfg.experiment.n_workers
     task = make_task(cfg)
-    len_episode = task.metadata.dimensions
+    len_episode = cfg.optimizer.n_steps
 
     n_episodes = cfg.experiment.n_episodes
 

@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+from carps.loggers.file_logger import get_run_directory
 from hydra.core.hydra_config import HydraConfig
 from hydra.types import RunMode
 from rich.logging import RichHandler
@@ -121,3 +124,53 @@ def dump_logs(log_data: dict, filename: str) -> None:
     filepath = directory / filename
     with open(filepath, mode="a") as file:
         file.writelines([log_data_str])
+
+
+def maybe_remove_logs(  # noqa: C901
+    directory: str | None = None,
+    overwrite: bool = True,  # noqa: FBT001, FBT002
+    logfile: str = "results.jsonl",
+    logger: logging.Logger | None = None,
+) -> None:
+    """Maybe remove log files.
+
+    Parameters
+    ----------
+    directory : str | None, optional
+        The log directory, by default None
+    overwrite : bool, optional
+        Whether to overwrite logs or not, by default True
+    logfile : str, optional
+        The log filename to look out for, by default "results.jsonl"
+    logger : logging.Logger, optional
+        Logs info messages.
+
+    Raises
+    ------
+    RuntimeError
+        When logs are found in directory but overwrite is false.
+    """
+    _directory = Path(directory) if directory is not None else get_run_directory()
+    assert _directory is not None, "Directory must be specified in FileLogger or hydra run dir must be available."
+    if (_directory / logfile).is_file():
+        if overwrite:
+            if logger is not None:
+                logger.info(f"Found previous run. Removing '{_directory}'.")
+            for root, dirs, files in os.walk(_directory, topdown=False):
+                for f in files:
+                    full_fn = Path(root) / f
+                    if ".hydra" not in str(full_fn):
+                        full_fn.unlink()
+                        if logger:
+                            logger.debug(f"Removed file {full_fn}")
+                for d in dirs:
+                    full_dir = Path(root) / d
+                    if ".hydra" not in str(full_dir):
+                        shutil.rmtree(full_dir)
+                        if logger:
+                            logger.debug(f"Removed directory {full_dir}")
+        else:
+            raise RuntimeError(
+                f"Found previous run at '{_directory}'. Stopping run. If you want to overwrite, specify overwrite "
+                f"for the file logger in the config (CARP-S/carps/configs/logger.yaml)."
+            )

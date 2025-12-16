@@ -1,0 +1,18 @@
+# @package _global_
+defaults:
+  - base
+  - objfun: perceptron
+  - ../env: base
+  - ../env/opt: base
+  - ../env/action: ucb_beta_continuous
+  - ../env/obs: trialsleft
+  - ../env/reward: ep_done_scaled
+
+dacboenv:
+  terminate_after_reference_performance_reached: true
+
+task:
+  objective_function:
+    weight_bounds: [-10, 10]
+    weight_in_log: false
+    cost: episode_length_scaled_plus_logregret

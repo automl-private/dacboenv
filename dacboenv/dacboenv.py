@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-from collections.abc import Callable
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -12,21 +10,26 @@ from typing import (
 
 import gymnasium as gym
 import numpy as np
+from carps.utils.loggingutils import get_logger
 
-from dacboenv.env.action import AbstractActionSpace, AcqFunctionActionSpace, AcqParameterActionSpace
+from dacboenv.env.action import AbstractActionSpace, AcqParameterActionSpace
+from dacboenv.env.instance import InstanceSelector, RoundRobinInstanceSelector
 from dacboenv.env.observation import ObservationSpace
 from dacboenv.env.reward import DACBOReward
+from dacboenv.utils.carps_optimizer import build_carps_optimizer
+from dacboenv.utils.math import safe_log10
+from dacboenv.utils.reference_performance import ReferencePerformance
 
 if TYPE_CHECKING:
+    from carps.optimizers.optimizer import Optimizer
+    from omegaconf import DictConfig
     from smac.facade.abstract_facade import AbstractFacade
+    from smac.main.smbo import SMBO
 
 ObsType = dict[str, Any]
 ActType = int | float | list[float] | None
 
-# each seed 1
-THRESHOLD_2_1_0 = -92.64999983345098
-THRESHOLD_2_8_0 = -133.59630637351353
-THRESHOLD_2_20_0 = 183.90958853932779
+logger = get_logger("dacboenv")
 
 
 class DACBOEnv(gym.Env):
@@ -34,19 +37,6 @@ class DACBOEnv(gym.Env):
 
     This environment wraps a SMAC optimizer and offers a reinforcement learning interface for
     dynamically adjusting acquisition functions / parameters during Bayesian optimization.
-
-    Parameters
-    ----------
-    smac_instance_factory : Callable[[], AbstractFacade]
-        Function returning the SMAC instance. Called for each new episode.
-    observation_keys : list[str], optional
-        Which observations to compute at each step.
-    action_mode : str, optional
-        Action mode, either "parameter" (default) or "function".
-    reward_keys : list[str], optional
-        Which rewards to compute at each step.
-    rho : float, optional
-        ParEGO scalarization parameter.
 
     Observation Space
     ----------
@@ -86,66 +76,99 @@ class DACBOEnv(gym.Env):
         Computes the current reward from the optimizer.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
-        smac_instance_factory: Callable[[int], AbstractFacade],
+        task_ids: list[str],
+        optimizer_cfg: DictConfig | None = None,
         observation_keys: list[str] | None = None,
-        action_mode: str = "parameter",
+        action_space_class: type[AbstractActionSpace] = AcqParameterActionSpace,
+        action_space_kwargs: dict[str, Any] | None = None,
         reward_keys: list[str] | None = None,
         rho: float = 0.05,
-        seed: int = -1,
+        seed: int | None = None,
+        reference_performance_fn: str = "reference_performance/reference_performance.parquet",
+        inner_seeds: list[int] | None = None,
+        terminate_after_reference_performance_reached: bool = False,  # noqa: FBT001, FBT002
+        instance_selector: InstanceSelector | None = None,
     ) -> None:
         """Initialize the DACBOEnv environment.
 
         Parameters
         ----------
-        smac_instance_factory : Callable[[], AbstractFacade]
-            Function returning the SMAC instance. Called for each new episode.
+        task_ids : list[str], optional
+            The carps task ids that BO should run on.
+        optimizer_cfg : DictConfig, optional
+            The carps (SMAC) optimizer config. Defaults to `SMAC3-BlackBoxFacade` which is the standard blackbox
+            facade with a GP.
         observation_keys : list[str], optional
             Which observations to compute at each step.
-        action_mode : str, optional
-            Action mode, either "parameter" (default) or "function".
+        action_space_class : type[AbstractActionSpace], optional
+            Which action space, either parameter control or acquisition function selection.
+        action_space_kwargs : dict[str, Any], optional
+            Keyword arguments for the action space class.
         reward_keys : list[str], optional
-            Which rewards to compute at each step.
+            Which rewards to compute at each step. If nothing provided, will be `incumbent_cost`. Beware,
+            this might not make sense for DAC as the tasks live on different scales.
         rho : float, optional
             ParEGO scalarization parameter.
+        inner_seeds : list[int], optional
+            The seeds that the inner BO will run on.
+        terminate_after_reference_performance_reached : bool, optional
+            Terminate episode after a certain reference performance on a task/seed has been reached. Defaults to False.
         """
+        if reward_keys is None:
+            reward_keys = ["incumbent_cost"]
+        if action_space_kwargs is None:
+            action_space_kwargs = {
+                # SMAC's default acquisition function is EI, thus we adjust xi, thus those are sensible default bounds
+                "bounds": (-10, 10)
+            }
         super().__init__()
 
-        self._smac_instance_factory = smac_instance_factory
         self._seed = seed
-        self._solver = self._smac_instance_factory(self._seed)
-        self._smac_instance = self._solver.optimizer
-        self._n_trials = self._smac_instance._scenario.n_trials
-        self._action_mode = action_mode
+        # Create seed generator for resetting for new episodes
+        self._seeder = np.random.default_rng(self._seed)
+
+        self._optimizer_cfg = optimizer_cfg
+        self._action_space_class = action_space_class
+        self._action_space_kwargs = action_space_kwargs
         self._action_space: AbstractActionSpace
         self._observation_keys = observation_keys
         self._reward_keys = reward_keys
         self._rho = rho
+        self.task_ids = task_ids
+        self.reference_performance_fn = reference_performance_fn
+        self._inner_seeds: list[int] = (
+            inner_seeds if inner_seeds else list(self._seeder.integers(low=344, high=46483, size=3))
+        )
+        self._terminate_after_reference_performance_reached = terminate_after_reference_performance_reached
 
-        # Create seed generator for resetting for new episodes
-        self._seeder = np.random.default_rng(self._seed)
+        self.reference_performance_optimizer_id = "SMAC3-BlackBoxFacade"
+        if self._terminate_after_reference_performance_reached:
+            self._reference_performance = ReferencePerformance(
+                optimizer_id=self.reference_performance_optimizer_id,
+                task_ids=self.task_ids,
+                seeds=self._inner_seeds,
+                reference_performance_fn=self.reference_performance_fn,
+            )
 
-        if self._smac_instance._scenario.count_objectives() != 1:
-            raise NotImplementedError("Multi-objective not supported.")
+        self.instance_selector = (
+            instance_selector
+            if instance_selector
+            else RoundRobinInstanceSelector(task_ids=self.task_ids, seeds=self._inner_seeds)
+        )
 
-        self._observation_space = ObservationSpace(self._smac_instance, self._observation_keys)
-        self.observation_space = self._observation_space.space
-
-        if self._action_mode == "parameter":
-            self._action_space = AcqParameterActionSpace(self._smac_instance)
-        elif self._action_mode == "function":
-            self._action_space = AcqFunctionActionSpace(self._smac_instance)
-        else:
-            raise ValueError("Invalid action mode given")
-
-        self.action_space = self._action_space.space
-        self.action_space.seed(self._seed)
-
-        self._reward = DACBOReward(self._smac_instance, self._reward_keys, self._rho)
+        self._carps_solver: Optimizer
+        self._smac_facade: AbstractFacade
+        self._smac_instance: SMBO
+        self._n_trials = None
 
         self._episode_reward = 0.0
         self._episode_length = 0
+
+        self.current_task_id = ""
+        self.current_seed = -1
+        self.current_threshold: float | None = None
 
     def update_optimizer(self, action: ActType) -> None:
         """Update the SMAC optimizer with the given action.
@@ -171,7 +194,7 @@ class DACBOEnv(gym.Env):
         obs : dict[str, Any]
             Dictionary of observation values.
         """
-        return self._observation_space.get_observation()
+        return self._dacbo_observation_space.get_observation()
 
     def get_reward(self) -> float:
         """Compute the current reward from the optimizer.
@@ -182,6 +205,16 @@ class DACBOEnv(gym.Env):
             The current reward signal.
         """
         return self._reward.get_reward()
+
+    def get_next_instance(self) -> tuple[int, str]:
+        """Get the next instance.
+
+        Returns
+        -------
+        tuple[int,str]
+            (seed,task_id)
+        """
+        return self.instance_selector.select_instance()  # type: ignore[return-value]
 
     def step(self, action: ActType) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
         """Execute one optimization step using the selected acquisition function and parameters.
@@ -198,7 +231,7 @@ class DACBOEnv(gym.Env):
         reward : float
             The reward for the action taken.
         terminated : bool
-            Whether the episode has terminated (budget exhausted).
+            Whether the episode has terminated (reference performance reached).
         truncated : bool
             Whether the episode was truncated (always False).
         info : dict
@@ -213,43 +246,49 @@ class DACBOEnv(gym.Env):
 
         # Compute observation + reward
         obs = self.get_observation()
-        # reward = self.get_reward()
-
-        curr_incumbent = self._smac_instance.runhistory.get_min_cost(self._smac_instance.intensifier.get_incumbent())
-
-        if os.environ["FID"] == "1":
-            threshold = THRESHOLD_2_1_0
-        elif os.environ["FID"] == "8":
-            threshold = THRESHOLD_2_8_0
-        elif os.environ["FID"] == "20":
-            threshold = THRESHOLD_2_20_0
-        else:
-            threshold = float("-inf")
-
-        budget = self._smac_instance._scenario.n_trials
-        init_des_size = len(self._smac_instance.intensifier.config_selector._initial_design_configs)
-
-        b = budget - init_des_size
-
-        reward = -1 / b if curr_incumbent >= threshold else 0
+        reward = self.get_reward()
 
         self._episode_reward += reward
         self._episode_length += 1
 
-        done = self._smac_instance.remaining_trials <= 0 or reward == 1
-        info = {}
+        terminated = False
+        if self._terminate_after_reference_performance_reached:
+            curr_incumbent = self.get_incumbent_cost()
+            threshold = self._reference_performance.query_cost(  # type: ignore[attr-defined]
+                optimizer_id=self.reference_performance_optimizer_id,
+                task_id=self.current_task_id,
+                seed=self.current_seed,
+            )
+            self.current_threshold = threshold
+            distance = abs(curr_incumbent - threshold)
+            log_distance = safe_log10(distance)
+            logger.info(f"Current: {curr_incumbent:.4f}, threshold: {threshold:.4f}, log distance: {log_distance:.4f}")
+            terminated = curr_incumbent < threshold  # We minimize
 
-        if done:
+        truncated = self._smac_instance.remaining_trials <= 0
+
+        info = {}
+        if terminated or truncated:
             info["episode"] = {"r": self._episode_reward, "l": self._episode_length}
             self._episode_reward = 0
             self._episode_length = 0
 
-        return obs, reward, done, False, info
+        return obs, reward, terminated, truncated, info
+
+    def get_incumbent_cost(self) -> float:
+        """Get the current incumbent cost.
+
+        Returns
+        -------
+        float
+            Minimum cost found so far on this target function (not necessarily the reward).
+        """
+        return self._smac_instance.runhistory.get_min_cost(self._smac_instance.intensifier.get_incumbent())
 
     def reset(
         self,
         *,
-        seed: int | None = None,  # noqa: ARG002
+        seed: int | None = None,
         options: dict[str, Any] | None = None,  # noqa: ARG002
     ) -> tuple[ObsType, dict[str, Any]]:
         """Reset the environment.
@@ -269,22 +308,47 @@ class DACBOEnv(gym.Env):
             Additional information (empty).
         """
         # Reset SMAC instance
-        del self._smac_instance
-        del self._solver
+        if hasattr(self, "_carps_solver"):
+            del self._carps_solver
+        if hasattr(self, "_smac_instance"):
+            del self._smac_instance
 
-        new_seed = int(self._seeder.integers(low=0, high=2**32 - 1))
+        # Get next instance which is a combo of task id and seed
+        self.instance = self.get_next_instance()
+        seed, task_id = self.instance
+        if seed is None:
+            seed = int(self._seeder.integers(low=0, high=2**32 - 1))
 
-        self._solver = self._smac_instance_factory(new_seed)  # Update seed for new episode
-        self._smac_instance = self._solver.optimizer
+        # Build carps optimizer (wrapper around smac) with appropriate objective function
+        optimizer_id = "SMAC3-BlackBoxFacade" if self._optimizer_cfg is None else None
+        self._carps_solver = build_carps_optimizer(
+            optimizer_id=optimizer_id,
+            task_id=task_id,
+            seed=seed,
+            optimizer_cfg=self._optimizer_cfg,
+        )
+        # Get the smac instance
+        self._smac_facade = self._carps_solver.solver
+        self._smac_instance = self._carps_solver.solver.optimizer
 
-        self._observation_space._smac_instance = self._smac_instance
-        self._action_space._smac_instance = self._smac_instance
-        self._reward._smac_instance = self._smac_instance
+        if self._smac_instance._scenario.count_objectives() != 1:
+            raise NotImplementedError("Multi-objective not supported.")
 
-        if hasattr(self._action_space, "_last"):
-            self._action_space._last = 0
+        # Setup observation space
+        self._dacbo_observation_space = ObservationSpace(self._smac_instance, self._observation_keys)
+        self.observation_space = self._dacbo_observation_space.space  # gym observation space
 
-        super().reset(seed=new_seed)
+        # Setup action space
+        self._action_space = self._action_space_class(smac_instance=self._smac_instance, **self._action_space_kwargs)
+        self.action_space = self._action_space.space  # gym action space
+        self.action_space.seed(seed)  # Seed with current seed
+
+        # Setup reward
+        self._reward = DACBOReward(self._smac_instance, self._reward_keys, self._rho)
+
+        super().reset(seed=seed)
+        self.current_seed = seed
+        self.current_task_id = task_id
 
         # Work off new initial design
         for _ in self._smac_instance.intensifier.config_selector._initial_design_configs:
@@ -292,13 +356,9 @@ class DACBOEnv(gym.Env):
             _, trial_value = self._smac_instance._runner.run_wrapper(trial_info)
             self._smac_instance.tell(trial_info, trial_value)
 
-        initial_obs = (
-            np.atleast_1d(self._observation_space._observation_types[0].default).astype(np.float32)
-            if len(self._observation_space._observation_types) == 1
-            else {
-                obs.name: np.atleast_1d(obs.default).astype(np.float32)
-                for obs in self._observation_space._observation_types
-            }
-        )
+        initial_obs = {
+            obs.name: np.atleast_1d(obs.default).astype(np.float32)
+            for obs in self._dacbo_observation_space._observation_types
+        }
 
         return initial_obs, {}

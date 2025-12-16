@@ -184,3 +184,7 @@ outputs/
 *.out
 reference_performance
 *.parquet
+*.csv
+runs_eval
+dacboenv/configs/policy/optimized
+runs*

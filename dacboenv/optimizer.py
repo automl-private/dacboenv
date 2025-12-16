@@ -2,21 +2,22 @@
 
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from carps.optimizers.smac20 import SMAC3Optimizer
 from hydra.utils import get_class
 
-from dacboenv.dacboenv import DACBOEnv, ObsType
 from dacboenv.env.policy import Policy, RandomPolicy
 
 if TYPE_CHECKING:
     from carps.loggers.abstract_logger import AbstractLogger
     from carps.utils.task import Task
     from carps.utils.trials import TrialInfo, TrialValue
-    from omegaconf import DictConfig
     from smac.facade.abstract_facade import AbstractFacade
+
+    from dacboenv.dacboenv import DACBOEnv, ObsType
 
 from dacboenv.utils.loggingutils import dump_logs
 
@@ -29,10 +30,10 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
 
     Parameters
     ----------
-    task : Any
+    task : Task
         The optimization task.
-    smac_cfg : Any
-        SMAC configuration object.
+    dacboenv : DACBOEnv
+        DAC-BO Env. Contains the SMAC configuration.
     loggers : list, optional
         List of logger instances.
     expects_multiple_objectives : bool, optional
@@ -63,20 +64,16 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         Updates the optimizer and environment with the result of a trial.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         task: Task,
-        smac_cfg: DictConfig,
+        dacboenv: DACBOEnv,
+        seed: int | None = None,
         loggers: list[AbstractLogger] | None = None,
         expects_multiple_objectives: bool = False,  # noqa: FBT001, FBT002
         expects_fidelities: bool = False,  # noqa: FBT001, FBT002
-        observation_keys: list[str] | None = None,
-        action_mode: str = "parameter",
-        reward_keys: list[str] | None = None,
         policy_class: type[Policy] | str = RandomPolicy,
         policy_kwargs: dict[str, Any] | None = None,
-        rho: float = 0.05,
-        frequency: int = 1,
     ) -> None:
         """Initialize the DACBOEnvOptimizer.
 
@@ -84,8 +81,8 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         ----------
         task : Any
             The optimization task.
-        smac_cfg : Any
-            SMAC configuration object.
+        dacboenv : DACBOEnv
+            DAC-BO Env. Contains the SMAC configuration.
         loggers : list, optional
             List of logger instances.
         expects_multiple_objectives : bool, optional
@@ -108,18 +105,21 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         frequency : int, optional
             Frequency (in trials) with which to take environment steps.
         """
-        super().__init__(task, smac_cfg, loggers, expects_multiple_objectives, expects_fidelities)
+        super().__init__(
+            task,
+            loggers,
+            expects_fidelities=expects_fidelities,
+            expects_multiple_objectives=expects_multiple_objectives,
+        )
 
-        self._seed = self.smac_cfg.scenario.seed
-        self._dacboenv: DACBOEnv
+        self.configspace = self.task.input_space.configuration_space
+        self._solver: AbstractFacade | None = None
+
+        self._seed = seed
+        self._dacboenv: DACBOEnv = dacboenv
         self._state: ObsType
-        self._observation_keys = observation_keys
-        self._action_mode = action_mode
-        self._reward_keys = reward_keys
-        self._rho = rho
-        self._frequency = frequency
 
-        self._policy = policy_class if isinstance(policy_class, type) else get_class(policy_class)
+        self._policy_class = policy_class if isinstance(policy_class, type | partial) else get_class(policy_class)
 
         self._policy_kwargs = policy_kwargs if policy_kwargs is not None else {}
 
@@ -134,22 +134,21 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
 
         Returns
         -------
-        SMAC4AC
+        AbstractFacade
             Instance of a SMAC facade.
         """
-
-        def _smac_factory(seed: int) -> AbstractFacade:
-            self.smac_cfg.scenario.seed = seed
-            return super(type(self), self)._setup_optimizer()
-
-        self._dacboenv = DACBOEnv(
-            _smac_factory, self._observation_keys, self._action_mode, self._reward_keys, self._rho, self._seed
-        )
         self._state, _ = self._dacboenv.reset()
-
-        self._policy = self._policy(self._dacboenv, **self._policy_kwargs)
-
-        return self._dacboenv._solver
+        if self._seed != self._dacboenv._smac_instance._scenario.seed:
+            raise ValueError(f"Seeds not the same: {self._seed} != {self._dacboenv._smac_instance._scenario.seed}")
+        if self._dacboenv._carps_solver.task.name != self.task.name:
+            raise ValueError(f"Tasks not the same: {self._dacboenv._carps_solver.task.name} != {self.task.name}")
+        if self._dacboenv.instance_selector.instances != [(self._seed, self.task.name)]:
+            raise ValueError(
+                "Inner seed and task id not matching: "
+                f"{self._dacboenv.instance_selector.instances} != {[(self._seed, self.task.name)]}"
+            )
+        self._policy = self._policy_class(self._dacboenv, **self._policy_kwargs)
+        return self._dacboenv._smac_facade
 
     def ask(self) -> TrialInfo:
         """Ask the optimizer for a new trial to evaluate.
@@ -160,9 +159,7 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
             trial info (config, seed, instance, budget)
         """
         # Don't update during initial design
-        if len(self.solver.runhistory) % self._frequency == 0 and len(self.solver.runhistory) > len(
-            self.solver.intensifier.config_selector._initial_design_configs
-        ):
+        if len(self.solver.runhistory) > len(self.solver.intensifier.config_selector._initial_design_configs):
             assert self._policy is not None, "Policy must be initialized before calling ask."
             action = self._policy(self._state)
 

@@ -21,7 +21,6 @@ if TYPE_CHECKING:
 
     from dacboenv.dacboenv import ObsType
 
-import os
 
 from ConfigSpace.hyperparameters import (
     CategoricalHyperparameter,
@@ -179,7 +178,7 @@ knn_entropy_observation = ObservationType(
     else 0,
     0,
 )
-skewness_observation = ObservationType(
+y_skewness_observation = ObservationType(
     "y_skewness",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
     lambda smbo: np.nan_to_num(skew(costs).item(), nan=0)
@@ -187,7 +186,7 @@ skewness_observation = ObservationType(
     else 0,
     0,
 )
-kurtosis_observation = ObservationType(
+y_kurtosis_observation = ObservationType(
     "y_kurtosis",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
     lambda smbo: np.nan_to_num(kurtosis(costs).item(), nan=0)
@@ -195,7 +194,7 @@ kurtosis_observation = ObservationType(
     else 0,
     0,
 )
-mean_observation = ObservationType(
+y_mean_observation = ObservationType(
     "y_mean",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
     lambda smbo: np.mean(costs) if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 0 else 0,
@@ -316,54 +315,39 @@ gp_hp_observation = MultiObservationType(
     ],
 )
 
-if os.environ["OBS"] == "SINGLE":
-    ALL_OBSERVATIONS = [
-        trials_left_observation,
-    ]
-    MULTI_OBSERVATIONS: list[MultiObservationType] = []
-elif os.environ["OBS"] == "SMART":
-    ALL_OBSERVATIONS = [
-        trials_passed_observation,
-        trials_left_observation,
-        ubr_observation,
-        knn_entropy_observation,
-        mean_observation,
-    ]
-    MULTI_OBSERVATIONS = []
-else:
-    ALL_OBSERVATIONS = [
-        incumbent_change_observation,
-        trials_passed_observation,
-        trials_left_observation,
-        ubr_observation,
-        # modelfit_observation, # Disabled due to high computation time, behavior similar to UBR
-        # dimensions_observation,
-        # continuous_hp_observation,
-        # categorical_hp_observation,
-        # ordinal_hp_observation,
-        # int_hp_observation,
-        tsp_observation,
-        knn_entropy_observation,
-        skewness_observation,
-        kurtosis_observation,
-        mean_observation,
-        std_observation,
-        variability_observation,
-        tsp_best_observation,
-        knn_entropy_best_observation,
-        skewness_best_observation,
-        kurtosis_best_observation,
-        mean_best_observation,
-        std_best_observation,
-        variability_best_observation,
-        budget_percentage_observation,
-        inc_improvement_scaled_observation,
-        has_categorical_hps,
-        knn_difference_observation,
-        ubr_difference_observation,
-    ]
+ALL_OBSERVATIONS = [
+    incumbent_change_observation,
+    trials_passed_observation,
+    trials_left_observation,
+    ubr_observation,
+    # modelfit_observation, # Disabled due to high computation time, behavior similar to UBR
+    dimensions_observation,
+    continuous_hp_observation,
+    categorical_hp_observation,
+    ordinal_hp_observation,
+    int_hp_observation,
+    tsp_observation,
+    knn_entropy_observation,
+    y_skewness_observation,
+    y_kurtosis_observation,
+    y_mean_observation,
+    std_observation,
+    variability_observation,
+    tsp_best_observation,
+    knn_entropy_best_observation,
+    skewness_best_observation,
+    kurtosis_best_observation,
+    mean_best_observation,
+    std_best_observation,
+    variability_best_observation,
+    budget_percentage_observation,
+    inc_improvement_scaled_observation,
+    has_categorical_hps,
+    knn_difference_observation,
+    ubr_difference_observation,
+]
 
-    MULTI_OBSERVATIONS = [gp_hp_observation]
+MULTI_OBSERVATIONS = [gp_hp_observation]
 
 
 class ObservationSpace:
@@ -436,10 +420,7 @@ class ObservationSpace:
             if key in ObservationSpace._MULTI_OBSERVATION_MAP
             for space in ObservationSpace._MULTI_OBSERVATION_MAP[key].create(smac_instance)
         ]
-        if len(self._observation_types) == 1:
-            self._observation_space = self._observation_types[0].space
-        else:
-            self._observation_space = Dict({obs.name: obs.space for obs in self._observation_types})
+        self._observation_space = Dict({obs.name: obs.space for obs in self._observation_types})
 
     @property
     def space(self) -> Space:
@@ -460,8 +441,6 @@ class ObservationSpace:
         ObsType
             Dictionary mapping observation names to their computed values.
         """
-        if len(self._observation_types) == 1:
-            return np.atleast_1d(self._observation_types[0].compute(self._smac_instance)).astype(np.float32)
         return {
             obs.name: np.atleast_1d(obs.compute(self._smac_instance)).astype(np.float32)
             for obs in self._observation_types

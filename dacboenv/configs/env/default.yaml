@@ -1,0 +1,8 @@
+# @package _global_
+
+defaults:
+  - env: base
+  - opt: base
+  - action: ucb_beta_continuous
+  - obs: smart
+  - reward: ep_done_scaled

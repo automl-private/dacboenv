@@ -26,7 +26,7 @@ install:
 carps:
 	git clone --branch $(CARPSBRANCH) git@github.com:automl/CARP-S.git lib/CARP-S
 	cd lib/CARP-S && $(UV) pip install -e '.[dev]' && pre-commit install
-	export PIP="uv pip" && $(PYTHON) -m carps.build.make benchmark_bbob benchmark_yahpo benchmark_mfpbench optimizer_optuna optimizer_ax
+	export PIP="uv pip" && $(PYTHON) -m carps.build.make benchmark_bbob #benchmark_yahpo benchmark_mfpbench optimizer_optuna optimizer_ax
 	$(PYTHON) -m carps.utils.index_configs
 
 smac:
@@ -56,3 +56,6 @@ clean-build:
 build:
 	$(PYTHON) -m $(PIP) install build
 	$(PYTHON) -m build --sdist
+
+collect_incumbents:
+	$(PYTHON) -m dacboenv.experiment.collect_incumbents runs

@@ -1,0 +1,18 @@
+#!/bin/bash
+#SBATCH -t 24:00:00
+#SBATCH -J "ac4dacbo"
+#SBATCH --cpus-per-task=11
+#SBATCH --mem=16G
+#SBATCH -p normal
+#SBATCH --array=1-5
+
+
+BASE="carps.run hydra.searchpath=[pkg://dacboenv/configs]"
+SEED="seed=range(1,11)"
+CLUSTER="+cluster=cpu_noctua"
+
+# python -m $BASE seed=$SLURM_ARRAY_TASK_ID +opt=smac +task=dacboenv_epdonescaledpluslogregret +instances=bbob2d_1_3seeds optimizer.smac_cfg.scenario.n_workers=10
+# python -m $BASE seed=$SLURM_ARRAY_TASK_ID +opt=smac +task=dacboenv_epdonescaledpluslogregret +instances=bbob2d_3seeds optimizer.smac_cfg.scenario.n_workers=10
+# python -m $BASE seed=$SLURM_ARRAY_TASK_ID +opt=smac +task=dacboenv_epdonescaledpluslogregret_wei +instances=bbob2d_3seeds optimizer.smac_cfg.scenario.n_workers=10
+python -m $BASE seed=$SLURM_ARRAY_TASK_ID +opt=smac +task=dacboenv_epdonescaledpluslogregret_wei +instances=bbob2d_1_3seeds optimizer.smac_cfg.scenario.n_workers=10
+# python -m $BASE seed=$SLURM_ARRAY_TASK_ID +opt=smac +task=dacboenv_epdonescaledpluslogregret_trialsleft +instances=bbob2d_1_3seeds optimizer.smac_cfg.scenario.n_workers=10

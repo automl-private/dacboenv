@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
@@ -64,7 +65,66 @@ auc_reward_alt = RewardType(
     else 0,
 )
 
-ALL_REWARDS = [incumbent_improvement_reward]  # [incumbent_cost_reward, incumbent_improvement_reward, auc_reward]
+
+def get_initial_design_size(solver: SMBO) -> int:
+    """Get the size of the initial design.
+
+    Parameters
+    ----------
+    solver : smac.main.smbo.SMBO
+        The optimizer.
+
+    Returns
+    -------
+    int
+        Initial design size.
+    """
+    return len(solver.intensifier.config_selector._initial_design_configs)
+
+
+def get_reward_for_episode_finished(smbo: SMBO, scale_by_budget: bool = False) -> float:  # noqa: FBT001, FBT002
+    """Get reward (or rather punishment: -1) as long the episode is not finished.
+
+    Typically, the episode is finished after DAC-BO has reached reference performance.
+
+    Parameters
+    ----------
+    smbo : SMBO
+        The SMAC instance.
+    scale_by_budget : bool, optional
+        Whether to scale by the model-based budget, by default False. If yes, return -1/b.
+
+    Returns
+    -------
+    float
+        Reward value: -1 if the episode is not finished, or -1 divided by the model-based budget
+        if `scale_by_budget` is True.
+    """
+    if not scale_by_budget:
+        return -1
+
+    n_initial_design = get_initial_design_size(smbo)
+    n_smbo = smbo._scenario.n_trials
+    n_model_based = n_smbo - n_initial_design
+
+    return -1 / n_model_based
+
+
+episode_finished = RewardType("episode_finished", get_reward_for_episode_finished)
+
+episode_finished_scaled = RewardType(
+    "episode_finished_scaled", partial(get_reward_for_episode_finished, scale_by_budget=True)
+)
+
+ALL_REWARDS = [
+    auc_reward,
+    incumbent_cost_reward,
+    incumbent_improvement_reward,
+    sqrt_incumbent_improvement_reward,
+    auc_reward_alt,
+    episode_finished,
+    episode_finished_scaled,
+]
 
 
 class DACBOReward:
@@ -136,8 +196,6 @@ class DACBOReward:
         dict[str, float]
             All sub-rewards.
         """
-        if len(self._reward_types) == 1:
-            return self._reward_types[0].compute(self._smac_instance)
         return {rew.name: rew.compute(self._smac_instance) for rew in self._reward_types}
 
     def get_reward(self) -> float:
@@ -148,5 +206,8 @@ class DACBOReward:
         float
             The computed reward value.
         """
+        full_reward = self._get_full_reward()
+        if len(self._reward_types) == 1:
+            return next(iter(full_reward.values()))
         # Multi-objective using ParEGO
-        return self._parego([rew.compute(self._smac_instance) for rew in self._reward_types])
+        return self._parego(list(full_reward.values()))

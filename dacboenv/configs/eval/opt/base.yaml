@@ -1,0 +1,11 @@
+# @package _global_
+
+optimizer_id: DACBOEnvOptimizer
+optimizer_container_id: SMAC3
+optimizer:
+  _target_: dacboenv.optimizer.DACBOEnvOptimizer
+  _partial_: true
+  task: ${task}
+  dacboenv: ${dacboenv}
+  policy_class: ???
+  policy_kwargs: ???

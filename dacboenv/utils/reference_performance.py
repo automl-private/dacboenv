@@ -67,6 +67,27 @@ class ReferencePerformance:
             reference_performance_fn=self.reference_performance_fn,
         )
 
+    def query_cost(self, optimizer_id: str, task_id: str, seed: int) -> float:
+        """Query cost from reference performance data.
+
+        Parameters
+        ----------
+        optimizer_id : str
+            The optimizer id.
+        task_id : str
+            The task id.
+        seed : int
+            The seed.
+
+        Returns
+        -------
+        float
+            Cost of final incumbent.
+        """
+        ids = [(optimizer_id, task_id, seed)]
+        index_columns = ["optimizer_id", "task_id", "seed"]
+        return self.perf_df.set_index(index_columns).loc[ids].iloc[0]["trial_value__cost_inc"]
+
 
 def get_seed_override(seeds: list[int]) -> str:
     """Get seed override.
@@ -218,6 +239,7 @@ def lookup_performance(
             n_processes=n_processes,
         )
 
+    logger.info(f"Loading performance data from {reference_performance_fn}")
     reference_df = pd.read_parquet(reference_performance_fn)
     combos = list(itertools.product([optimizer_id], task_ids, seeds))
     # Create a MultiIndex from combos (each element is a tuple)
@@ -231,12 +253,13 @@ def lookup_performance(
 
     # Convert to list of tuples if needed
     missing_combos = list(missing_idx)
-    grouped_missing_combos = group_tuples(missing_combos)
-    run_reference_optimizer(
-        reference_performance_fn=reference_performance_fn,
-        grouped_tuples=grouped_missing_combos,
-        n_processes=n_processes,
-    )
+    if len(missing_combos) > 0:
+        grouped_missing_combos = group_tuples(missing_combos)
+        run_reference_optimizer(
+            reference_performance_fn=reference_performance_fn,
+            grouped_tuples=grouped_missing_combos,
+            n_processes=n_processes,
+        )
     reference_df = pd.read_parquet(reference_performance_fn)
 
     # Select matching rows
@@ -411,4 +434,57 @@ def run_reference_optimizer(
 
 if __name__ == "__main__":
     # get_reference_performance(["+optimizer/smac20=blackbox", "+task/BBOB=cfg_2_1_0", "seed=1234"])
-    ReferencePerformance(optimizer_id="SMAC3-BlackBoxFacade", task_ids=["bbob/2/6/0"], seeds=[1, 2])
+    ReferencePerformance(
+        optimizer_id="SMAC3-BlackBoxFacade",
+        task_ids=[
+            "bbob/2/1/0",
+            "bbob/2/2/0",
+            "bbob/2/3/0",
+            "bbob/2/4/0",
+            "bbob/2/5/0",
+            "bbob/2/6/0",
+            "bbob/2/7/0",
+            "bbob/2/8/0",
+            "bbob/2/9/0",
+            "bbob/2/10/0",
+            "bbob/2/11/0",
+            "bbob/2/12/0",
+            "bbob/2/13/0",
+            "bbob/2/14/0",
+            "bbob/2/15/0",
+            "bbob/2/16/0",
+            "bbob/2/17/0",
+            "bbob/2/18/0",
+            "bbob/2/19/0",
+            "bbob/2/20/0",
+            "bbob/2/21/0",
+            "bbob/2/22/0",
+            "bbob/2/23/0",
+            "bbob/2/24/0",
+            "bbob/4/1/0",
+            "bbob/4/2/0",
+            "bbob/4/3/0",
+            "bbob/4/4/0",
+            "bbob/4/5/0",
+            "bbob/4/6/0",
+            "bbob/4/7/0",
+            "bbob/4/8/0",
+            "bbob/4/9/0",
+            "bbob/4/10/0",
+            "bbob/4/11/0",
+            "bbob/4/12/0",
+            "bbob/4/13/0",
+            "bbob/4/14/0",
+            "bbob/4/15/0",
+            "bbob/4/16/0",
+            "bbob/4/17/0",
+            "bbob/4/18/0",
+            "bbob/4/19/0",
+            "bbob/4/20/0",
+            "bbob/4/21/0",
+            "bbob/4/22/0",
+            "bbob/4/23/0",
+            "bbob/4/24/0",
+        ],
+        seeds=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    )

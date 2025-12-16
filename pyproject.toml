@@ -11,7 +11,9 @@ dependencies = [
     "gymnasium>=1.1.1",
     "rich>=14.1.0",
     "smac>=2.3.1",
-    "carps"
+    "carps",
+    "tqdm",
+    "stable-baselines3[extra]"
 ]
 
 requires-python = ">=3.9"
@@ -61,6 +63,9 @@ dev = [
   "pytest-coverage",
   "pytest-cases",
   "pytest-xdist",
+]
+experiments = [
+  "stable-baselines3[extra]"
 ]
 
 # https://docs.pytest.org/en/7.2.x/reference/reference.html#ini-options-ref

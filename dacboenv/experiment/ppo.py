@@ -86,21 +86,6 @@ def main(cfg: DictConfig) -> None:
     env_fns = [make_env(cfg=cfg, seed_offset=i) for i in range(n_workers)]
     vec_env = SubprocVecEnv(env_fns)
 
-    # if cfg.eval_random_policy:
-    #     n_eval_episodes = len(task.objective_function._env.instance_selector.instances)
-    #     logger.info(f"Evaluating random policy on {n_eval_episodes} instances...")
-    #     eval_env = make_env(cfg=cfg)()
-    #     random_policy = RandomPolicy(env=eval_env)
-    #     mean_reward, std_reward = evaluate_policy(
-    #         env=eval_env, n_episodes=n_eval_episodes,
-    #         policy=random_policy
-    #     )
-    #     del eval_env
-    #     logger.info(f"Random policy reward: {mean_reward:.2f} +/- {std_reward:.2f}")
-
-    #     with open(rundir / "randompolicy.txt", "w") as out:
-    #         out.write(f"Random policy reward: {mean_reward:.2f} +/- {std_reward:.2f}\n")
-
     model: BaseAlgorithm = instantiate(cfg.optimizer)(
         env=vec_env, policy_kwargs=policy_kwargs, tensorboard_log=rundir / "tensorboard"
     )

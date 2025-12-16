@@ -1,7 +1,9 @@
 # @package _global_
 defaults:
-  - ../env: default
+  - ../env/opt: base
   - ../env/action: wei_alpha_continuous
+  - ../env/obs: smart
+  - ../env/reward: ep_done_scaled
 
 dacboenv:
   terminate_after_reference_performance_reached: true
@@ -10,7 +12,7 @@ benchmark_id: DACBO
 task_id: ${task.name}
 task:
   _target_: carps.utils.task.Task
-  name: dacbo_${task.objective_function.cost}_on_${instance_set_id}_obs${observations_id}
+  name: dacbo_${task.objective_function.cost}_on_${instance_set_id}_obs${observations_id}-WEI
   seed: ${seed}
   objective_function:
     _target_: dacboenv.task.PerceptronDACBOObjectiveFunction

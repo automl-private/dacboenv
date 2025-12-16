@@ -239,6 +239,7 @@ def lookup_performance(
             n_processes=n_processes,
         )
 
+    logger.info(f"Loading performance data from {reference_performance_fn}")
     reference_df = pd.read_parquet(reference_performance_fn)
     combos = list(itertools.product([optimizer_id], task_ids, seeds))
     # Create a MultiIndex from combos (each element is a tuple)

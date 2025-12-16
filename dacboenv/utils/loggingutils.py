@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -125,7 +126,7 @@ def dump_logs(log_data: dict, filename: str) -> None:
         file.writelines([log_data_str])
 
 
-def maybe_remove_logs(
+def maybe_remove_logs(  # noqa: C901
     directory: str | None = None,
     overwrite: bool = True,  # noqa: FBT001, FBT002
     logfile: str = "results.jsonl",
@@ -155,13 +156,19 @@ def maybe_remove_logs(
         if overwrite:
             if logger is not None:
                 logger.info(f"Found previous run. Removing '{_directory}'.")
-            for root, _dirs, files in os.walk(_directory):
+            for root, dirs, files in os.walk(_directory, topdown=False):
                 for f in files:
                     full_fn = Path(root) / f
                     if ".hydra" not in str(full_fn):
-                        Path(full_fn).unlink()
-                        if logger is not None:
-                            logger.debug(f"Removed {full_fn}")
+                        full_fn.unlink()
+                        if logger:
+                            logger.debug(f"Removed file {full_fn}")
+                for d in dirs:
+                    full_dir = Path(root) / d
+                    if ".hydra" not in str(full_dir):
+                        shutil.rmtree(full_dir)
+                        if logger:
+                            logger.debug(f"Removed directory {full_dir}")
         else:
             raise RuntimeError(
                 f"Found previous run at '{_directory}'. Stopping run. If you want to overwrite, specify overwrite "

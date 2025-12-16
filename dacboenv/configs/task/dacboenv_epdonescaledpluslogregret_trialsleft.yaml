@@ -2,6 +2,7 @@
 defaults:
   - base
   - objfun: perceptron
+  - ../env: base
   - ../env/opt: base
   - ../env/action: ucb_beta_continuous
   - ../env/obs: trialsleft

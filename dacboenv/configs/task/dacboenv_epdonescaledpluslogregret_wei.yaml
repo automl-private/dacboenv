@@ -2,6 +2,7 @@
 defaults:
   - base
   - objfun: perceptron
+  - ../env: base
   - ../env/opt: base
   - ../env/action: wei_alpha_continuous
   - ../env/obs: smart

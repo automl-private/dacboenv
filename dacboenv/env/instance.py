@@ -42,6 +42,7 @@ class InstanceSelector(ABC):
         self.seeds = seeds
         self.instances = list(itertools.product(self.seeds, self.task_ids))
         self.idx: int = 0
+        self.selector_seed = selector_seed
         self.rng = np.random.default_rng(seed=selector_seed)
 
     @abstractmethod

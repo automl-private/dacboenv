@@ -1,5 +1,6 @@
 # @package _global_
 
+action_space_id: UCB-cont
 dacboenv:
   action_space_class:
     _target_: dacboenv.env.action.AcqParameterActionSpace

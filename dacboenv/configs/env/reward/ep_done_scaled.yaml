@@ -1,5 +1,6 @@
 # @package _global_
 
+reward_id: episode_finished_scaled
 dacboenv:
   reward_keys:
     - episode_finished_scaled

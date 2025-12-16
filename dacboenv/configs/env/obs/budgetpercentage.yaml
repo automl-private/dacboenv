@@ -1,0 +1,6 @@
+# @package _global_
+
+observation_space_id: budgetpercentage
+dacboenv:
+  observation_keys:
+    - budget_percentage

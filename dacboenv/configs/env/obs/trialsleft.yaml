@@ -1,6 +1,6 @@
 # @package _global_
 
-observations_id: trialsleft
+observation_space_id: trialsleft
 dacboenv:
   observation_keys:
     - trials_left

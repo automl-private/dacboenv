@@ -16,3 +16,6 @@ OmegaConf.register_new_resolver(name="emptylist", resolver=list, replace=True)
 OmegaConf.register_new_resolver(
     name="get_instance_features", resolver=lambda x: {v: [i] for i, v in enumerate(x)}, replace=True
 )
+OmegaConf.register_new_resolver(
+    name="yahpo_ntrials", resolver=lambda x: int(np.ceil(20 + 40 * np.sqrt(x))), replace=True
+)

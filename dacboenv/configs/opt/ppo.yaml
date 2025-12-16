@@ -21,7 +21,7 @@ optimizer:
       vf: []
   seed: ${seed}
   n_epochs: 3
-  n_steps: ${task.metadata.dimensions}  # TODO make variable for different dims in instance set
+  n_steps: ${yahpo_ntrials:${task.metadata.dimensions}}  # TODO make variable for different dims in instance set
   batch_size: ${divideint:${multiply:${experiment.n_workers},${optimizer.n_steps}},2}
 
 dacboenv:

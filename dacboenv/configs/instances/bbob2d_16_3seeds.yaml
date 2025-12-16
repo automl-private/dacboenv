@@ -1,0 +1,10 @@
+# @package _global_
+
+instance_set_id: bbob2d_fid16_3seeds
+dacboenv:
+  task_ids:
+    - bbob/2/16/0
+  inner_seeds:
+    - 1
+    - 2
+    - 3

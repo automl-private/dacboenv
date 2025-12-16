@@ -24,6 +24,32 @@ if TYPE_CHECKING:
     from dacboenv.dacboenv import DACBOEnv
 
 
+def get_dacbo_task_name(
+    cost_type: str, action_space_id: str, observation_space_id: str, reward_id: str, instance_set_id: str
+) -> str:
+    """Get task name for DACBO task.
+
+    Parameters
+    ----------
+    cost_type : str
+        The cost id of the target function.
+    action_space_id : str
+        The action space id of DACBOEnv.
+    observation_space_id: str
+        The observation space id of DACBOEnv.
+    reward_id : str
+        The reward id of DACBOEnv.
+    instance_set_id : str
+        The instance set id of DACBOEnv.
+
+    Returns
+    -------
+    str
+        DACBO task name.
+    """
+    return f"dacbo_C{cost_type}_A{action_space_id}_S{observation_space_id}_R{reward_id}_I{instance_set_id}"
+
+
 def get_perceptron_configspace(n_obs: int, weight_bounds: tuple[float, float]) -> ConfigurationSpace:
     """Get configuration space for perceptron policy.
 
@@ -89,7 +115,7 @@ def rollout(env: DACBOEnv, policy: Policy, max_episode_length: int = 100000) -> 
 
     rewards = []
 
-    while not (terminated | truncated):
+    while not (terminated or truncated):
         action = policy(obs)
         obs, reward, terminated, truncated, info = env.step(action=action)
         counter += 1
@@ -99,12 +125,13 @@ def rollout(env: DACBOEnv, policy: Policy, max_episode_length: int = 100000) -> 
 
     cost_inc = env.get_incumbent_cost()
     reward_mean = np.mean(rewards)
+    reward_std = np.std(rewards)
 
     return {
         "instance": env.instance,
         "cost_inc": cost_inc,
         "reward_mean": reward_mean,
-        "rewards": rewards,
+        "reward_std": reward_std,
         "episode_length": counter,
     }
 
@@ -152,7 +179,7 @@ class DACBOObjectiveFunction(ObjectiveFunction):
         self._cost = cost
 
         # Create action space and observation space
-        _, _ = self._env.reset()
+        self._env.reset()
 
     @abstractmethod
     def make_policy(self, config: Configuration, seed: int | None = None) -> Policy:
@@ -191,7 +218,7 @@ class DACBOObjectiveFunction(ObjectiveFunction):
 
     def _evaluate(self, trial_info: TrialInfo) -> TrialValue:
         starttime = time.time()
-        cost = self.target_function(
+        cost, info = self.target_function(
             config=trial_info.config,
             budget=trial_info.budget,
             instance=trial_info.instance,
@@ -203,6 +230,7 @@ class DACBOObjectiveFunction(ObjectiveFunction):
 
         internal_seed = self._get_internal_seed(trial_info.seed)
         additional_info = {"internal_seed": internal_seed, "cutoff": trial_info.cutoff}
+        additional_info.update(info)
         return TrialValue(
             cost=cost, time=duration, starttime=starttime, endtime=endtime, additional_info=additional_info
         )
@@ -256,7 +284,7 @@ class DACBOObjectiveFunction(ObjectiveFunction):
         instance: str | None = None,
         seed: int | None = None,
         cutoff: float | None = None,
-    ) -> float:
+    ) -> tuple[float, dict[str, Any]]:
         """The SMAC compatible target function.
 
         Parameters
@@ -274,8 +302,8 @@ class DACBOObjectiveFunction(ObjectiveFunction):
 
         Returns
         -------
-        float
-            Cost as runtime: episode_length/model_based_budget
+        tuple[float, dict[str, Any]]
+            Cost as runtime: episode_length/model_based_budget, info dict containing info about rollouts.
         """
         internal_seed = self._get_internal_seed(seed)
 
@@ -302,7 +330,7 @@ class DACBOObjectiveFunction(ObjectiveFunction):
             return ep_done_scaled + max(0, log_regret)
         if self._cost == "cost_inc":
             return result["cost_inc"]
-        raise ValueError(f"Cannot handle request cost: {self._cost}.")
+        raise ValueError(f"Cannot handle requested cost: {self._cost}.")
 
 
 class PerceptronDACBOObjectiveFunction(DACBOObjectiveFunction):

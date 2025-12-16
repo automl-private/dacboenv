@@ -97,7 +97,8 @@ def get_reward_for_episode_finished(smbo: SMBO, scale_by_budget: bool = False) -
     Returns
     -------
     float
-        Reward value: -1 if the episode is not finished, or -1 divided by the model-based budget if `scale_by_budget` is True.
+        Reward value: -1 if the episode is not finished, or -1 divided by the model-based budget
+        if `scale_by_budget` is True.
     """
     if not scale_by_budget:
         return -1
@@ -195,8 +196,6 @@ class DACBOReward:
         dict[str, float]
             All sub-rewards.
         """
-        if len(self._reward_types) == 1:
-            return self._reward_types[0].compute(self._smac_instance)
         return {rew.name: rew.compute(self._smac_instance) for rew in self._reward_types}
 
     def get_reward(self) -> float:
@@ -207,5 +206,8 @@ class DACBOReward:
         float
             The computed reward value.
         """
+        full_reward = self._get_full_reward()
+        if len(self._reward_types) == 1:
+            return next(iter(full_reward.values()))
         # Multi-objective using ParEGO
-        return self._parego([rew.compute(self._smac_instance) for rew in self._reward_types])
+        return self._parego(list(full_reward.values()))

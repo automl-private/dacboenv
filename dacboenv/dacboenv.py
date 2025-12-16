@@ -97,7 +97,7 @@ class DACBOEnv(gym.Env):
         ----------
         task_ids : list[str], optional
             The carps task ids that BO should run on.
-        optimizer_cfg : DictCOnfig, optional
+        optimizer_cfg : DictConfig, optional
             The carps (SMAC) optimizer config. Defaults to `SMAC3-BlackBoxFacade` which is the standard blackbox
             facade with a GP.
         observation_keys : list[str], optional
@@ -348,6 +348,8 @@ class DACBOEnv(gym.Env):
         super().reset(seed=seed)
         self.current_seed = seed
         self.current_task_id = task_id
+
+        # TODO merge main to run through initial design
 
         initial_obs = {
             obs.name: np.atleast_1d(obs.default).astype(np.float32)

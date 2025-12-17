@@ -4,8 +4,8 @@ defaults:
   - objfun: perceptron
   - ../env: base
   - ../env/opt: base
-  - ../env/action: ucb_beta_continuous
-  - ../env/obs: trialsleft
+  - ../env/action: wei_alpha_continuous
+  - ../env/obs: budgetpercentage
   - ../env/reward: ep_done_scaled
 
 dacboenv:

@@ -1,5 +1,6 @@
 tasks=(
     "+task=dacboenv_epdonescaledpluslogregret_budgetpercentage"
+    "+task=dacboenv_epdonescaledpluslogregret_budgetpercentage_wei"
     "+task=dacboenv_epdonescaledpluslogregret_wei"
     "+task=dacboenv_epdonescaledpluslogregret"
 )

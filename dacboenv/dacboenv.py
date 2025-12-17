@@ -265,13 +265,16 @@ class DACBOEnv(gym.Env):
             logger.info(f"Current: {curr_incumbent:.4f}, threshold: {threshold:.4f}, log distance: {log_distance:.4f}")
             terminated = curr_incumbent < threshold  # We minimize
 
-        truncated = self._smac_instance.remaining_trials <= 0
+        remaining_trials = self._smac_instance._scenario.n_trials - self._smac_instance.runhistory.finished
+        truncated = remaining_trials <= 0
 
         info = {}
         if terminated or truncated:
             info["episode"] = {"r": self._episode_reward, "l": self._episode_length}
             self._episode_reward = 0
             self._episode_length = 0
+
+        logger.info(f"Reward: {reward}, terminated: {terminated}, truncated: {truncated}, info: {info}")
 
         return obs, reward, terminated, truncated, info
 

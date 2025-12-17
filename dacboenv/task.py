@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from carps.objective_functions.objective_function import ObjectiveFunction
+from carps.utils.loggingutils import get_logger
 from carps.utils.trials import TrialValue
 from ConfigSpace import Configuration, ConfigurationSpace, Float
 from hydra.utils import get_class
@@ -22,6 +23,8 @@ if TYPE_CHECKING:
     from carps.utils.trials import TrialInfo
 
     from dacboenv.dacboenv import DACBOEnv
+
+logger = get_logger("DACBOObjFun")
 
 
 def get_dacbo_task_name(
@@ -231,6 +234,7 @@ class DACBOObjectiveFunction(ObjectiveFunction):
         internal_seed = self._get_internal_seed(trial_info.seed)
         additional_info = {"internal_seed": internal_seed, "cutoff": trial_info.cutoff}
         additional_info.update(info)
+        logger.info(f"Info: {info}")
         return TrialValue(
             cost=cost, time=duration, starttime=starttime, endtime=endtime, additional_info=additional_info
         )

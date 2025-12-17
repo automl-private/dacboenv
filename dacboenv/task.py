@@ -325,10 +325,10 @@ class DACBOObjectiveFunction(ObjectiveFunction):
         result = rollout(env=self._env, policy=policy, max_episode_length=max_episode_length)
 
         if self._cost == "episode_length_scaled":
-            ep_length = result["episode_length"] - n_initial_design
+            ep_length = result["episode_length"]  # Is the episode length for the model based part
             cost = ep_length / n_model_based
         elif self._cost == "episode_length_scaled_plus_logregret":
-            ep_done_scaled = (result["episode_length"] - n_initial_design) / n_model_based
+            ep_done_scaled = result["episode_length"] / n_model_based
             regret = abs(result["cost_inc"] - self._env.current_threshold)
             log_regret = safe_log10(regret)
             cost = ep_done_scaled + max(0, log_regret)

@@ -305,7 +305,7 @@ def collect(rundir: str = "runs") -> None:
         The rundir containing the optimization runs or whatever.
     """
     _rundir = Path(rundir)
-    traj_df_smac, cincs_df_smac = gather_data_smac(_rundir / "SMAC")
+    traj_df_smac, cincs_df_smac = gather_data_smac(_rundir / "SMAC-AC")
     traj_df_cma, cincs_df_cma = gather_data_cma(_rundir / "CMA-1.3")
     trajectory_df = pd.concat([traj_df_smac, traj_df_cma]).reset_index(drop=True)
     configs_inc_df = pd.concat([cincs_df_smac, cincs_df_cma]).reset_index(drop=True)

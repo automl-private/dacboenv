@@ -1,0 +1,28 @@
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  smac_format:
+    format: "SMAC(external): %(message)s"
+    datefmt: "[%X]"
+
+handlers:
+  smac_rich:
+    class: rich.logging.RichHandler
+    level: NOTSET
+    formatter: smac_format
+    rich_tracebacks: true
+
+  smac_console:
+    class: logging.StreamHandler
+    level: NOTSET
+    formatter: smac_format
+    stream: ext://sys.stdout
+
+loggers:
+  smac:
+    level: NOTSET
+    handlers:
+      - smac_rich
+      # - smac_console
+    propagate: false

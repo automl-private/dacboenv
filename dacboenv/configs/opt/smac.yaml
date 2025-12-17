@@ -24,9 +24,14 @@ optimizer:
       runtime_cutoff: null
       n_workers: 1
     smac_kwargs:
+      logging_level:
+          _target_: pathlib.Path
+          _args_:
+            - dacboenv/configs/logging/smac_external.yaml
       dask_client: null
       overwrite: false
       intensifier:
         _target_: smac.intensifier.intensifier.Intensifier
         _partial_: true
         max_config_calls: ${multiply:${len:${dacboenv.task_ids}},${len:${dacboenv.inner_seeds}}}
+

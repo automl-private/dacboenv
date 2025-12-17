@@ -1,0 +1,6 @@
+# @package _global_
+dacboenv:
+  optimizer_cfg:
+    smac_cfg:
+      smac_kwargs:
+        logging_level: false

@@ -6,13 +6,12 @@
 #SBATCH -p normal
 #SBATCH --array=1-5
 
-
+if [ -z "$SLURM_ARRAY_TASK_ID" ]; then
+    SLURM_ARRAY_TASK_ID=1
+fi
 BASE="carps.run hydra.searchpath=[pkg://dacboenv/configs]"
-SEED="seed=range(1,11)"
-CLUSTER="+cluster=cpu_noctua"
 
-# python -m $BASE seed=$SLURM_ARRAY_TASK_ID +opt=smac +task=dacboenv_epdonescaledpluslogregret +instances=bbob2d_1_3seeds optimizer.smac_cfg.scenario.n_workers=10
-# python -m $BASE seed=$SLURM_ARRAY_TASK_ID +opt=smac +task=dacboenv_epdonescaledpluslogregret +instances=bbob2d_3seeds optimizer.smac_cfg.scenario.n_workers=10
-# python -m $BASE seed=$SLURM_ARRAY_TASK_ID +opt=smac +task=dacboenv_epdonescaledpluslogregret_wei +instances=bbob2d_3seeds optimizer.smac_cfg.scenario.n_workers=10
-python -m $BASE seed=$SLURM_ARRAY_TASK_ID +opt=smac +task=dacboenv_epdonescaledpluslogregret_wei +instances=bbob2d_1_3seeds optimizer.smac_cfg.scenario.n_workers=10
-# python -m $BASE seed=$SLURM_ARRAY_TASK_ID +opt=smac +task=dacboenv_epdonescaledpluslogregret_trialsleft +instances=bbob2d_1_3seeds optimizer.smac_cfg.scenario.n_workers=10
+TASK_OVERRIDE=$1
+INSTANCE_SET_OVERRIDE=$2
+
+python -m $BASE seed=$SLURM_ARRAY_TASK_ID +opt=smac $TASK_OVERRIDE $INSTANCE_SET_OVERRIDE optimizer.smac_cfg.scenario.n_workers=10

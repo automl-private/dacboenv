@@ -68,12 +68,6 @@ def main(cfg: DictConfig) -> None:
         policy_kwargs = OmegaConf.to_container(cfg=cfg.optimizer.policy_kwargs, resolve=True)
         del cfg.optimizer.policy_kwargs
 
-    n_workers = cfg.experiment.n_workers
-    task = make_task(cfg)
-    len_episode = cfg.optimizer.n_steps
-
-    n_episodes = cfg.experiment.n_episodes
-
     def make_env(cfg: DictConfig, seed_offset: int = 0) -> Callable:
         def _init() -> DACBOEnv:
             cfg.seed = cfg.seed + seed_offset
@@ -82,11 +76,28 @@ def main(cfg: DictConfig) -> None:
 
         return _init
 
+    n_workers = cfg.experiment.n_workers
+    task = make_task(cfg)
+
+    n_episodes = cfg.experiment.n_episodes
+
+    # Extract n_trials from inner opt
+    env = make_env(cfg)()
+    env.reset()
+    inner_optimizer = env._carps_solver
+    len_episode = inner_optimizer.task.optimization_resources.n_trials
+
+    del env
+
     env_fns = [make_env(cfg=cfg, seed_offset=i) for i in range(n_workers)]
     vec_env = SubprocVecEnv(env_fns)
 
     model: BaseAlgorithm = instantiate(cfg.optimizer)(
-        env=vec_env, policy_kwargs=policy_kwargs, tensorboard_log=rundir / "tensorboard"
+        env=vec_env,
+        policy_kwargs=policy_kwargs,
+        tensorboard_log=rundir / "tensorboard",
+        n_steps=len_episode,
+        batch_size=n_workers * len_episode // 2,
     )
 
     # TODO wrap in obs normalization

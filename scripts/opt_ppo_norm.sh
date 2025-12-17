@@ -16,4 +16,4 @@ export HYDRA_FULL_ERROR=1
 cd /scratch/hpc-prf-intexml/tklenke/repos/dacboenv/
 source /scratch/hpc-prf-intexml/tklenke/repos/dacboenv/.venv/bin/activate
 
-python -m dacboenv.experiment.ppo_norm +opt=ppo experiment.n_workers=16 experiment.n_episodes=50 +dacboenv.optimizer_cfg.smac_cfg.smac_kwargs.logging_level=9999 $@ seed=$SLURM_ARRAY_TASK_ID +env/instance_selector=random
+python -m dacboenv.experiment.ppo_norm +opt=ppo experiment.n_workers=16 experiment.n_episodes=50 dacboenv.optimizer_cfg.smac_cfg.smac_kwargs.logging_level=9999 $@ seed=$SLURM_ARRAY_TASK_ID +env/instance_selector=random

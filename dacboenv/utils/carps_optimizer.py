@@ -143,7 +143,6 @@ def build_carps_optimizer(
 
     if OmegaConf.select(cfg, "optimizer.smac_cfg.scenario.n_trials") is not None:
         cfg.optimizer.smac_cfg.scenario.n_trials = cfg.task.optimization_resources.n_trials
-        cfg.optimizer.smac_cfg.scenario.n_trials = 5
 
     optimizer = make_optimizer(cfg=cfg, task=task)
     optimizer.setup_optimizer()

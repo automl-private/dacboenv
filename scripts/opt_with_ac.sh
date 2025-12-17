@@ -5,6 +5,7 @@
 #SBATCH --mem=16G
 #SBATCH -p normal
 #SBATCH --array=1-5
+#SBATCH --output=slurmlog/smac/slurm-%A_%a.out
 
 if [ -z "$SLURM_ARRAY_TASK_ID" ]; then
     SLURM_ARRAY_TASK_ID=1

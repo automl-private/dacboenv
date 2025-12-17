@@ -322,15 +322,18 @@ class DACBOObjectiveFunction(ObjectiveFunction):
 
         if self._cost == "episode_length_scaled":
             ep_length = result["episode_length"] - n_initial_design
-            return ep_length / n_model_based
-        if self._cost == "episode_length_scaled_plus_logregret":
+            cost = ep_length / n_model_based
+        elif self._cost == "episode_length_scaled_plus_logregret":
             ep_done_scaled = (result["episode_length"] - n_initial_design) / n_model_based
             regret = abs(result["cost_inc"] - self._env.current_threshold)
             log_regret = safe_log10(regret)
-            return ep_done_scaled + max(0, log_regret)
-        if self._cost == "cost_inc":
-            return result["cost_inc"]
-        raise ValueError(f"Cannot handle requested cost: {self._cost}.")
+            cost = ep_done_scaled + max(0, log_regret)
+        elif self._cost == "cost_inc":
+            cost = result["cost_inc"]
+        else:
+            raise ValueError(f"Cannot handle requested cost: {self._cost}.")
+        info = result
+        return cost, info
 
 
 class PerceptronDACBOObjectiveFunction(DACBOObjectiveFunction):

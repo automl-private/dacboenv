@@ -9,13 +9,13 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from carps.objective_functions.objective_function import ObjectiveFunction
-from carps.utils.loggingutils import get_logger
 from carps.utils.trials import TrialValue
 from ConfigSpace import Configuration, ConfigurationSpace, Float
 from hydra.utils import get_class
 
 from dacboenv.env.policy import PerceptronPolicy, Policy
 from dacboenv.env.reward import get_initial_design_size
+from dacboenv.utils.loggingutils import get_logger
 from dacboenv.utils.math import safe_log10
 
 if TYPE_CHECKING:

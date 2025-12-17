@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any
 import hydra
 import numpy as np
 from carps.loggers.file_logger import convert_trials, dump_logs
-from carps.utils.loggingutils import get_logger
 from carps.utils.running import make_task
 from carps.utils.trials import TrialInfo
 from ConfigSpace import Configuration
@@ -22,7 +21,7 @@ from rich import (
 )
 
 import dacboenv  # noqa: F401
-from dacboenv.utils.loggingutils import maybe_remove_logs
+from dacboenv.utils.loggingutils import get_logger, maybe_remove_logs
 from dacboenv.utils.reference_performance import is_slurm_cluster
 
 if TYPE_CHECKING:

@@ -10,13 +10,13 @@ from typing import (
 
 import gymnasium as gym
 import numpy as np
-from carps.utils.loggingutils import get_logger
 
 from dacboenv.env.action import AbstractActionSpace, AcqParameterActionSpace
 from dacboenv.env.instance import InstanceSelector, RoundRobinInstanceSelector
 from dacboenv.env.observation import ObservationSpace
 from dacboenv.env.reward import DACBOReward
 from dacboenv.utils.carps_optimizer import build_carps_optimizer
+from dacboenv.utils.loggingutils import get_logger
 from dacboenv.utils.math import safe_log10
 from dacboenv.utils.reference_performance import ReferencePerformance
 

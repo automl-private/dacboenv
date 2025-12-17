@@ -14,9 +14,10 @@ import pandas as pd
 from carps.analysis.gather_data import filelogs_to_df, normalize_logs
 from carps.analysis.utils import filter_only_final_performance
 from carps.utils.env_vars import CARPS_ROOT
-from carps.utils.loggingutils import get_logger
 from carps.utils.running import optimize
 from hydra import compose, initialize_config_module
+
+from dacboenv.utils.loggingutils import get_logger
 
 logger = get_logger("ReferencePerformance")
 

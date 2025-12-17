@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING
 
 import hydra
 from carps.loggers.file_logger import get_run_directory
-from carps.utils.loggingutils import get_logger
 from carps.utils.running import make_task
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
@@ -24,7 +23,7 @@ from stable_baselines3.common.vec_env import SubprocVecEnv
 
 # Register OmegaConf resolvers
 import dacboenv  # noqa: F401
-from dacboenv.utils.loggingutils import maybe_remove_logs
+from dacboenv.utils.loggingutils import get_logger, maybe_remove_logs
 
 if TYPE_CHECKING:
     from collections.abc import Callable

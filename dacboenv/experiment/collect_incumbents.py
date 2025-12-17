@@ -7,7 +7,6 @@ from ast import literal_eval
 from pathlib import Path
 
 import pandas as pd
-from carps.utils.loggingutils import get_logger
 from fire import Fire
 from hydra import compose, initialize_config_module
 from hydra.utils import instantiate
@@ -15,6 +14,7 @@ from omegaconf import DictConfig, OmegaConf
 from rich import print as printr
 
 import dacboenv  # Load omegaconf resolvers  # noqa: F401
+from dacboenv.utils.loggingutils import get_logger
 
 logger = get_logger("collect_incs")
 

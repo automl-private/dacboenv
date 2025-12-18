@@ -1,0 +1,29 @@
+# @package _global_
+worker_config: {}
+n_workers: 10
+n_configs: 256
+seed: ???
+
+use_local: false  # Use LocalCLuster instead of slurm
+
+task: ???
+task_id: ???
+benchmark_id: ???
+dacboenv: ???
+
+optimizer_id: RandomSearch
+  
+     
+
+timestamp: ${now:%Y-%m-%d}/${now:%H-%M-%S}
+
+baserundir: runs
+outdir: ${baserundir}/${optimizer_id}/${benchmark_id}/${task_id}/${seed}
+hydra:
+  run:
+    dir: ${outdir}  # /${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ${baserundir}  # /${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${optimizer_id}/${benchmark_id}/${task_id}/${seed}  # those variables are set for individual jobs, therefore can only be in the subdir
+
+

@@ -207,6 +207,10 @@ def gather_data_cma(rundir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
             if (c in configs_inc_keys or c.startswith("w")) and c not in ["worker_idx"]
         ]
         configs_inc = final_generation[keep_keys]
+        overrides = OmegaConf.load(cfg_fn.parent / "overrides.yaml")
+        env_overrides = [o for o in overrides if "env" in o]
+        env_overrides_str = " ".join(env_overrides)
+        configs_inc["env_override"] = env_overrides_str
         configs_inc_list.append(configs_inc)
 
     trajectory_df = pd.concat(logs_list).reset_index(drop=True)
@@ -268,7 +272,6 @@ def create_configs(rundir: Path) -> str:
         policy_kwargs = policy.get_init_kwargs()
 
         env_override = configs_inc_df.loc[idx, "env_override"]
-        print(env_override)
 
         with initialize_config_module(
             config_module="dacboenv.configs",  # <-- package.conf where env/ lives

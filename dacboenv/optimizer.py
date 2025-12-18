@@ -196,7 +196,7 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
             "observation": {
                 k: v.item()
                 if hasattr(v, "item") and np.ndim(v) == 0
-                else v[0]
+                else v[0].item()
                 if isinstance(v, np.ndarray) and len(v) == 1
                 else v.tolist()
                 if isinstance(v, np.ndarray)

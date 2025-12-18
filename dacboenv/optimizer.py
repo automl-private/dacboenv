@@ -74,6 +74,7 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         expects_fidelities: bool = False,  # noqa: FBT001, FBT002
         policy_class: type[Policy] | str = RandomPolicy,
         policy_kwargs: dict[str, Any] | None = None,
+        log_observations: bool = False,  # noqa: FBT001, FBT002
     ) -> None:
         """Initialize the DACBOEnvOptimizer.
 
@@ -104,6 +105,8 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
             ParEGO scalarization parameter.
         frequency : int, optional
             Frequency (in trials) with which to take environment steps.
+        log_observations : bool, optional
+            Whether to log observations. Could be many.
         """
         super().__init__(
             task,
@@ -120,10 +123,10 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         self._state: ObsType
 
         self._policy_class = policy_class if isinstance(policy_class, type | partial) else get_class(policy_class)
-
         self._policy_kwargs = policy_kwargs if policy_kwargs is not None else {}
 
-        self._obs_flag = False
+        self._log_observations = log_observations
+
         self._obsfile = "DACBOEnvLogs.jsonl"
         self._actionfile = "DACBOEnvActions.jsonl"
 
@@ -164,7 +167,6 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
             action = self._policy(self._state)
 
             self._dacboenv.update_optimizer(action)
-            self._obs_flag = True
 
             logs = {
                 "action": np.array(action).item(),
@@ -187,32 +189,20 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         """
         super().tell(trial_info, trial_value)
 
-        # TODO: Reactivate
-        # if self._obs_flag:  # Compute obs only when needed (optimizer was updated)
         obs = self._dacboenv.get_observation()
-        # print(obs)
-        # rew = self._dacboenv.get_reward()
-        # full_reward = self._dacboenv._reward._get_full_reward()
+        rew = self._dacboenv.get_reward()
 
-        # if len(self._dacboenv._reward._reward_types) == 1:
-        #     reward = full_reward
-        # else:
-        #     reward = self._dacboenv._reward._parego(list(full_reward.values()))
-
-        # logs = {
-        #     "observation": {
-        #         k: v.item()
-        #         if hasattr(v, "item") and np.ndim(v) == 0
-        #         else v.tolist()
-        #         if isinstance(v, np.ndarray)
-        #         else v
-        #         for k, v in obs.items()
-        #     },
-        #     "full_reward": full_reward,
-        #     "reward": reward,
-        #     "n_trials": len(self.solver.runhistory),
-        # }
-        # dump_logs(logs, self._obsfile)
-
+        logs = {
+            "observation": {
+                k: v.item()
+                if hasattr(v, "item") and np.ndim(v) == 0
+                else v.tolist()
+                if isinstance(v, np.ndarray)
+                else v
+                for k, v in obs.items()
+            },
+            "reward": rew,
+            "n_trials": len(self.solver.runhistory),
+        }
+        dump_logs(logs, self._obsfile)
         self._state = obs
-        self._obs_flag = False

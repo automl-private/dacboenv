@@ -13,4 +13,5 @@ optimizer:
   _partial_: true
   seed: ${seed}
   dacboenv: ${dacboenv}
+  log_observations: true
 

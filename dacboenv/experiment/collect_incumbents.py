@@ -13,7 +13,6 @@ from fire import Fire
 from hydra import compose, initialize_config_module
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
-from rich import print as printr
 from tqdm import tqdm
 
 import dacboenv  # Load omegaconf resolvers  # noqa: F401
@@ -240,6 +239,28 @@ def save_traj_and_cincs_df(rundir: Path, trajectory_df: pd.DataFrame, configs_in
     logger.info(f"💌 Saved trajectory to {trajectory_fn} and incumbent configs to {configs_inc_fn}.")
 
 
+def fix_task_cfg(cfg_task: DictConfig) -> DictConfig:
+    """Fix task config.
+
+    Maybe some old config has been saved...
+
+    Parameters
+    ----------
+    cfg_task : DictConfig
+        Task config.
+
+    Returns
+    -------
+    DictConfig
+        Potentially fixed tasked config.
+    """
+    if hasattr(cfg_task.objective_function.env, "instance_selector"):
+        cfg_task.objective_function.env.instance_selector_class = cfg_task.objective_function.env.instance_selector
+        cfg_task.objective_function.env.instance_selector_class._partial_ = True
+        del cfg_task.objective_function.env.instance_selector
+    return cfg_task
+
+
 def create_configs(rundir: Path) -> str:
     """Create policy configs.
 
@@ -260,12 +281,12 @@ def create_configs(rundir: Path) -> str:
 
     for idx in range(len(configs_inc_df)):
         cfg = configs_inc_df.loc[idx, "config"]
+        cfg.task = fix_task_cfg(cfg.task)
         task: Task = instantiate(cfg.task)
         configspace = task.objective_function.configspace
         hp_names = list(configspace.keys())
         configuration_dict = dict(configs_inc_df.loc[idx, hp_names])
         policy = task.objective_function.make_policy_from_config_dict(config_dict=configuration_dict, seed=cfg.seed)
-        printr(policy)
 
         policy_cls = policy.__class__
         policy_class_path = f"{policy_cls.__module__}.{policy_cls.__qualname__}"
@@ -314,8 +335,8 @@ def collect(rundir: str = "runs") -> None:
     configs_inc_df = pd.concat([cincs_df_smac, cincs_df_cma]).reset_index(drop=True)
     save_traj_and_cincs_df(rundir=_rundir, trajectory_df=trajectory_df, configs_inc_df=configs_inc_df)
 
-    policy_path = create_configs(_rundir)
-    logger.info(f"Ready to run `bash scripts/evaluate.sh $TASK {policy_path}")
+    create_configs(_rundir)
+    logger.info("Ready to run `bash scripts/eval_template.sh!")
 
 
 if __name__ == "__main__":

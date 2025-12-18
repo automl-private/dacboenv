@@ -188,3 +188,4 @@ reference_performance
 runs_eval
 dacboenv/configs/policy/optimized
 runs*
+runtest

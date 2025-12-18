@@ -1,8 +1,6 @@
 # @package _global_
 
 dacboenv:
-  instance_selector:
+  instance_selector_class:
     _target_: dacboenv.env.instance.RandomInstanceSelector
-    task_ids: ${dacboenv.task_ids}
-    seeds: ${dacboenv.inner_seeds}
-    selector_seed: ${seed}
+    _partial_: true

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -10,6 +11,7 @@ from typing import (
 
 import gymnasium as gym
 import numpy as np
+from dataclasses_json import dataclass_json
 
 from dacboenv.env.action import AbstractActionSpace, AcqParameterActionSpace
 from dacboenv.env.instance import InstanceSelector, RoundRobinInstanceSelector
@@ -30,6 +32,15 @@ ObsType = dict[str, Any]
 ActType = int | float | list[float] | None
 
 logger = get_logger("dacboenv")
+
+
+@dataclass_json
+@dataclass(frozen=True)
+class InstanceSet:
+    """Instance Set."""
+
+    task_ids: list[str]
+    seeds: list[int]
 
 
 class DACBOEnv(gym.Env):
@@ -89,7 +100,7 @@ class DACBOEnv(gym.Env):
         reference_performance_fn: str = "reference_performance/reference_performance.parquet",
         inner_seeds: list[int] | None = None,
         terminate_after_reference_performance_reached: bool = False,  # noqa: FBT001, FBT002
-        instance_selector: InstanceSelector | None = None,
+        instance_selector_class: type[InstanceSelector] | None = None,
     ) -> None:
         """Initialize the DACBOEnv environment.
 
@@ -128,6 +139,7 @@ class DACBOEnv(gym.Env):
         self._seed = seed
         # Create seed generator for resetting for new episodes
         self._seeder = np.random.default_rng(self._seed)
+        self._fallback_seeds = list(self._seeder.integers(low=344, high=46483, size=3))
 
         self._optimizer_cfg = optimizer_cfg
         self._action_space_class = action_space_class
@@ -136,27 +148,28 @@ class DACBOEnv(gym.Env):
         self._observation_keys = observation_keys
         self._reward_keys = reward_keys
         self._rho = rho
-        self.task_ids = task_ids
-        self.reference_performance_fn = reference_performance_fn
-        self._inner_seeds: list[int] = (
-            inner_seeds if inner_seeds else list(self._seeder.integers(low=344, high=46483, size=3))
-        )
-        self._terminate_after_reference_performance_reached = terminate_after_reference_performance_reached
 
+        # Instance Set
+        self._instance_set: InstanceSet
+        self._instance_selector_class = (
+            instance_selector_class if instance_selector_class else RoundRobinInstanceSelector
+        )
+        self.instance_selector: InstanceSelector  # Set whenever task_id or inner_seeds are updated
+        inner_seeds = inner_seeds or self._fallback_seeds
+        self.instance_set = (inner_seeds, task_ids)  # type: ignore[assignment]
+        self._instance: tuple[int, str] | None = None
+
+        # Reference Performance
+        self._terminate_after_reference_performance_reached = terminate_after_reference_performance_reached
+        self.reference_performance_fn = reference_performance_fn
         self.reference_performance_optimizer_id = "SMAC3-BlackBoxFacade"
         if self._terminate_after_reference_performance_reached:
             self._reference_performance = ReferencePerformance(
                 optimizer_id=self.reference_performance_optimizer_id,
-                task_ids=self.task_ids,
-                seeds=self._inner_seeds,
+                task_ids=self.instance_set.task_ids,
+                seeds=self.instance_set.seeds,
                 reference_performance_fn=self.reference_performance_fn,
             )
-
-        self.instance_selector = (
-            instance_selector
-            if instance_selector
-            else RoundRobinInstanceSelector(task_ids=self.task_ids, seeds=self._inner_seeds)
-        )
 
         self._carps_solver: Optimizer
         self._smac_facade: AbstractFacade
@@ -169,6 +182,42 @@ class DACBOEnv(gym.Env):
         self.current_task_id = ""
         self.current_seed = -1
         self.current_threshold: float | None = None
+
+    @property
+    def instance_set(self) -> InstanceSet:
+        """The instance set."""
+        return self._instance_set
+
+    @instance_set.setter
+    def instance_set(self, seeds_taskids: tuple[list[int], list[str]]) -> None:
+        seeds, task_ids = seeds_taskids
+        self._instance_set = InstanceSet(task_ids=task_ids, seeds=seeds)
+        self._build_instance_selector()
+        self._instance = None
+
+    @property
+    def instance(self) -> tuple[int, str]:
+        """The intance (seed, task_ids).
+
+        Raise
+        -----
+        ValueError
+            When the env has to been reset after setting a new instance set.
+        """
+        if self._instance is None:
+            raise ValueError("Reset the env first to select an instance!")
+        return self._instance
+
+    @instance.setter
+    def instance(self, instance: tuple[int, str]) -> None:
+        self._instance = instance
+
+    def _build_instance_selector(self) -> None:
+        self.instance_selector = self._instance_selector_class(  # type: ignore[operator]
+            task_ids=self._instance_set.task_ids,
+            seeds=self._instance_set.seeds,
+            selector_seed=self._seed,
+        )
 
     def update_optimizer(self, action: ActType) -> None:
         """Update the SMAC optimizer with the given action.
@@ -275,7 +324,7 @@ class DACBOEnv(gym.Env):
             self._episode_length = 0
 
         logger.info(
-            f"Step: {self._episode_length-1}, Reward: {reward}, "
+            f"Step: {self._episode_length}, instance: {self.instance} Reward: {reward}, "
             f"terminated: {terminated}, truncated: {truncated}, info: {info}"
         )
 

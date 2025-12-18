@@ -175,7 +175,7 @@ class DACBOObjectiveFunction(ObjectiveFunction):
         self._policy_class = policy_class if isinstance(policy_class, type | partial) else get_class(policy_class)
         self._policy_kwargs = policy_kwargs if policy_kwargs is not None else {}
 
-        self._internal_seeds = self._env._inner_seeds
+        self._internal_seeds = self._env.instance_set.seeds
         self._seed_map: dict[int, int] = {}
 
         assert cost in ["episode_length_scaled", "cost_inc", "episode_length_scaled_plus_logregret"]
@@ -234,7 +234,7 @@ class DACBOObjectiveFunction(ObjectiveFunction):
         internal_seed = self._get_internal_seed(trial_info.seed)
         additional_info = {"internal_seed": internal_seed, "cutoff": trial_info.cutoff}
         additional_info.update(info)
-        logger.info(f"Info: {info}")
+        logger.info(f"Info: {info}. trial_info.instance,seed: {trial_info.instance, trial_info.seed}")
         return TrialValue(
             cost=cost, time=duration, starttime=starttime, endtime=endtime, additional_info=additional_info
         )
@@ -251,10 +251,13 @@ class DACBOObjectiveFunction(ObjectiveFunction):
         seed : int | None, optional
             The seed, by default None
         """
+        task_ids = self._env.instance_set.task_ids
         if instance is not None:
-            self._env.task_ids = [instance]
+            task_ids = [instance]
+        inner_seeds = self._env.instance_set.seeds
         if seed is not None:
-            self._env._inner_seeds = [seed]
+            inner_seeds = [seed]
+        self._env.instance_set = (inner_seeds, task_ids)  # type: ignore[assignment]
 
     def _get_internal_seed(self, seed: int | None) -> int | None:
         """Get internal seed based on outer seed.

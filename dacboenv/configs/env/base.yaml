@@ -11,7 +11,6 @@ dacboenv:
   seed: ${seed}
   reference_performance_fn: reference_performance/reference_performance.parquet
   terminate_after_reference_performance_reached: False
-  instance_selector:
+  instance_selector_class:
     _target_: dacboenv.env.instance.RoundRobinInstanceSelector
-    task_ids: ${dacboenv.task_ids}
-    seeds: ${dacboenv.inner_seeds}
+    _partial_: true

@@ -25,11 +25,9 @@ optimizer:
   #batch_size: ${divideint:${multiply:${experiment.n_workers},${optimizer.n_steps}},2}
 
 dacboenv:
-  instance_selector:
+  instance_selector_class:
     _target_: dacboenv.env.instance.RandomInstanceSelector
-    task_ids: ${dacboenv.task_ids}
-    seeds: ${dacboenv.inner_seeds}
-    selector_seed: ${seed}
+    _paretial_: true
 
 baserundir: runs
 outdir: ${baserundir}/${optimizer_id}/${benchmark_id}/${task_id}/${seed}

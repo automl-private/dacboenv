@@ -204,7 +204,7 @@ class JumpParameterPolicy(Policy):
     after a fraction of the optimization budget.
     """
 
-    def __init__(self, env: DACBOEnv, low: float, high: float, jump: float) -> None:
+    def __init__(self, env: DACBOEnv, low: float, high: float, jump: float, seed: int | None = None) -> None:
         """Initialize the jump parameter policy.
 
         Parameters
@@ -219,7 +219,7 @@ class JumpParameterPolicy(Policy):
             Fraction of the optimization budget at which to switch
             from ``low`` to ``high``.
         """
-        super().__init__(env, low=low, high=high, jump=jump)
+        super().__init__(env, low=low, high=high, jump=jump, seed=seed)
         self._low = low
         self._high = high
         self._jump = jump

@@ -3,10 +3,10 @@
 export HYDRA_FULL_ERROR=1
 
 BASE="carps.run hydra.searchpath=[pkg://dacboenv/configs]"
-ARGS="+eval=base +env=base +env/obs=smart +env/reward=ep_done_scaled +env/opt=base +cluster=cpu_noctua seed=range(1,11) -m"
+ARGS="+eval=base +env=base +env/obs=smart +env/reward=ep_done_scaled +env/opt=base +cluster=cpu_noctua seed=range(1,11)"
 
 run_eval() {
-    python -m $BASE $ARGS "$@" &
+    python -m $BASE $ARGS "$@" --multirun &
 }
 
 TASKS_GENERAL=(
@@ -24,20 +24,22 @@ OPT_BASES=(
     "+policy/optimized/CMA-1.3"
 )
 
+OUTER_SEEDS="seed1,seed2,seed3,seed4,seed5"
+
 for base in "${OPT_BASES[@]}"; do
-    UCB_P2="+env/action=ucb_beta_continuous ${base}/dacbo_Cepisode_length_scaled_plus_logregret${UCB_SUFFIX}_3seeds=glob(*)"
-    WEI_P2="+env/action=wei_alpha_continuous ${base}/dacbo_Cepisode_length_scaled_plus_logregret${WEI_SUFFIX}_3seeds=glob(*)"
+    UCB_P2="+env/action=ucb_beta_continuous ${base}/dacbo_Cepisode_length_scaled_plus_logregret${UCB_SUFFIX}_3seeds=${OUTER_SEEDS}"
+    WEI_P2="+env/action=wei_alpha_continuous ${base}/dacbo_Cepisode_length_scaled_plus_logregret${WEI_SUFFIX}_3seeds=${OUTER_SEEDS}"
 
     # Eval P1 on 2D and 8D training tasks
     for fid in {1..24}; do
         for d in 2 8; do
             run_eval "+task/BBOB=cfg_${d}_${fid}_0" \
                     "+env/action=ucb_beta_continuous" \
-                    "${base}/dacbo_Cepisode_length_scaled_plus_logregret${UCB_SUFFIX}_fid${fid}_3seeds=glob(*)"
+                    "${base}/dacbo_Cepisode_length_scaled_plus_logregret${UCB_SUFFIX}_fid${fid}_3seeds=${OUTER_SEEDS}"
             
             run_eval "+task/BBOB=cfg_${d}_${fid}_0" \
                     "+env/action=wei_alpha_continuous" \
-                    "${base}/dacbo_Cepisode_length_scaled_plus_logregret${WEI_SUFFIX}_fid${fid}_3seeds=glob(*)"
+                    "${base}/dacbo_Cepisode_length_scaled_plus_logregret${WEI_SUFFIX}_fid${fid}_3seeds=${OUTER_SEEDS}"
         done
     done
 

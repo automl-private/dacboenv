@@ -35,25 +35,6 @@ if TYPE_CHECKING:
 logger = get_logger("PPO")
 
 
-# def evaluate_policy(env: DACBOEnv, policy: Policy, n_episodes: int | None = None):
-#     instance_selector = RoundRobinInstanceSelector(
-#         task_ids=env.instance_selector.task_ids,
-#         seeds=env.instance_selector.seeds,
-#         selector_seed=env.instance_selector.selector_seed
-#     )
-#     env.instance_selector = instance_selector
-#     if n_episodes is None:
-#         n_episodes = len(env.instance_selector.instances)
-#     results = []
-#     for _ in range(n_episodes):
-#         episode_result = rollout(env=env, policy=policy)
-#         results.append(episode_result)
-#     rewards = [r["reward_mean"] for r in results]
-#     mean_reward = np.mean(rewards)
-#     std_reward = np.std(rewards)
-#     return mean_reward, std_reward
-
-
 @hydra.main(version_base=None, config_path="../configs")  # type: ignore[misc]
 def main(cfg: DictConfig) -> None:
     """Train PPO on DACBOEnv."""
@@ -99,8 +80,6 @@ def main(cfg: DictConfig) -> None:
         n_steps=len_episode,
         batch_size=n_workers * len_episode // 2,
     )
-
-    # TODO wrap in obs normalization
 
     logger.info("⚔ Start training...")
     model.learn(total_timesteps=n_workers * n_episodes * len_episode, progress_bar=True, tb_log_name="tb.log")

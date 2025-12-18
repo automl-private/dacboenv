@@ -54,25 +54,6 @@ class PerceptronPolicy(MultiInputActorCriticPolicy):
         return scaled_actions, values, log_prob
 
 
-# def evaluate_policy(env: DACBOEnv, policy: Policy, n_episodes: int | None = None):
-#     instance_selector = RoundRobinInstanceSelector(
-#         task_ids=env.instance_selector.task_ids,
-#         seeds=env.instance_selector.seeds,
-#         selector_seed=env.instance_selector.selector_seed
-#     )
-#     env.instance_selector = instance_selector
-#     if n_episodes is None:
-#         n_episodes = len(env.instance_selector.instances)
-#     results = []
-#     for _ in range(n_episodes):
-#         episode_result = rollout(env=env, policy=policy)
-#         results.append(episode_result)
-#     rewards = [r["reward_mean"] for r in results]
-#     mean_reward = np.mean(rewards)
-#     std_reward = np.std(rewards)
-#     return mean_reward, std_reward
-
-
 @hydra.main(version_base=None, config_path="../configs")  # type: ignore[misc]
 def main(cfg: DictConfig) -> None:
     """Train PPO on DACBOEnv."""

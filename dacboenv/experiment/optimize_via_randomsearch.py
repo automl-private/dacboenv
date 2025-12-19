@@ -11,9 +11,7 @@ from carps.loggers.file_logger import convert_trials, dump_logs
 from carps.utils.running import make_task
 from carps.utils.trials import TrialInfo
 from ConfigSpace import Configuration
-from dask.base import compute
-from dask.delayed import delayed
-from dask.distributed import Client, LocalCluster, SpecCluster
+from dask.distributed import Client, LocalCluster, SpecCluster, as_completed
 from dask_jobqueue.slurm import SLURMCluster
 from omegaconf import DictConfig, OmegaConf
 from rich import (
@@ -57,22 +55,40 @@ def worker(x: tuple[list[float], tuple[int, str]], config: dict[str, Any]) -> di
 def run_parallel(
     inputs: list[tuple[list[float], tuple[int, str]]],
     config: dict[str, Any],
+    client: Client,
     n_workers: int = 4,
+    logfile: str = "results.jsonl",
 ) -> list[dict[str, Any]]:
-    """Run tasks in parallel using Dask."""
-    printr(f"Running {len(inputs)} tasks on {n_workers} workers using Dask")
+    """Run tasks in parallel using Dask with safe incremental logging."""
+    logger.info(f"Running {len(inputs)} tasks on {n_workers} workers using Dask")
 
-    # Wrap tasks with dask.delayed
-    delayed_tasks = []
+    futures = []
     for i, x in enumerate(inputs):
         _cfg = config.copy()
         _cfg["idx"] = i
-        delayed_tasks.append(delayed(worker)(x, _cfg))
+        future = client.submit(worker, x, _cfg)
+        futures.append(future)
 
-    # Compute results in parallel
-    results = compute(*delayed_tasks)
+    results: list[dict[str, Any]] = []
 
-    return list(results)
+    # Stream results as they complete
+    for future in as_completed(futures):
+        try:
+            res = future.result()
+        except Exception as e:
+            logger.exception("Worker failed", exc_info=e)
+            continue
+
+        # safe: only driver writes logs
+        dump_logs(
+            log_data=res,
+            filename=logfile,
+            directory=None,
+        )
+
+        results.append(res)
+
+    return results
 
 
 def setup_client(n_workers: int, seed: int, use_local: bool = False) -> tuple[SpecCluster, Client]:  # noqa: FBT001, FBT002
@@ -131,10 +147,10 @@ def optimize(
     results = run_parallel(
         inputs=inputs,
         config=config,
+        client=client,
         n_workers=n_workers,
+        logfile="results.jsonl",
     )
-    for res in results:
-        dump_logs(log_data=res, filename="results.jsonl", directory=None)
     client.close()
     cluster.close()
     return results
@@ -149,7 +165,7 @@ def main(cfg: DictConfig) -> None:
 
     logger.info("Starting Dask cluster...")
 
-    client, cluster = setup_client(cfg.n_workers, cfg.seed, cfg.use_local)
+    cluster, client = setup_client(cfg.n_workers, cfg.seed, cfg.use_local)
 
     # Run parallel tasks
     logger.info("Run in parallel...")

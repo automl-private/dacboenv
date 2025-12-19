@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -f
+
 export HYDRA_FULL_ERROR=1
 
 BASE="carps.run hydra.searchpath=[pkg://dacboenv/configs]"
@@ -27,30 +29,36 @@ OPT_BASES=(
 OUTER_SEEDS="seed1,seed2,seed3,seed4,seed5"
 
 for base in "${OPT_BASES[@]}"; do
-    UCB_P2="+env/action=ucb_beta_continuous ${base}/dacbo_Cepisode_length_scaled_plus_logregret${UCB_SUFFIX}_3seeds=${OUTER_SEEDS}"
-    WEI_P2="+env/action=wei_alpha_continuous ${base}/dacbo_Cepisode_length_scaled_plus_logregret${WEI_SUFFIX}_3seeds=${OUTER_SEEDS}"
+    UCB_P2=(
+        "+env/action=ucb_beta_continuous"
+        "${base}/dacbo_Cepisode_length_scaled_plus_logregret${UCB_SUFFIX}_3seeds=${OUTER_SEEDS}"
+    )
+    WEI_P2=(
+        "+env/action=wei_alpha_continuous"
+        "${base}/dacbo_Cepisode_length_scaled_plus_logregret${WEI_SUFFIX}_3seeds=${OUTER_SEEDS}"
+    )
 
     # Eval P1 on 2D and 8D training tasks
     for fid in {1..24}; do
         for d in 2 8; do
             run_eval "+task/BBOB=cfg_${d}_${fid}_0" \
-                    "+env/action=ucb_beta_continuous" \
+                    "${UCB_P2[0]}" \
                     "${base}/dacbo_Cepisode_length_scaled_plus_logregret${UCB_SUFFIX}_fid${fid}_3seeds=${OUTER_SEEDS}"
             
             run_eval "+task/BBOB=cfg_${d}_${fid}_0" \
-                    "+env/action=wei_alpha_continuous" \
+                    "${WEI_P2[0]}" \
                     "${base}/dacbo_Cepisode_length_scaled_plus_logregret${WEI_SUFFIX}_fid${fid}_3seeds=${OUTER_SEEDS}"
         done
     done
 
     # Eval P2 on training set
-    run_eval "+task/BBOB=glob(cfg_2_*_0)" "$UCB_P2"
-    run_eval "+task/BBOB=glob(cfg_2_*_0)" "$WEI_P2"
+    run_eval "+task/BBOB=glob(cfg_2_*_0)" "${UCB_P2[@]}"
+    run_eval "+task/BBOB=glob(cfg_2_*_0)" "${WEI_P2[@]}"
 
     # Eval P2 for generalization
     for task in "${TASKS_GENERAL[@]}"; do
-        run_eval "$task" "$UCB_P2"
-        run_eval "$task" "$WEI_P2"
+        run_eval $task "${UCB_P2[@]}"
+        run_eval $task "${WEI_P2[@]}"
     done
 
 done

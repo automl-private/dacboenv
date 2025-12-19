@@ -8,7 +8,7 @@ BASE="carps.run hydra.searchpath=[pkg://dacboenv/configs]"
 ARGS="+eval=base +env=base +env/obs=smart +env/reward=ep_done_scaled +env/opt=base +cluster=cpu_noctua seed=range(1,11)"
 
 run_eval() {
-    python -m $BASE $ARGS "$@" --multirun &
+    python -m $BASE $ARGS "$@" "dacboenv.terminate_after_reference_performance_reached=false" --multirun &
 }
 
 TASKS_GENERAL=(

@@ -1,0 +1,41 @@
+# @package _global_
+
+dacboenv:
+  terminate_after_reference_performance_reached: true
+
+optimizer_container_id: SMAC3
+optimizer_id: SMAC-AC-WS
+optimizer:
+  _target_: carps.optimizers.smac20.SMAC3Optimizer
+  _partial_: true
+  smac_cfg:
+    smac_class: smac.facade.algorithm_configuration_facade.AlgorithmConfigurationFacade
+    scenario:
+      seed: ${seed}
+      n_trials: ${task.optimization_resources.n_trials}
+      objectives: ${task.output_space.objectives}
+      deterministic: false
+      output_directory: ${outdir}/${seed}/smac3_output
+      min_budget: ${task.input_space.fidelity_space.min_fidelity}
+      max_budget: ${task.input_space.fidelity_space.max_fidelity}
+      instances: ${dacboenv.task_ids}
+      instance_features: ${get_instance_features:${dacboenv.task_ids}}
+      adaptive_capping: true
+      runtime_cutoff: null
+      n_workers: 1
+    smac_kwargs:
+      logging_level:
+          _target_: pathlib.Path
+          _args_:
+            - dacboenv/configs/logging/smac_external.yaml
+      dask_client: null
+      overwrite: false
+      intensifier:
+        _target_: smac.intensifier.intensifier.Intensifier
+        _partial_: true
+        max_config_calls: ${multiply:${len:${dacboenv.task_ids}},${len:${dacboenv.inner_seeds}}}
+      callbacks:
+        - _target_: dacboenv.experiment.warmstart.WarmstartCallback
+          task_id: ${task_id}
+          trajectory_csv_fn: runs/trajectory.csv
+

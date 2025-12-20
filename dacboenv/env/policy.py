@@ -5,6 +5,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import TYPE_CHECKING
 
+from dacboenv.env.reward import get_initial_design_size
 from dacboenv.utils.math import sigmoid
 
 if TYPE_CHECKING:
@@ -238,10 +239,12 @@ class JumpParameterPolicy(Policy):
             ``low`` before the jump threshold, otherwise ``high``.
         """
         smac = self._env._smac_instance
-        budget = smac._scenario.n_trials
-        trials = len(smac.runhistory)
+        n_finished = smac.runhistory.finished
+        n_initial_design = get_initial_design_size(smac)
+        n_smbo = smac._scenario.n_trials
+        n_model_based = n_smbo - n_initial_design
 
-        if trials < self._jump * budget:
+        if (n_finished - n_initial_design) < self._jump * n_model_based:
             return self._low
         return self._high
 

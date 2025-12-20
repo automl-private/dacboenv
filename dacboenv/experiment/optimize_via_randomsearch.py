@@ -161,7 +161,7 @@ def main(cfg: DictConfig) -> None:
     """Hydra-decorated main function."""
     printr("[bold green]Starting Dask parallel evaluations[/bold green]")
     printr(OmegaConf.to_yaml(cfg))
-    maybe_remove_logs(directory=None, overwrite=True, logfile="results.jsonl", logger=logger)
+    maybe_remove_logs(directory=None, overwrite=cfg.overwrite, logfile="results.jsonl", logger=logger)
 
     logger.info("Starting Dask cluster...")
 

@@ -1,0 +1,11 @@
+# @package _global_
+
+optimizer_id: Jump-${optimizer.policy_kwargs.jump}
+optimizer:
+  policy_class:
+    _target_: dacboenv.env.policy.JumpParameterPolicy
+    _partial_: true
+  policy_kwargs:
+    low: ${dacboenv.action_space_kwargs.bounds[0]}
+    high: ${dacboenv.action_space_kwargs.bounds[1]}
+    jump: 0.5

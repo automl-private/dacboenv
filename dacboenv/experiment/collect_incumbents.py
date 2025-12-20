@@ -156,7 +156,71 @@ def load_cma_log(filename: str | Path) -> pd.DataFrame:
     logs["cost"] = extract_from_dict(logs, "trial_value", "cost")
     logs["trial_value__additional_info"] = extract_from_dict(logs, "trial_value", "additional_info")
     logs["episode_length"] = extract_from_dict(logs, "trial_value__additional_info", "episode_length")
-    return logs.sort_values(by="n_generation")
+    if "n_generation" in logs:
+        logs = logs.sort_values(by="n_generation")
+    return logs
+
+
+def gather_data_randomsearch(rundir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Gather optimization data and incumbent policies from RandomSearch run.
+
+    Parameters
+    ----------
+    rundir : Path
+        The rundir of the optimization runs finding the policies.
+
+    Returns
+    -------
+    tuple[pd.DataFrame, pd.DataFrame]
+        Trajectories and incumbent configs.
+    """
+    log_filenames = list(rundir.glob("**/results.jsonl"))
+    logger.info(f"Found {len(log_filenames)} Random Search runs.")
+    logs_list = []
+    configs_inc_list = []
+    configs_inc_keys = [
+        "seed",
+        "task_id",
+        "optimizer_id",
+        "objective_function",
+        "config",
+        "env_override",
+        "cost",
+        "search_space_dim",
+        "hp_config",
+    ]
+    for log_filename in tqdm(log_filenames):
+        _logs = load_cma_log(log_filename)
+        cfg_fn = log_filename.parent / ".hydra/config.yaml"
+        cfg = OmegaConf.load(cfg_fn)
+        _logs = add_metadata_to_dict(_logs, cfg)
+        logs_list.append(_logs)
+        _logs["hp_config"] = extract_from_dict(_logs, "trial_info", "config")
+        _logs["instance"] = extract_from_dict(_logs, "trial_info", "instance")
+        _logs["inner_seed"] = extract_from_dict(_logs, "trial_info", "seed")
+        # Convert dicts to DataFrame
+        expanded = _logs["hp_config"].apply(pd.Series)
+        # Rename columns to w0, w1, ...
+        expanded.columns = [f"w{i}" for i in range(expanded.shape[1])]
+        # Join back
+        _logs = _logs.join(expanded)
+        keep_keys = [c for c in _logs.columns if (c in configs_inc_keys or c.startswith("w"))]
+        configs_inc = _logs[keep_keys].copy()
+        overrides = OmegaConf.load(cfg_fn.parent / "overrides.yaml")
+        env_overrides = [o for o in overrides if "env" in o]
+        env_overrides_str = " ".join(env_overrides)
+        configs_inc.loc[:, "env_override"] = env_overrides_str
+        configs_inc_list.append(configs_inc)
+
+    trajectory_df = pd.concat(logs_list).reset_index(drop=True)
+
+    # TODO Calculate incumbents for randomsearch
+    # configs_inc_df = pd.concat(configs_inc_list).reset_index(drop=True)
+    configs_inc_df = pd.DataFrame({})
+
+    save_traj_and_cincs_df(rundir=rundir, trajectory_df=trajectory_df, configs_inc_df=configs_inc_df)
+
+    return trajectory_df, configs_inc_df
 
 
 def gather_data_cma(rundir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -205,7 +269,7 @@ def gather_data_cma(rundir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
             for c in final_generation.columns
             if (c in configs_inc_keys or c.startswith("w")) and c not in ["worker_idx"]
         ]
-        configs_inc = final_generation[keep_keys]
+        configs_inc = final_generation[keep_keys].copy()
         overrides = OmegaConf.load(cfg_fn.parent / "overrides.yaml")
         env_overrides = [o for o in overrides if "env" in o]
         env_overrides_str = " ".join(env_overrides)
@@ -331,8 +395,9 @@ def collect(rundir: str = "runs") -> None:
     _rundir = Path(rundir)
     traj_df_smac, cincs_df_smac = gather_data_smac(_rundir / "SMAC-AC")
     traj_df_cma, cincs_df_cma = gather_data_cma(_rundir / "CMA-1.3")
-    trajectory_df = pd.concat([traj_df_smac, traj_df_cma]).reset_index(drop=True)
-    configs_inc_df = pd.concat([cincs_df_smac, cincs_df_cma]).reset_index(drop=True)
+    traj_df_rs, cincs_df_rs = gather_data_randomsearch(_rundir / "RandomSearch")
+    trajectory_df = pd.concat([traj_df_smac, traj_df_cma, traj_df_rs]).reset_index(drop=True)
+    configs_inc_df = pd.concat([cincs_df_smac, cincs_df_cma, cincs_df_rs]).reset_index(drop=True)
     save_traj_and_cincs_df(rundir=_rundir, trajectory_df=trajectory_df, configs_inc_df=configs_inc_df)
 
     create_configs(_rundir)

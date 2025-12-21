@@ -413,7 +413,7 @@ class ModelPolicy(Policy):
         model_class: type[BaseAlgorithm] | str | None = None,
         normalization_wrapper: str | None = None,
     ) -> None:
-        """Initialize the jump parameter policy.
+        """Initialize the model parameter policy.
 
         Parameters
         ----------
@@ -423,6 +423,8 @@ class ModelPolicy(Policy):
             The RL model instance or path to a saved model.
         model_class : type[BaseAlgorithm] | str | None, optional
             The class of the RL model, required if loading from a path.
+        normalization_wrapper : str | None, optional
+            Path to a saved VecNormalize wrapper, if applicable.
         """
         super().__init__(env, model=model, model_class=model_class, normalization_wrapper=normalization_wrapper)
 

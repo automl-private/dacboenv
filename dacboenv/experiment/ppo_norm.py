@@ -119,11 +119,10 @@ def main(cfg: DictConfig) -> None:
     mean_reward, std_reward = evaluate_policy(model, model.get_env(), n_eval_episodes=n_eval_episodes)
     logger.info(f"Learned policy reward: {mean_reward:.2f} +/- {std_reward:.2f}")
 
-    norm = vec_env.obs_rms
+    vec_env.save(rundir / "vecnormalize.pkl")
 
     with open(rundir / "modeleval.txt", "a") as out:
         out.write(f"Learned policy reward: {mean_reward:.2f} +/- {std_reward:.2f}\n")
-        out.write(f"Normalization params: {norm}\n")
 
 
 if __name__ == "__main__":

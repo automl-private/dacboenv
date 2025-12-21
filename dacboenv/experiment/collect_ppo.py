@@ -33,6 +33,9 @@ def create_ppo_eval_configs(rundir: Path | str) -> None:
             "model_class": "stable_baselines3.PPO",
         }
         eval_conf.optimizer_id = f"{model.parts[-5]}-{model.parts[-3]}-{model.parts[-2]}"
+        if model.parts[-5].split("-")[:2] == ["PPO", "norm"]:  # Handle normalization with PPO
+            normalization_wrapper = model.parent / "vecnormalize.pkl"
+            eval_conf.optimizer.policy_kwargs["normalization_wrapper"] = str(normalization_wrapper)  # type: ignore[attr-defined]
         yaml_str = OmegaConf.to_yaml(eval_conf)
         yaml_str = f"# @package _global_\n\n{yaml_str}"
         eval_cfg_fn = (

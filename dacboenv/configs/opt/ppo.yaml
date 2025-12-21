@@ -27,7 +27,7 @@ optimizer:
 dacboenv:
   instance_selector_class:
     _target_: dacboenv.env.instance.RandomInstanceSelector
-    _paretial_: true
+    _partial_: true
 
 baserundir: runs
 outdir: ${baserundir}/${optimizer_id}/${benchmark_id}/${task_id}/${seed}

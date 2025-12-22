@@ -1,0 +1,10 @@
+# @package _global_
+
+action_space_id: EI-cont
+dacboenv:
+  action_space_class:
+    _target_: dacboenv.env.action.AcqParameterActionSpace
+    _partial_: true
+  action_space_kwargs:
+    bounds: [-1,1]
+    adjustment_type: continuous

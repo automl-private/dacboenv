@@ -1,0 +1,16 @@
+# @package _global_
+
+action_space_id: PI-cont
+dacboenv:
+  action_space_class:
+    _target_: dacboenv.env.action.AcqParameterActionSpace
+    _partial_: true
+  action_space_kwargs:
+    bounds: [-1,1]
+    adjustment_type: continuous
+  
+  optimizer_cfg:
+    smac_cfg:
+      smac_kwargs:
+        acquisition_function:
+          _target_: smac.acquisition.function.probability_improvement.PI

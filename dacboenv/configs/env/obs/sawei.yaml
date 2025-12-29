@@ -1,0 +1,10 @@
+# @package _global_
+
+observation_space_id: sawei
+dacboenv:
+  observation_keys:
+    - ubr_difference
+    - acq_value_EI
+    - acq_value_PI
+    - previous_param
+

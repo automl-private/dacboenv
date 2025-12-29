@@ -302,6 +302,14 @@ ubr_difference_observation = ObservationType(
     "ubr_difference", Box(low=-np.inf, high=np.inf, dtype=np.float32), lambda smbo: ubr_difference(smbo), 0
 )
 
+# Must be computed INSIDE DACBOEnv, because observationspace does not have access to action space and last action
+previous_param_observation = ObservationType(
+    name="previous_param",
+    space=Box(low=-np.inf, high=np.inf, dtype=np.float32),
+    compute=lambda x: None,  # noqa: ARG005
+    default=None,
+)
+
 
 def model_fitted(model: AbstractModel | None) -> bool:
     """Check whether the surrogate model is fitted.
@@ -447,6 +455,7 @@ ALL_OBSERVATIONS = [
     ubr_difference_observation,
     acq_value_ei_observation,
     acq_value_pi_observation,
+    previous_param_observation,
 ]
 
 MULTI_OBSERVATIONS = [gp_hp_observation]

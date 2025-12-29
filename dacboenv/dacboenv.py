@@ -182,6 +182,7 @@ class DACBOEnv(gym.Env):
         self.current_task_id = ""
         self.current_seed = -1
         self.current_threshold: float | None = None
+        self.last_action: ActType | None = None
 
     @property
     def instance_set(self) -> InstanceSet:
@@ -234,6 +235,7 @@ class DACBOEnv(gym.Env):
         """
         if action is not None:
             self._action_space.update_optimizer(action)
+            self.last_action = action
 
     def get_observation(self) -> ObsType:
         """Compute the current observation from the optimizer.
@@ -243,7 +245,10 @@ class DACBOEnv(gym.Env):
         obs : dict[str, Any]
             Dictionary of observation values.
         """
-        return self._dacbo_observation_space.get_observation()
+        obs = self._dacbo_observation_space.get_observation()
+        if "previous_param" in obs:
+            obs["previous_param"] = self.last_action
+        return obs
 
     def get_reward(self) -> float:
         """Compute the current reward from the optimizer.
@@ -397,6 +402,7 @@ class DACBOEnv(gym.Env):
         self._action_space = self._action_space_class(smac_instance=self._smac_instance, **self._action_space_kwargs)
         self.action_space = self._action_space.space  # gym action space
         self.action_space.seed(seed)  # Seed with current seed
+        self.last_action = None
 
         # Setup reward
         self._reward = DACBOReward(self._smac_instance, self._reward_keys, self._rho)

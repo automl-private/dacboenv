@@ -22,6 +22,7 @@ install:
 	pre-commit install
 	$(MAKE) carps
 	$(MAKE) smac
+	$(MAKE) adaptaf
 
 carps:
 	git clone --branch $(CARPSBRANCH) git@github.com:automl/CARP-S.git lib/CARP-S
@@ -59,3 +60,10 @@ build:
 
 collect_incumbents:
 	$(PYTHON) -m dacboenv.experiment.collect_incumbents runs
+
+adaptaf:
+	git clone git@github.com:automl-private/adaptaf.git lib/adaptaf
+	cd lib/adaptaf && uv pip install -e .
+
+gather-data:
+	python -m carps.analysis.gather_data '--rundir=["runs_eval","/scratch/hpc-prf-intexml/tklenke/experiment_runs/dacboenv_ppo_semi"]'  --n_processes=1 --outdir=results

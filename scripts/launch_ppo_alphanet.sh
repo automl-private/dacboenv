@@ -17,8 +17,6 @@ do
     for instance_set in "${instance_sets[@]}"
     do
         echo Launch for: $task $instance_set
-        # sbatch scripts/opt_with_randomsearch.sh $task $instance_set
-        # sbatch scripts/opt_with_cmaes.sh $task $instance_set
-        sbatch scripts/opt_with_ac.sh $task $instance_set
+        sbatch scripts/opt_ppo_norm_alphanet.sh $instance_set $task
     done
 done

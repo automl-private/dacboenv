@@ -13,7 +13,7 @@ from carps.utils.trials import TrialValue
 from ConfigSpace import Configuration, ConfigurationSpace, Float
 from hydra.utils import get_class
 
-from dacboenv.env.policy import PerceptronPolicy, Policy
+from dacboenv.env.policy import AlphaRulePolicy, PerceptronPolicy, Policy
 from dacboenv.env.reward import get_initial_design_size
 from dacboenv.utils.loggingutils import get_logger
 from dacboenv.utils.math import safe_log10
@@ -413,6 +413,77 @@ class PerceptronDACBOObjectiveFunction(DACBOObjectiveFunction):
         weights = list(config.values())
         if self._weight_in_log:
             weights = list(10 ** np.array(weights))
+        policy_kwargs = self._policy_kwargs.copy()
+        policy_kwargs.update({"weights": weights})
+        policy = self._policy_class(env=None, **policy_kwargs)
+        policy.set_seed(seed=seed)
+        return policy
+
+
+class AlphaRuleNetDACBOObjectiveFunction(DACBOObjectiveFunction):
+    """Perceptron policy for DACBO env objective function.
+
+    Optimize the weight vector and bias for controlling a DACBO env.
+    """
+
+    def __init__(
+        self,
+        env: DACBOEnv,
+        loggers: list[AbstractLogger] | None = None,
+        policy_class: type[Policy] | str = AlphaRulePolicy,
+        policy_kwargs: dict[str, Any] | None = None,
+        weight_bounds: tuple[float, float] = (-10, 10),
+        cost: str = "episode_length_scaled",
+    ) -> None:
+        """Init.
+
+        Parameters
+        ----------
+        env : DACBOEnv
+            DACBO env.
+        loggers : list[AbstractLogger] | None, optional
+            Carps loggers, by default None
+        policy_class : type[Policy] | str, optional
+            The policy class, by default AlphaRulePolicy
+        policy_kwargs : dict[str, Any] | None, optional
+            Policy kwargs, by default None
+        weight_bounds : tuple[float,float], optional
+            Bounds for the weights of the perceptron, by default (-5, 5)
+        cost : str, optional
+            Which type of cost to return, by default `episode_length_scaled`, which is the (episode length - n_initial
+            design) / n_model_based_budget. Can also be `cost_inc`, which is simply the cost of the incumbent.
+        """
+        super().__init__(env=env, loggers=loggers, policy_class=policy_class, policy_kwargs=policy_kwargs, cost=cost)
+
+        self._weight_bounds = weight_bounds
+
+    @property
+    def configspace(self) -> ConfigurationSpace:
+        """Get the configuration space for the perceptron.
+
+        Returns
+        -------
+        ConfigurationSpace
+            Configuration space (continuous, n_obs + 1 HPs)
+        """
+        return AlphaRulePolicy.get_alpharulenet_configspace(weight_bounds=self._weight_bounds)
+
+    def make_policy(self, config: Configuration, seed: int | None = None) -> AlphaRulePolicy:
+        """Make perceptron policy.
+
+        Parameters
+        ----------
+        config : Configuration
+            The configuration containing the weights.
+        seed : int | None, optional
+            Seed, by default None
+
+        Returns
+        -------
+        AlphaRulePolicy
+            Instantiated AlphaRulePolicy.
+        """
+        weights = list(config.values())
         policy_kwargs = self._policy_kwargs.copy()
         policy_kwargs.update({"weights": weights})
         policy = self._policy_class(env=None, **policy_kwargs)

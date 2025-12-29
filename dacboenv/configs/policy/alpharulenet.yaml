@@ -1,0 +1,11 @@
+# @package _global_
+
+optimizer_id: AlphaRuleNet
+optimizer:
+  policy_class:
+    _target_: dacboenv.env.policy.AlphaRulePolicy
+    _partial_: true
+  policy_kwargs:
+    alpha_start: 0.5
+    delta_alpha: 0.1
+    k: 10

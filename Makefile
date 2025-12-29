@@ -66,4 +66,16 @@ adaptaf:
 	cd lib/adaptaf && uv pip install -e .
 
 gather-data:
-	python -m carps.analysis.gather_data '--rundir=["runs_eval","/scratch/hpc-prf-intexml/tklenke/experiment_runs/dacboenv_ppo_semi"]'  --n_processes=1 --outdir=results
+	python -m carps.analysis.gather_data '--rundir=["runs_eval","/scratch/hpc-prf-intexml/tklenke/experiment_runs/dacboenv_ppo_semi"]' --outdir=results
+
+testppo:
+	python -m dacboenv.experiment.ppo_norm_alphanet \
+		+opt=ppo_alphanet \
+		experiment.n_workers=1 \
+		experiment.n_episodes=50 \
+		dacboenv.optimizer_cfg.smac_cfg.smac_kwargs.logging_level=9999 \
+		+instances=bbob2d_3seeds \
+		+task=dacboenv_sawei \
+		seed=3 \
+		baserundir=tmprun \
+		+env/instance_selector=random

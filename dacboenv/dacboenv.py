@@ -12,6 +12,7 @@ from typing import (
 import gymnasium as gym
 import numpy as np
 from dataclasses_json import dataclass_json
+from gymnasium.spaces import Box
 
 from dacboenv.env.action import AbstractActionSpace, AcqParameterActionSpace
 from dacboenv.env.instance import InstanceSelector, RoundRobinInstanceSelector
@@ -237,6 +238,33 @@ class DACBOEnv(gym.Env):
             self._action_space.update_optimizer(action)
             self.last_action = action
 
+    def modify_obs(self, obs: ObsType) -> ObsType:
+        """Modify observations.
+
+        Only modify the `previous_param` observation such that it is never None.
+        That would not be liked by any neural network.
+        `previous_param` will be set to a default, which is the middle of the action space.
+
+        Parameters
+        ----------
+        obs : ObsType
+            The observations.
+
+        Returns
+        -------
+        ObsType
+            The modified observations.
+        """
+        if "previous_param" in obs:
+            if self.last_action is not None:
+                last_action = self.last_action
+            else:
+                assert isinstance(self.action_space, Box)
+                # TODO adjust default/initial action. Right now: middle of action space. And only works for Box.
+                last_action = (self.action_space.high - self.action_space.low) / 2
+            obs["previous_param"] = last_action
+        return obs
+
     def get_observation(self) -> ObsType:
         """Compute the current observation from the optimizer.
 
@@ -246,9 +274,7 @@ class DACBOEnv(gym.Env):
             Dictionary of observation values.
         """
         obs = self._dacbo_observation_space.get_observation()
-        if "previous_param" in obs:
-            obs["previous_param"] = self.last_action
-        return obs
+        return self.modify_obs(obs=obs)
 
     def get_reward(self) -> float:
         """Compute the current reward from the optimizer.
@@ -421,5 +447,6 @@ class DACBOEnv(gym.Env):
             obs.name: np.atleast_1d(obs.default).astype(np.float32)
             for obs in self._dacbo_observation_space._observation_types
         }
+        initial_obs = self.modify_obs(obs=initial_obs)
 
         return initial_obs, {}

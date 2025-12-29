@@ -1,0 +1,40 @@
+# @package _global_
+seed: 1
+
+task: ???
+task_id: ???
+benchmark_id: ???
+
+experiment:
+  n_workers: 2
+  n_episodes: 10
+
+optimizer_id: PPO-AlphaNet
+optimizer:
+  _target_: stable_baselines3.PPO
+  _partial_: true
+  policy: MultiInputPolicy
+  verbose: 1
+  policy_kwargs:
+    net_arch:
+      pi: [8]
+      vf: [8]
+  seed: ${seed}
+  n_epochs: 3
+  #n_steps: # Will be set during runtime in ppo.py  # TODO make variable for different dims in instance set
+  #batch_size: ${divideint:${multiply:${experiment.n_workers},${optimizer.n_steps}},2}
+
+dacboenv:
+  instance_selector_class:
+    _target_: dacboenv.env.instance.RandomInstanceSelector
+    _partial_: true
+
+baserundir: runs
+outdir: ${baserundir}/${optimizer_id}/${benchmark_id}/${task_id}/${seed}
+hydra:
+  run:
+    dir: ${outdir}  # /${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ${baserundir}  # /${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${optimizer_id}/${benchmark_id}/${task_id}/${seed}  # those variables are set for individual jobs, therefore can only be in the subdir
+

@@ -1,6 +1,7 @@
 import numpy as np
 from omegaconf import OmegaConf
 
+from dacboenv.env.policy import AlphaRulePolicy, get_nweights_alpharulenet
 from dacboenv.task import get_dacbo_task_name, get_perceptron_configspace
 
 OmegaConf.register_new_resolver(name="get_perceptron_configspace", resolver=get_perceptron_configspace, replace=True)
@@ -19,3 +20,7 @@ OmegaConf.register_new_resolver(
 OmegaConf.register_new_resolver(
     name="yahpo_ntrials", resolver=lambda x: int(np.ceil(20 + 40 * np.sqrt(x))), replace=True
 )
+OmegaConf.register_new_resolver(
+    name="get_alpharulenet_configspace", resolver=AlphaRulePolicy.get_alpharulenet_configspace, replace=True
+)
+OmegaConf.register_new_resolver(name="get_nweights_alpharulenet", resolver=get_nweights_alpharulenet, replace=True)

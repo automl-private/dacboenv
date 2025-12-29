@@ -12,12 +12,16 @@ from typing import (
 
 import numpy as np
 from gymnasium.spaces import Box, Dict, Space
+from smac.model.gaussian_process import GaussianProcess
+from smac.model.random_forest import RandomForest
 
 from dacboenv.features.signal.modelfit import calculate_model_fit
 from dacboenv.features.signal.ubr import calculate_ubr
 
 if TYPE_CHECKING:
+    from smac.acquisition.function.abstract_acquisition_function import AbstractAcquisitionFunction
     from smac.main.smbo import SMBO
+    from smac.model import AbstractModel
 
     from dacboenv.dacboenv import ObsType
 
@@ -29,6 +33,7 @@ from ConfigSpace.hyperparameters import (
     OrdinalHyperparameter,
 )
 from scipy.stats import kurtosis, skew
+from smac.acquisition.function import EI, PI
 
 from dacboenv.features.X_features import exploration_tsp, knn_entropy
 from dacboenv.features.y_features import calc_variability
@@ -296,6 +301,101 @@ knn_difference_observation = ObservationType(
 ubr_difference_observation = ObservationType(
     "ubr_difference", Box(low=-np.inf, high=np.inf, dtype=np.float32), lambda smbo: ubr_difference(smbo), 0
 )
+
+
+def model_fitted(model: AbstractModel | None) -> bool:
+    """Check whether the surrogate model is fitted.
+
+    Parameters
+    ----------
+    model : AbstractModel
+        Surrogate model.
+
+    Returns
+    -------
+    bool
+        Model fitted or not.
+    """
+    fitted = False
+    if model is not None:
+        fitted = (isinstance(model, GaussianProcess) and model._is_trained) or (
+            isinstance(model, RandomForest) and model._rf is not None
+        )
+    return fitted
+
+
+def get_acq_value(solver: SMBO, acq_fun_class: AbstractAcquisitionFunction) -> float | None:
+    """Get the acquisition function value for the last added configuration.
+
+    Parameters
+    ----------
+    solver : SMBO
+        The SMAC solver instance.
+    acq_fun_class : AbstractAcquisitionFunction
+        The acquisition function class.
+
+    Returns
+    -------
+    float | None
+        The acquisition value for the last configuration, or None, if the model has not been fitted yet.
+    """
+    config_selector = solver._intensifier._config_selector
+    model = config_selector._model
+    acq_value = None
+    if model_fitted(model):
+        rh = config_selector._runhistory
+        incumbent = solver._intensifier._incumbents[0]
+        eta = rh.get_cost(incumbent) if incumbent else 0
+
+        acq_fun = acq_fun_class()
+        acq_fun.update(model=model, eta=eta)
+        trial_key = list(rh.keys())[-1]
+        config_id = trial_key.config_id
+        config = rh.get_config(config_id)
+        acq_value = acq_fun([config])  # Calculate summands
+    return acq_value
+
+
+def get_acq_value_ei(solver: SMBO) -> float | None:
+    """Get acquisiton function value for last configuration with EI acquisition function.
+
+    Parameters
+    ----------
+    solver : SMBO
+        The SMAC instance.
+
+    Returns
+    -------
+    float | None
+        The acquisition value, or None, if the model has not been fitted yet.
+    """
+    return get_acq_value(solver, EI)
+
+
+def get_acq_value_pi(solver: SMBO) -> float | None:
+    """Get acquisiton function value for last configuration with PI acquisition function.
+
+    Parameters
+    ----------
+    solver : SMBO
+        The SMAC instance.
+
+    Returns
+    -------
+    float | None
+        The acquisition value, or None, if the model has not been fitted yet.
+    """
+    return get_acq_value(solver, PI)
+
+
+acq_value_ei_observation = ObservationType(
+    name="acq_value_EI", space=Box(low=0, high=np.inf, dtype=np.float32), compute=get_acq_value_ei, default=0
+)
+
+acq_value_pi_observation = ObservationType(
+    name="acq_value_PI", space=Box(low=0, high=1, dtype=np.float32), compute=get_acq_value_pi, default=0
+)
+
 gp_hp_observation = MultiObservationType(
     "gp_hp_observations",
     lambda smbo: [
@@ -345,6 +445,8 @@ ALL_OBSERVATIONS = [
     has_categorical_hps,
     knn_difference_observation,
     ubr_difference_observation,
+    acq_value_ei_observation,
+    acq_value_pi_observation,
 ]
 
 MULTI_OBSERVATIONS = [gp_hp_observation]

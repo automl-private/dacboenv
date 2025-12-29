@@ -1,0 +1,15 @@
+# @package _global_
+
+observation_space_id: smarter
+dacboenv:
+  observation_keys:
+    - budget_percentage
+    - has_categorical_hps
+    - ubr
+    - ubr_difference
+    - knn_entropy
+    - knn_difference
+    - inc_improvement_scaled
+    - acq_value_EI
+    - acq_value_PI
+

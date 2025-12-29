@@ -92,7 +92,7 @@ def main(cfg: DictConfig) -> None:
     logger.info(f"Model: {model.policy}")
 
     logger.info("⚔ Start training...")
-    model.learn(total_timesteps=n_workers * n_episodes * len_episode, progress_bar=True, tb_log_name="tb.log")
+    model.learn(total_timesteps=n_workers * n_episodes * len_episode, progress_bar=True, tb_log_name="tb_log")
     model.save(rundir / "model")
     logger.info("✅ Finished training.🥵")
 

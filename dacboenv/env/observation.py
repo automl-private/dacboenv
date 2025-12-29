@@ -360,7 +360,7 @@ def get_acq_value(solver: SMBO, acq_fun_class: AbstractAcquisitionFunction) -> f
         trial_key = list(rh.keys())[-1]
         config_id = trial_key.config_id
         config = rh.get_config(config_id)
-        acq_value = acq_fun([config])  # Calculate summands
+        acq_value = acq_fun([config])[0]  # Calculate summands
     return acq_value
 
 

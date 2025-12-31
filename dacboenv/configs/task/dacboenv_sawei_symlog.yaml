@@ -14,4 +14,4 @@ dacboenv:
 task:
   objective_function:
     weight_bounds: [-10, 10]
-    cost: episode_length_scaled_plus_logregret
+    cost: symlogregret

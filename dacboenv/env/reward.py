@@ -38,16 +38,17 @@ class RewardType:
 
 auc_reward = RewardType(
     "trajectory_auc",
-    lambda smbo, reference_performance=None: -auc([t.trial for t in smbo.intensifier.trajectory], costs)
+    lambda smbo, reference_performance: -auc([t.trial for t in smbo.intensifier.trajectory], costs)  # noqa: ARG005
     if len(costs := [t.costs[-1] - smbo.intensifier.trajectory[0].costs[-1] for t in smbo.intensifier.trajectory]) > 1
     else 0,
 )
 incumbent_cost_reward = RewardType(
-    "incumbent_cost", lambda smbo, reference_performance: -smbo.intensifier.trajectory[-1].costs[-1]
+    "incumbent_cost",
+    lambda smbo, reference_performance: -smbo.intensifier.trajectory[-1].costs[-1],  # noqa: ARG005
 )  # Minimize cost
 incumbent_improvement_reward = RewardType(
     "incumbent_improvement",
-    lambda smbo, reference_performance: abs(
+    lambda smbo, reference_performance: abs(  # noqa: ARG005
         smbo.intensifier.trajectory[-1].costs[-1] - smbo.intensifier.trajectory[-2].costs[-1]
     )
     if len(smbo.intensifier.trajectory) > 1 and smbo.intensifier.trajectory[-1].trial == len(smbo.runhistory)
@@ -55,7 +56,7 @@ incumbent_improvement_reward = RewardType(
 )
 sqrt_incumbent_improvement_reward = RewardType(
     "sqrt_incumbent_improvement",
-    lambda smbo, reference_performance: np.sqrt(
+    lambda smbo, reference_performance: np.sqrt(  # noqa: ARG005
         abs(smbo.intensifier.trajectory[-1].costs[-1] - smbo.intensifier.trajectory[-2].costs[-1])
     )
     if len(smbo.intensifier.trajectory) > 1 and smbo.intensifier.trajectory[-1].trial == len(smbo.runhistory)
@@ -63,7 +64,7 @@ sqrt_incumbent_improvement_reward = RewardType(
 )
 auc_reward_alt = RewardType(
     "trajectory_auc_alt",
-    lambda smbo, reference_performance: -auc(
+    lambda smbo, reference_performance: -auc(  # noqa: ARG005
         range(len(smbo.runhistory)),
         np.minimum.accumulate([t.cost - smbo.intensifier.trajectory[0].costs[-1] for t in smbo.runhistory.values()]),
     )
@@ -89,8 +90,10 @@ def get_initial_design_size(solver: SMBO) -> int:
 
 
 def get_reward_for_episode_finished(
-    smbo: SMBO, reference_performance: float | None = None, scale_by_budget: bool = False
-) -> float:  # noqa: FBT001, FBT002
+    smbo: SMBO,
+    reference_performance: float | None = None,  # noqa: ARG001
+    scale_by_budget: bool = False,  # noqa: FBT001, FBT002
+) -> float:
     """Get reward (or rather punishment: -1) as long the episode is not finished.
 
     Typically, the episode is finished after DAC-BO has reached reference performance.
@@ -126,6 +129,20 @@ episode_finished_scaled = RewardType(
 
 
 def calc_symlogregret_of_reference_performance(smbo: SMBO, reference_performance: float | None = None) -> float:
+    """Calculate the symmetric log regret to the reference performance.
+
+    Parameters
+    ----------
+    smbo : SMBO
+        The SMAC instance.
+    reference_performance : float | None, optional
+        The reference performance., by default None
+
+    Returns
+    -------
+    float
+        The symlog regret.
+    """
     cost_inc = smbo.runhistory.get_min_cost(smbo.intensifier.get_incumbent())
     diff = reference_performance - cost_inc
     return symlog(diff)

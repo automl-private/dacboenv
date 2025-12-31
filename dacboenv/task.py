@@ -115,7 +115,6 @@ def rollout(env: DACBOEnv, policy: Policy, max_episode_length: int = 100000) -> 
     terminated = False
     truncated = False
     counter = 0
-
     rewards = []
 
     while not (terminated or truncated):
@@ -178,7 +177,7 @@ class DACBOObjectiveFunction(ObjectiveFunction):
         self._internal_seeds = self._env.instance_set.seeds
         self._seed_map: dict[int, int] = {}
 
-        assert cost in ["episode_length_scaled", "cost_inc", "episode_length_scaled_plus_logregret"]
+        assert cost in ["episode_length_scaled", "cost_inc", "episode_length_scaled_plus_logregret", "symlogregret"]
         self._cost = cost
 
         # Create action space and observation space
@@ -337,6 +336,11 @@ class DACBOObjectiveFunction(ObjectiveFunction):
             cost = ep_done_scaled + max(0, log_regret)
         elif self._cost == "cost_inc":
             cost = result["cost_inc"]
+        elif self._cost == "symlogregret":
+            assert self._env._reward._keys == ["symlogregret"], (
+                "Only works when `symlogreget` reward " f"is selected, but got {self._env._reward._keys}."
+            )
+            cost = -result["reward_mean"]
         else:
             raise ValueError(f"Cannot handle requested cost: {self._cost}.")
         info = result

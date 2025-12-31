@@ -12,7 +12,7 @@ task:
       weights: null
   input_space:
     _target_: carps.utils.task.InputSpace
-    configuration_space: ${get_alpharulenet_configspace:${task.objective_function.weight_bounds}}
+    configuration_space: ${get_alpharulenet_configspace:${task.objective_function.weight_bounds},${task.objective_function.policy_kwargs.k},${task.objective_function.policy_kwargs.delta_alpha}}
     fidelity_space:
       _target_: carps.utils.task.FidelitySpace
       is_multifidelity: false

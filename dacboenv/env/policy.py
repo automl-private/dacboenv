@@ -515,6 +515,65 @@ class AlphaRuleNet(nn.Module):
         alpha_new = alpha_prev + delta_alpha_out
         return torch.clamp(alpha_new, 0.0, 1.0)
 
+    @classmethod
+    def alpha_rule_init_weights(cls: type[AlphaRuleNet], k: float = 10, delta_alpha: float = 0.1) -> torch.Tensor:
+        """
+        Construct the flattened parameter vector that reproduces the default
+        (hand-crafted) initialization of AlphaRuleNet when `weights=None`.
+
+        This function generates the exact 57-element weight vector corresponding
+        to the analytical SAWEI-inspired initialization used in the model:
+        - fc1.weight: 8x5 matrix encoding comparisons between PI, EI, and scaled R
+        - fc1.bias: all zeros
+        - fc2.weight: uniform weights equal to delta_alpha / 8
+        - fc2.bias: zero
+
+        The returned vector matches the internal PyTorch parameter ordering:
+            [fc1.weight, fc1.bias, fc2.weight, fc2.bias]
+
+        Parameters
+        ----------
+        k : float
+            Steepness parameter controlling sensitivity to the difference
+            between acquisition values (e.g., EI vs PI).
+        delta_alpha : float
+            Step size scaling factor applied to the output of the network.
+
+        Returns
+        -------
+        torch.Tensor
+            A 1D tensor of length 57 containing the initialized network parameters.
+            This tensor can be passed directly as the `weights` argument when
+            constructing an `AlphaRuleNet`.
+        """
+        weights: list[float] = []
+
+        # ---- fc1.weight (8 x 5) ----
+        fc1_weight: list[list[float]] = [
+            [0, -k, 0, 0, 0],
+            [0, 0, k, 0, 0],
+            [0, -0.5 * k, 0.5 * k, 0, 0],
+            [0, -0.5 * k, 0.5 * k, 0, 0],
+            [-1, 0, 0, 0, 1],
+            [1, 0, 0, 0, -1],
+            [-0.5, 0, 0, 0, 0.5],
+            [0.5, 0, 0, 0, -0.5],
+        ]
+
+        for row in fc1_weight:
+            weights.extend(row)
+
+        # ---- fc1.bias (8) ----
+        weights.extend([0.0] * 8)
+
+        # ---- fc2.weight (1 x 8) ----
+        weights.extend([delta_alpha * 0.125] * 8)
+
+        # ---- fc2.bias (1) ----
+        weights.append(0.0)
+
+        return torch.tensor(weights, dtype=torch.float32)
+
 
 class AlphaRulePolicy(Policy):
     """AlphaRulePolicy.
@@ -597,7 +656,9 @@ class AlphaRulePolicy(Policy):
         torch.manual_seed(seed)
 
     @classmethod
-    def get_alpharulenet_configspace(cls, weight_bounds: tuple[float, float]) -> ConfigurationSpace:
+    def get_alpharulenet_configspace(
+        cls, weight_bounds: tuple[float, float], k: float = 10, delta_alpha: float = 0.1
+    ) -> ConfigurationSpace:
         """Get configuration space for AlphaRuleNet policy.
 
         Parameters
@@ -611,8 +672,9 @@ class AlphaRulePolicy(Policy):
             The configuration space, contaings n_obs + 1 hyperparameters (weight vector and bias).
         """
         n_hps = AlphaRuleNet.n_weights
+        defaults = AlphaRuleNet.alpha_rule_init_weights(k=k, delta_alpha=delta_alpha)
         configspace = ConfigurationSpace()
-        configspace.add([Float(name=f"w{i}", bounds=weight_bounds) for i in range(n_hps)])
+        configspace.add([Float(name=f"w{i}", bounds=weight_bounds, default=float(defaults[i])) for i in range(n_hps)])
         return configspace
 
 

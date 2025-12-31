@@ -102,6 +102,7 @@ class DACBOEnv(gym.Env):
         inner_seeds: list[int] | None = None,
         terminate_after_reference_performance_reached: bool = False,  # noqa: FBT001, FBT002
         instance_selector_class: type[InstanceSelector] | None = None,
+        **kwargs: dict,  # noqa: ARG002
     ) -> None:
         """Initialize the DACBOEnv environment.
 
@@ -404,7 +405,8 @@ class DACBOEnv(gym.Env):
         self.instance = self.get_next_instance()
         seed, task_id = self.instance
         if seed is None:
-            seed = int(self._seeder.integers(low=0, high=2**32 - 1))
+            seed = self._seeder.integers(low=0, high=2**32 - 1)
+        seed = int(seed)
 
         # Build carps optimizer (wrapper around smac) with appropriate objective function
         optimizer_id = "SMAC3-BlackBoxFacade" if self._optimizer_cfg is None else None

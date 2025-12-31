@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
+
 def symlog(x: np.ndarray, linthresh: float = 1.0, base: float = 10, eps: float = 1e-10) -> np.ndarray:
     """Apply a symmetric logarithmic (symlog) transformation.
 
@@ -43,9 +44,7 @@ def symlog(x: np.ndarray, linthresh: float = 1.0, base: float = 10, eps: float =
     abs_x = np.abs(x)
 
     return sign * np.where(
-        abs_x <= linthresh,
-        abs_x / linthresh,
-        1 + np.log(np.maximum(abs_x / linthresh, eps)) / np.log(base)
+        abs_x <= linthresh, abs_x / linthresh, 1 + np.log(np.maximum(abs_x / linthresh, eps)) / np.log(base)
     )
 
 

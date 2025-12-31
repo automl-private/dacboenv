@@ -455,13 +455,13 @@ class AlphaRuleNet(nn.Module):
             nn.init.constant_(self.fc2.bias, 0.0)
             self.fc1.weight.data.zero_()
             self.fc1.bias.data.zero_()
-            # Neurons 0-3 approximate tanh(k*(v_PI - v_EI))
-            self.fc1.weight.data[0, 1] = k
-            self.fc1.weight.data[1, 2] = -k
-            self.fc1.weight.data[2, 1] = 0.5 * k
-            self.fc1.weight.data[2, 2] = -0.5 * k
-            self.fc1.weight.data[3, 1] = 0.5 * k
-            self.fc1.weight.data[3, 2] = -0.5 * k
+            # Neurons 0-3 approximate tanh(k*(v_EI - v_PI))
+            self.fc1.weight.data[0, 1] = -k  # v_PI
+            self.fc1.weight.data[1, 2] = k  # v_EI
+            self.fc1.weight.data[2, 1] = -0.5 * k
+            self.fc1.weight.data[2, 2] = 0.5 * k
+            self.fc1.weight.data[3, 1] = -0.5 * k
+            self.fc1.weight.data[3, 2] = 0.5 * k
             # Neurons 4-7 approximate Gaussian gate using R / R_scale
             self.fc1.weight.data[4, 0] = -1.0
             self.fc1.weight.data[4, 4] = 1.0

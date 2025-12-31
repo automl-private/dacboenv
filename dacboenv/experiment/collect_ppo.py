@@ -12,7 +12,7 @@ def gather_trained_ppo(rundir: Path | str) -> list[Path]:
     """Gathers PPO model paths."""
     if isinstance(rundir, str):
         rundir = Path(rundir)
-    model_zips = list(rundir.glob("*/*/*/*/model.zip"))
+    model_zips = list(rundir.glob("**/model.zip"))
     return [p.resolve() for p in model_zips]
 
 
@@ -21,26 +21,27 @@ def create_ppo_eval_configs(rundir: Path | str) -> None:
     if isinstance(rundir, str):
         rundir = Path(rundir)
     models = gather_trained_ppo(rundir)
-    configs_path = rundir / "../dacboenv/configs/policy/optimized/"
+    configs_path = Path(__file__).parent.parent / "configs/policy/optimized/"
 
     eval_conf = DictConfig({})
     eval_conf.optimizer = {}
     eval_conf.optimizer.policy_class = {"_target_": "dacboenv.env.policy.ModelPolicy", "_partial_": True}  # type: ignore[attr-defined]
 
     for model in models:
+        cfg_fn = model.parent / ".hydra/config.yaml"
+        cfg = OmegaConf.load(cfg_fn)
         eval_conf.optimizer.policy_kwargs = {  # type: ignore[attr-defined]
             "model": str(model.with_suffix("")),
             "model_class": "stable_baselines3.PPO",
         }
-        eval_conf.optimizer_id = f"{model.parts[-5]}-{model.parts[-3]}-{model.parts[-2]}"
-        if model.parts[-5].split("-")[:2] == ["PPO", "norm"]:  # Handle normalization with PPO
-            normalization_wrapper = model.parent / "vecnormalize.pkl"
-            eval_conf.optimizer.policy_kwargs["normalization_wrapper"] = str(normalization_wrapper)  # type: ignore[attr-defined]
+        eval_conf.policy_id = f"{cfg.optimizer_id}--{cfg.task_id}--seed{cfg.seed}"
+        eval_conf.optimizer_id = eval_conf.policy_id
+        normalization_wrapper_fn = model.parent / "vecnormalize.pkl"
+        if normalization_wrapper_fn.is_file():
+            eval_conf.optimizer.policy_kwargs["normalization_wrapper"] = str(normalization_wrapper_fn)  # type: ignore[attr-defined]
         yaml_str = OmegaConf.to_yaml(eval_conf)
         yaml_str = f"# @package _global_\n\n{yaml_str}"
-        eval_cfg_fn = (
-            configs_path / f"{'-'.join(model.parts[-5].split('-')[:3])}/{model.parts[-3]}/seed_{model.parts[-2]}.yaml"
-        )
+        eval_cfg_fn = configs_path / f"{'-'.join(model.parts[-5].split('-')[:3])}/{model.parts[-3]}/seed{cfg.seed}.yaml"
         eval_cfg_fn.parent.mkdir(parents=True, exist_ok=True)
         with open(eval_cfg_fn, "w") as file:
             file.write(yaml_str)

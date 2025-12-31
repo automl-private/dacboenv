@@ -1,0 +1,6 @@
+# @package _global_
+
+reward_id: symlogregret
+dacboenv:
+  reward_keys:
+    - symlogregret

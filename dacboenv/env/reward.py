@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 import numpy as np
 from sklearn.metrics import auc
 
+from dacboenv.utils.math import symlog
 from dacboenv.utils.parego import ParEGO
 
 if TYPE_CHECKING:
@@ -25,39 +26,44 @@ class RewardType:
     name : str
         Name of the reward.
     compute : Callable[[SMBO], Any]
-        Function to compute the reward value from a SMAC instance.
+        Function to compute the reward value from a SMAC instance and from
+        reference_performance: float | None.
     """
 
     name: str
-    compute: Callable[[SMBO], Any]
+    compute: Callable[[SMBO, float | None], Any]
 
 
 # Multi-objective: Handle incumbent cost
 
 auc_reward = RewardType(
     "trajectory_auc",
-    lambda smbo: -auc([t.trial for t in smbo.intensifier.trajectory], costs)
+    lambda smbo, reference_performance=None: -auc([t.trial for t in smbo.intensifier.trajectory], costs)
     if len(costs := [t.costs[-1] - smbo.intensifier.trajectory[0].costs[-1] for t in smbo.intensifier.trajectory]) > 1
     else 0,
 )
 incumbent_cost_reward = RewardType(
-    "incumbent_cost", lambda smbo: -smbo.intensifier.trajectory[-1].costs[-1]
+    "incumbent_cost", lambda smbo, reference_performance: -smbo.intensifier.trajectory[-1].costs[-1]
 )  # Minimize cost
 incumbent_improvement_reward = RewardType(
     "incumbent_improvement",
-    lambda smbo: abs(smbo.intensifier.trajectory[-1].costs[-1] - smbo.intensifier.trajectory[-2].costs[-1])
+    lambda smbo, reference_performance: abs(
+        smbo.intensifier.trajectory[-1].costs[-1] - smbo.intensifier.trajectory[-2].costs[-1]
+    )
     if len(smbo.intensifier.trajectory) > 1 and smbo.intensifier.trajectory[-1].trial == len(smbo.runhistory)
     else 0,
 )
 sqrt_incumbent_improvement_reward = RewardType(
     "sqrt_incumbent_improvement",
-    lambda smbo: np.sqrt(abs(smbo.intensifier.trajectory[-1].costs[-1] - smbo.intensifier.trajectory[-2].costs[-1]))
+    lambda smbo, reference_performance: np.sqrt(
+        abs(smbo.intensifier.trajectory[-1].costs[-1] - smbo.intensifier.trajectory[-2].costs[-1])
+    )
     if len(smbo.intensifier.trajectory) > 1 and smbo.intensifier.trajectory[-1].trial == len(smbo.runhistory)
     else 0,
 )
 auc_reward_alt = RewardType(
     "trajectory_auc_alt",
-    lambda smbo: -auc(
+    lambda smbo, reference_performance: -auc(
         range(len(smbo.runhistory)),
         np.minimum.accumulate([t.cost - smbo.intensifier.trajectory[0].costs[-1] for t in smbo.runhistory.values()]),
     )
@@ -82,7 +88,9 @@ def get_initial_design_size(solver: SMBO) -> int:
     return len(solver.intensifier.config_selector._initial_design_configs)
 
 
-def get_reward_for_episode_finished(smbo: SMBO, scale_by_budget: bool = False) -> float:  # noqa: FBT001, FBT002
+def get_reward_for_episode_finished(
+    smbo: SMBO, reference_performance: float | None = None, scale_by_budget: bool = False
+) -> float:  # noqa: FBT001, FBT002
     """Get reward (or rather punishment: -1) as long the episode is not finished.
 
     Typically, the episode is finished after DAC-BO has reached reference performance.
@@ -116,6 +124,15 @@ episode_finished_scaled = RewardType(
     "episode_finished_scaled", partial(get_reward_for_episode_finished, scale_by_budget=True)
 )
 
+
+def calc_symlogregret_of_reference_performance(smbo: SMBO, reference_performance: float | None = None) -> float:
+    cost_inc = smbo.runhistory.get_min_cost(smbo.intensifier.get_incumbent())
+    diff = reference_performance - cost_inc
+    return symlog(diff)
+
+
+symlogregret_reward = RewardType("symlogregret", calc_symlogregret_of_reference_performance)
+
 ALL_REWARDS = [
     auc_reward,
     incumbent_cost_reward,
@@ -124,6 +141,7 @@ ALL_REWARDS = [
     auc_reward_alt,
     episode_finished,
     episode_finished_scaled,
+    symlogregret_reward,
 ]
 
 
@@ -188,7 +206,7 @@ class DACBOReward:
 
         self._parego = ParEGO(len(self._reward_types), self._smac_instance._scenario.seed, self._rho)
 
-    def _get_full_reward(self) -> dict[str, float]:
+    def _get_full_reward(self, reference_performance: float | None = None) -> dict[str, float]:
         """Compute all sub-rewards from the selected reward types.
 
         Returns
@@ -196,9 +214,9 @@ class DACBOReward:
         dict[str, float]
             All sub-rewards.
         """
-        return {rew.name: rew.compute(self._smac_instance) for rew in self._reward_types}
+        return {rew.name: rew.compute(self._smac_instance, reference_performance) for rew in self._reward_types}
 
-    def get_reward(self) -> float:
+    def get_reward(self, reference_performance: float | None = None) -> float:
         """Compute the (scalarized) reward from the selected reward types.
 
         Returns
@@ -206,7 +224,7 @@ class DACBOReward:
         float
             The computed reward value.
         """
-        full_reward = self._get_full_reward()
+        full_reward = self._get_full_reward(reference_performance=reference_performance)
         if len(self._reward_types) == 1:
             return next(iter(full_reward.values()))
         # Multi-objective using ParEGO

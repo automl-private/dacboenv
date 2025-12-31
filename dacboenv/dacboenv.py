@@ -164,13 +164,12 @@ class DACBOEnv(gym.Env):
         self._terminate_after_reference_performance_reached = terminate_after_reference_performance_reached
         self.reference_performance_fn = reference_performance_fn
         self.reference_performance_optimizer_id = "SMAC3-BlackBoxFacade"
-        if self._terminate_after_reference_performance_reached:
-            self._reference_performance = ReferencePerformance(
-                optimizer_id=self.reference_performance_optimizer_id,
-                task_ids=self.instance_set.task_ids,
-                seeds=self.instance_set.seeds,
-                reference_performance_fn=self.reference_performance_fn,
-            )
+        self._reference_performance = ReferencePerformance(
+            optimizer_id=self.reference_performance_optimizer_id,
+            task_ids=self.instance_set.task_ids,
+            seeds=self.instance_set.seeds,
+            reference_performance_fn=self.reference_performance_fn,
+        )
 
         self._carps_solver: Optimizer
         self._smac_facade: AbstractFacade
@@ -284,7 +283,7 @@ class DACBOEnv(gym.Env):
         reward : float
             The current reward signal.
         """
-        return self._reward.get_reward()
+        return self._reward.get_reward(self.current_threshold)
 
     def get_next_instance(self) -> tuple[int, str]:
         """Get the next instance.
@@ -324,22 +323,17 @@ class DACBOEnv(gym.Env):
         _, trial_value = self._smac_instance._runner.run_wrapper(trial_info)
         self._smac_instance.tell(trial_info, trial_value)
 
-        # Compute observation + reward
-        obs = self.get_observation()
-        reward = self.get_reward()
-
-        self._episode_reward += reward
-        self._episode_length += 1
-
         terminated = False
+
+        curr_incumbent = self.get_incumbent_cost()
+        threshold = self._reference_performance.query_cost(  # type: ignore[attr-defined]
+            optimizer_id=self.reference_performance_optimizer_id,
+            task_id=self.current_task_id,
+            seed=self.current_seed,
+        )
+        self.current_threshold = threshold
+
         if self._terminate_after_reference_performance_reached:
-            curr_incumbent = self.get_incumbent_cost()
-            threshold = self._reference_performance.query_cost(  # type: ignore[attr-defined]
-                optimizer_id=self.reference_performance_optimizer_id,
-                task_id=self.current_task_id,
-                seed=self.current_seed,
-            )
-            self.current_threshold = threshold
             distance = abs(curr_incumbent - threshold)
             log_distance = safe_log10(distance)
             logger.info(f"Current: {curr_incumbent:.4f}, threshold: {threshold:.4f}, log distance: {log_distance:.4f}")
@@ -347,6 +341,13 @@ class DACBOEnv(gym.Env):
 
         remaining_trials = self._smac_instance._scenario.n_trials - self._smac_instance.runhistory.finished
         truncated = remaining_trials <= 0
+
+        # Compute observation + reward
+        obs = self.get_observation()
+        reward = self.get_reward()
+
+        self._episode_reward += reward
+        self._episode_length += 1
 
         info = {}
         if terminated or truncated:

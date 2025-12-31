@@ -68,14 +68,32 @@ adaptaf:
 gather-data:
 	python -m carps.analysis.gather_data '--rundir=["runs_eval","/scratch/hpc-prf-intexml/tklenke/experiment_runs/dacboenv_ppo_semi"]' --outdir=results
 
-testppo:
+gather-data-small:
+	python -m carps.analysis.gather_data --rundir=runs_eval/PPO-AlphaNet* --outdir=results_alphanet --n_processes=1
+
+
+testppoalpha:
 	python -m dacboenv.experiment.ppo_norm_alphanet \
-		+opt=ppo_alphanet \
-		experiment.n_workers=1 \
+		+opt=ppo_alphanet2 \
+		experiment.n_workers=4 \
 		experiment.n_episodes=50 \
 		dacboenv.optimizer_cfg.smac_cfg.smac_kwargs.logging_level=9999 \
 		+instances=bbob2d_3seeds \
 		+task=dacboenv_sawei \
 		seed=3 \
 		baserundir=tmprun \
-		+env/instance_selector=random
+		+env/instance_selector=random \
+		task.optimization_resources.n_trials=10
+
+testppo:
+	python -m dacboenv.experiment.ppo_norm \
+		+opt=ppo \
+		experiment.n_workers=4 \
+		experiment.n_episodes=50 \
+		dacboenv.optimizer_cfg.smac_cfg.smac_kwargs.logging_level=9999 \
+		+instances=bbob2d_3seeds \
+		+task=dacboenv_epdonescaledpluslogregret \
+		seed=3 \
+		baserundir=tmprun \
+		+env/instance_selector=random \
+		task.optimization_resources.n_trials=10

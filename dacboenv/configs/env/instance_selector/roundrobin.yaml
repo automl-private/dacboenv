@@ -1,0 +1,6 @@
+# @package _global_
+
+dacboenv:
+  instance_selector_class:
+    _target_: dacboenv.env.instance.RoundRobinInstanceSelector
+    _partial_: true

@@ -219,6 +219,7 @@ variability_observation = ObservationType(
     else -1,
     -1,
 )
+# TODO: rename tsp to tsd
 tsp_best_observation = ObservationType(
     "tsp_best",
     Box(low=0, high=np.inf, dtype=np.float32),

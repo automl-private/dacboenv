@@ -10,6 +10,8 @@ from scipy.spatial.distance import pdist, squareform
 from scipy.special import digamma
 
 
+# TODO add normalized TSD
+# TODO rename TSP -> TSD
 def exploration_tsp(X: np.ndarray) -> np.ndarray:  # noqa: N803
     """Movement of observation center over time.
 

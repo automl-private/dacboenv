@@ -3,8 +3,8 @@ tasks=(
     # "+task=dacboenv_epdonescaledpluslogregret_budgetpercentage_wei"
     # "+task=dacboenv_epdonescaledpluslogregret_wei"
     # "+task=dacboenv_epdonescaledpluslogregret"
-    # "+task=dacboenv_sawei"
-    "+task=dacboenv_sawei2"
+    # "+task=dacboenv_sawei_done"
+    "+task=dacboenv_sawei_symlog"
 )
 instance_sets=(
     # "+instances=bbob2d_1_3seeds"

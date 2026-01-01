@@ -19,6 +19,7 @@ from carps.utils.loggingutils import get_logger
 from carps.utils.running import make_task
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
+from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
 
@@ -59,6 +60,7 @@ def main(cfg: DictConfig) -> None:
         return _init
 
     n_workers = cfg.experiment.n_workers
+    n_envs = n_workers
     task = make_task(cfg)
 
     n_episodes = cfg.experiment.n_episodes
@@ -92,7 +94,14 @@ def main(cfg: DictConfig) -> None:
     logger.info(f"Model: {model.policy}")
 
     logger.info("⚔ Start training...")
-    model.learn(total_timesteps=n_workers * n_episodes * len_episode, progress_bar=True, tb_log_name="tb_log")
+    save_freq = n_workers * len_episode * 5
+    checkpoint_callback = CheckpointCallback(save_freq=max(save_freq // n_envs, 1), save_path=str(rundir))
+    model.learn(
+        total_timesteps=n_workers * n_episodes * len_episode,
+        progress_bar=True,
+        tb_log_name="tb_log",
+        callback=checkpoint_callback,
+    )
     model.save(rundir / "model")
     logger.info("✅ Finished training.🥵")
 

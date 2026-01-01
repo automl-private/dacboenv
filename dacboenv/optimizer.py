@@ -33,7 +33,7 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
     task : Task
         The optimization task.
     dacboenv : DACBOEnv
-        DAC-BO Env. Contains the SMAC configuration.
+        DACBO Env. Contains the SMAC configuration.
     loggers : list, optional
         List of logger instances.
     expects_multiple_objectives : bool, optional
@@ -83,7 +83,7 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         task : Any
             The optimization task.
         dacboenv : DACBOEnv
-            DAC-BO Env. Contains the SMAC configuration.
+            DACBO Env. Contains the SMAC configuration.
         loggers : list, optional
             List of logger instances.
         expects_multiple_objectives : bool, optional

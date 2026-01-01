@@ -96,7 +96,7 @@ def get_reward_for_episode_finished(
 ) -> float:
     """Get reward (or rather punishment: -1) as long the episode is not finished.
 
-    Typically, the episode is finished after DAC-BO has reached reference performance.
+    Typically, the episode is finished after DACBO has reached reference performance.
 
     Parameters
     ----------

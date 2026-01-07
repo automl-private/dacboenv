@@ -95,7 +95,9 @@ def main(cfg: DictConfig) -> None:
 
     logger.info("⚔ Start training...")
     save_freq = n_workers * len_episode * 5
-    checkpoint_callback = CheckpointCallback(save_freq=max(save_freq // n_envs, 1), save_path=str(rundir))
+    checkpoint_callback = CheckpointCallback(
+        save_freq=max(save_freq // n_envs, 1), save_path=str(rundir), save_vecnormalize=True
+    )
     model.learn(
         total_timesteps=n_workers * n_episodes * len_episode,
         progress_bar=True,
@@ -103,6 +105,7 @@ def main(cfg: DictConfig) -> None:
         callback=checkpoint_callback,
     )
     model.save(rundir / "model")
+    vec_env.save(rundir / "vecnormalize.pkl")
     logger.info("✅ Finished training.🥵")
 
     # Evaluate learned policy
@@ -110,8 +113,6 @@ def main(cfg: DictConfig) -> None:
     n_eval_episodes = len(task.objective_function._env.instance_selector.instances)
     mean_reward, std_reward = evaluate_policy(model, model.get_env(), n_eval_episodes=n_eval_episodes)
     logger.info(f"Learned policy reward: {mean_reward:.2f} +/- {std_reward:.2f}")
-
-    vec_env.save(rundir / "vecnormalize.pkl")
 
     with open(rundir / "modeleval.txt", "a") as out:
         out.write(f"Learned policy reward: {mean_reward:.2f} +/- {std_reward:.2f}\n")

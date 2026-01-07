@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING
 import pandas as pd
 from carps.analysis.gather_data import read_jsonl_content
 from fire import Fire
-from hydra import compose, initialize_config_module
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
@@ -42,6 +41,10 @@ def add_metadata_to_dict(D: dict | pd.DataFrame, cfg: DictConfig) -> dict | pd.D
     D["seed"] = cfg.seed
     D["task_id"] = cfg.task_id
     D["optimizer_id"] = cfg.optimizer_id
+    optional_attrs = ["reward_id", "instance_set_id", "action_space_id", "observations_id"]
+    for attr in optional_attrs:
+        if hasattr(cfg, attr):
+            D[attr] = cfg.get(attr)
     D["objective_function"] = cfg.task.objective_function._target_.split(".")[-1]
     cfg_dict = OmegaConf.to_container(cfg)
     if isinstance(D, pd.DataFrame):
@@ -51,7 +54,7 @@ def add_metadata_to_dict(D: dict | pd.DataFrame, cfg: DictConfig) -> dict | pd.D
     return D
 
 
-def gather_data_smac(rundir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
+def gather_data_smac(rundir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:  # noqa: PLR0915
     """Gather optimization data and incumbent policies from SMAC run.
 
     Parameters
@@ -81,26 +84,54 @@ def gather_data_smac(rundir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
         seed = cfg.seed
 
         smac_folders = list(cfg_fn.parent.parent.glob(str(Path(str(seed)) / "smac3_output" / "*" / str(seed))))
-        assert len(smac_folders) == 1
+        if len(smac_folders) == 0:
+            logger.info(f"Skip {cfg_fn}, no smac folder found yet...")
+            continue
+        if len(smac_folders) > 1:
+            logger.info(f"Found several smac folders for {cfg_fn}, taking newest...")
+            newest_dir = max(map(Path, smac_folders), key=lambda p: p.stat().st_mtime)
+            smac_folders = [newest_dir]
+        assert len(smac_folders) == 1, f"{smac_folders}"
         smac_folder = smac_folders[0]
         with open(smac_folder / _intensifier_fn) as file:
             intensifier_info = json.load(file)
-        assert len(intensifier_info["incumbent_ids"]) == 1, "Multi-objective not supported or sth went wrong."
+        if len(intensifier_info["incumbent_ids"]) == 0:
+            logger.info(f"Skip {cfg_fn}, intensifier was not active yet...")
+            continue
+        assert (
+            len(intensifier_info["incumbent_ids"]) == 1
+        ), f"Multi-objective not supported or sth went wrong. {intensifier_info['incumbent_ids']}"
         incumbent_id = intensifier_info["incumbent_ids"][0]
         trajectory = pd.DataFrame(intensifier_info["trajectory"])
         trajectory["cost"] = trajectory["costs"].map(lambda x: x[0])
+        # TODO add trial_info and trial_config
         trajectory["config_id"] = trajectory["config_ids"].map(lambda x: x[0])
         cost_inc = trajectory["cost"].min()
         del trajectory["costs"]
         del trajectory["walltime"]
         del trajectory["config_ids"]
-        with open(smac_folder / _runhistory_fn) as file:
+        rh_fn = smac_folder / _runhistory_fn
+        with open(rh_fn) as file:
             runhistory_info = json.load(file)
         config_inc = runhistory_info["configs"][str(incumbent_id)]
         search_space_dim = len(config_inc)
         trajectory = add_metadata_to_dict(trajectory, cfg)
         trajectory["search_space_dim"] = search_space_dim
         trajectories.append(trajectory)
+
+        # cs_fn = smac_folder / _configspace_fn
+        # configspace = ConfigurationSpace.from_json(cs_fn)
+        # rh = RunHistory()
+        # rh.load(filename=rh_fn, configspace=configspace)
+        # for k,v in rh.items():
+        #     config = rh.get_config(k.config_id)
+        #     info = TrialInfo(
+        #         config=config,
+        #         instance=k.instance,
+        #         budget=k.budget,
+        #         seed=k.seed
+        #     )
+        #     print(info, v)
 
         config_inc = add_metadata_to_dict(config_inc, cfg)
         overrides = OmegaConf.load(cfg_fn.parent / "overrides.yaml")
@@ -356,23 +387,23 @@ def create_configs(rundir: Path) -> str:
         policy_class_path = f"{policy_cls.__module__}.{policy_cls.__qualname__}"
         policy_kwargs = policy.get_init_kwargs()
 
-        env_override = configs_inc_df.loc[idx, "env_override"]
+        configs_inc_df.loc[idx, "env_override"]
 
-        with initialize_config_module(
-            config_module="dacboenv.configs",  # <-- package.conf where env/ lives
-            version_base=None,
-        ):
-            cfg_env = compose(
-                config_name=None,
-                overrides=env_override.split(" "),
-            )
+        # with initialize_config_module(
+        #     config_module="dacboenv.configs",  # <-- package.conf where env/ lives
+        #     version_base=None,
+        # ):
+        #     cfg_env = compose(
+        #         config_name=None,
+        #         overrides=env_override.split(" "),
+        #     )
 
         opt_cfg = DictConfig({})
         opt_cfg.optimizer = {}
         opt_cfg.optimizer.policy_class = {"_target_": policy_class_path, "_partial_": True}  # type: ignore[attr-defined]
         opt_cfg.optimizer.policy_kwargs = policy_kwargs  # type: ignore[attr-defined]
         opt_cfg.policy_id = f"{cfg.optimizer_id}--{cfg.task_id}--seed{cfg.seed}"
-        opt_cfg.dacboenv = cfg_env.dacboenv
+        # opt_cfg.dacboenv = cfg_env.dacboenv
         opt_cfg.optimizer_id = opt_cfg.policy_id
 
         eval_cfg_fn = Path(f"dacboenv/configs/policy/optimized/{opt_cfg.policy_id.replace('--','/')}.yaml")
@@ -394,10 +425,13 @@ def collect(rundir: str = "runs") -> None:
     """
     _rundir = Path(rundir)
     traj_df_smac, cincs_df_smac = gather_data_smac(_rundir / "SMAC-AC")
-    traj_df_cma, cincs_df_cma = gather_data_cma(_rundir / "CMA-1.3")
-    traj_df_rs, cincs_df_rs = gather_data_randomsearch(_rundir / "RandomSearch")
-    trajectory_df = pd.concat([traj_df_smac, traj_df_cma, traj_df_rs]).reset_index(drop=True)
-    configs_inc_df = pd.concat([cincs_df_smac, cincs_df_cma, cincs_df_rs]).reset_index(drop=True)
+    trajectory_df = traj_df_smac
+    configs_inc_df = cincs_df_smac
+    # traj_df_smacws, cincs_df_smacws = gather_data_smac(_rundir / "SMAC-AC-WS")
+    # traj_df_cma, cincs_df_cma = gather_data_cma(_rundir / "CMA-1.3")
+    # traj_df_rs, cincs_df_rs = gather_data_randomsearch(_rundir / "RandomSearch")
+    # trajectory_df = pd.concat([traj_df_smac, traj_df_smacws, traj_df_cma, traj_df_rs]).reset_index(drop=True)
+    # configs_inc_df = pd.concat([cincs_df_smac, cincs_df_smacws, cincs_df_cma, cincs_df_rs]).reset_index(drop=True)
     save_traj_and_cincs_df(rundir=_rundir, trajectory_df=trajectory_df, configs_inc_df=configs_inc_df)
 
     create_configs(_rundir)

@@ -69,7 +69,10 @@ gather-data:
 	python -m carps.analysis.gather_data '--rundir=["runs_eval","/scratch/hpc-prf-intexml/tklenke/experiment_runs/dacboenv_ppo_semi"]' --outdir=results
 
 gather-data-small:
-	python -m carps.analysis.gather_data --rundir=runs_eval/PPO-AlphaNet* --outdir=results_alphanet --n_processes=1
+	python -m carps.analysis.gather_data \
+	'--rundir=["runs_eval/PPO-AlphaNet*","runs_eval/DefaultPolicy","runs_eval/SAWEI","runs_eval/SMAC-AC--dacbo_Cepisode_length_scaled_plus_logregret_AWEI-cont_Ssawei_Repisode_finished_scaled*","runs_eval/SMAC-AC--dacbo_Csymlogregret_AWEI-cont_Ssawei_Rsymlogregret*"]' \
+	--outdir=results_alphanet2
+# 	--n_processes=1
 
 
 testppoalpha:
@@ -97,3 +100,16 @@ testppo:
 		baserundir=tmprun \
 		+env/instance_selector=random \
 		task.optimization_resources.n_trials=10
+
+tmpeval:
+	python -m carps.run hydra.searchpath=[pkg://dacboenv/configs] \
+		+eval=base \
+		+env=base \
+		+env/obs=sawei \
+		+env/reward=ep_done_scaled \
+		+env/opt=base \
+		seed=2 \
+		+task/BBOB=cfg_8_5_0 \
+		+env/action=wei_alpha_continuous \
+		+policy/optimized/PPO-AlphaNet3/dacbo_Cepisode_length_scaled_plus_logregret_AWEI-cont_Ssawei_Repisode_finished_scaled_Ibbob2d_3seeds=seed1 \
+		dacboenv.terminate_after_reference_performance_reached=False

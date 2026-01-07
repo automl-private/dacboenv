@@ -191,3 +191,4 @@ runs*
 runtest
 results*
 tmp*
+*slurm*

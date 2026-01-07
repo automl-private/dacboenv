@@ -14,9 +14,9 @@ fi
 export HYDRA_FULL_ERROR=1
 
 python -m dacboenv.experiment.ppo_norm_alphanet \
-    +opt=ppo_alphanet \
-    experiment.n_workers=16 \
-    experiment.n_episodes=50 \
     $@ \
+    experiment.n_workers=16 \
+    experiment.n_episodes=1000 \
     seed=$SLURM_ARRAY_TASK_ID \
-    +env/instance_selector=random
+    +env/instance_selector=roundrobin \
+    baserundir=runsnew

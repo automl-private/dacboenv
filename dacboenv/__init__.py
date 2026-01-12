@@ -1,7 +1,7 @@
 import numpy as np
 from omegaconf import OmegaConf
 
-from dacboenv.env.policy import AlphaRulePolicy, get_nweights_alpharulenet
+from dacboenv.policy.policy import AlphaRulePolicy, get_nweights_alpharulenet
 from dacboenv.task import get_dacbo_task_name, get_perceptron_configspace
 
 OmegaConf.register_new_resolver(name="get_perceptron_configspace", resolver=get_perceptron_configspace, replace=True)

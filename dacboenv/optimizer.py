@@ -9,7 +9,7 @@ import numpy as np
 from carps.optimizers.smac20 import SMAC3Optimizer
 from hydra.utils import get_class
 
-from dacboenv.env.policy import Policy, RandomPolicy
+from dacboenv.policy.policy import Policy, RandomPolicy
 
 if TYPE_CHECKING:
     from carps.loggers.abstract_logger import AbstractLogger

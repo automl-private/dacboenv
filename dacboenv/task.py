@@ -13,8 +13,8 @@ from carps.utils.trials import TrialValue
 from ConfigSpace import Configuration, ConfigurationSpace, Float
 from hydra.utils import get_class
 
-from dacboenv.env.policy import AlphaRulePolicy, PerceptronPolicy, Policy
 from dacboenv.env.reward import get_initial_design_size
+from dacboenv.policy.policy import AlphaRulePolicy, PerceptronPolicy, Policy
 from dacboenv.utils.loggingutils import get_logger
 from dacboenv.utils.math import safe_log10
 

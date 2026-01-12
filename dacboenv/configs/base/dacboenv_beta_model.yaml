@@ -2,7 +2,7 @@
 defaults:
 - dacboenv
 optimizer:
-  policy_class: dacboenv.env.policy.ModelPolicy
+  policy_class: dacboenv.policy.policy.ModelPolicy
   policy_kwargs:
     model: /scratch/hpc-prf-intexml/tklenke/ppo_dacbo_single
     model_class: stable_baselines3.PPO

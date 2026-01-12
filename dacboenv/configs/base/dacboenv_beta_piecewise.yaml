@@ -2,7 +2,7 @@
 defaults:
 - dacboenv
 optimizer:
-  policy_class: dacboenv.env.policy.PiecewiseParameterPolicy
+  policy_class: dacboenv.policy.policy.PiecewiseParameterPolicy
   policy_kwargs:
     splits: [0.5, 0.5, 0.5]
   smac_cfg:

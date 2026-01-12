@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from smac.facade.abstract_facade import AbstractFacade
 
     from dacboenv.dacboenv import DACBOEnv, ObsType
-    from dacboenv.policy.policy import Policy
+    from dacboenv.policy.abstract_policy import Policy
 
 from dacboenv.utils.loggingutils import dump_logs
 

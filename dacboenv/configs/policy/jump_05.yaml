@@ -3,7 +3,7 @@
 optimizer_id: Jump-${optimizer.policy_kwargs.jump}
 optimizer:
   policy_class:
-    _target_: dacboenv.policy.policy.JumpParameterPolicy
+    _target_: dacboenv.policy.jump.JumpParameterPolicy
     _partial_: true
   policy_kwargs:
     low: ${dacboenv.action_space_kwargs.bounds[0]}

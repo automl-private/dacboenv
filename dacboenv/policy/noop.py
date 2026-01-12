@@ -1,4 +1,4 @@
-"""No operation / default policys."""
+"""No operation / default policy."""
 
 from __future__ import annotations
 

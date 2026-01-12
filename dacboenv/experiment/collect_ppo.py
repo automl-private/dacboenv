@@ -74,7 +74,7 @@ def create_ppo_eval_configs(rundir: Path | str) -> None:
 
     eval_conf = DictConfig({})
     eval_conf.optimizer = {}
-    eval_conf.optimizer.policy_class = {"_target_": "dacboenv.policy.policy.ModelPolicy", "_partial_": True}  # type: ignore[attr-defined]
+    eval_conf.optimizer.policy_class = {"_target_": "dacboenv.policy.sb3_model.ModelPolicy", "_partial_": True}  # type: ignore[attr-defined]
 
     for model in track(models, description="Creating model config...", total=len(models)):
         cfg_fn = model.parent / ".hydra/config.yaml"

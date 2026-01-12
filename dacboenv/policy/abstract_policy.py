@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from dacboenv.dacboenv import DACBOEnv, ObsType
 
 if TYPE_CHECKING:
-    from typing import Any
+    from typing import Any, TypeAlias
 
     from dacboenv.dacboenv import ActType, DACBOEnv, ObsType
 
@@ -64,3 +64,6 @@ class AbstractPolicy:
         seed : int | None
             Seed
         """
+
+
+Policy: TypeAlias = AbstractPolicy

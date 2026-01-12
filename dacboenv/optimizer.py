@@ -9,7 +9,7 @@ import numpy as np
 from carps.optimizers.smac20 import SMAC3Optimizer
 from hydra.utils import get_class
 
-from dacboenv.policy.policy import Policy, RandomPolicy
+from dacboenv.policy.random_policy import RandomPolicy
 
 if TYPE_CHECKING:
     from carps.loggers.abstract_logger import AbstractLogger
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from smac.facade.abstract_facade import AbstractFacade
 
     from dacboenv.dacboenv import DACBOEnv, ObsType
+    from dacboenv.policy.policy import Policy
 
 from dacboenv.utils.loggingutils import dump_logs
 

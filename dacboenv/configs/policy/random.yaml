@@ -3,6 +3,6 @@
 optimizer_id: Random
 optimizer:
   policy_class:
-    _target_: dacboenv.policy.policy.RandomPolicy
+    _target_: dacboenv.policy.random_policy.RandomPolicy
     _partial_: true
   policy_kwargs: {}

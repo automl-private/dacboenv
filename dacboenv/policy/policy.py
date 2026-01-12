@@ -2,19 +2,7 @@
 
 from __future__ import annotations
 
-from abc import abstractmethod
 from typing import TYPE_CHECKING
-
-from dacboenv.dacboenv import DACBOEnv, ObsType
-from dacboenv.env.reward import get_initial_design_size
-from dacboenv.utils.math import sigmoid
-
-if TYPE_CHECKING:
-    from typing import Any
-
-    from stable_baselines3.common.base_class import BaseAlgorithm
-
-    from dacboenv.dacboenv import ActType, DACBOEnv, ObsType
 
 import numpy as np
 import torch
@@ -23,61 +11,22 @@ from hydra.utils import get_class
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from torch import nn
 
+from dacboenv.dacboenv import DACBOEnv, ObsType
+from dacboenv.env.reward import get_initial_design_size
+from dacboenv.policy.abstract_policy import AbstractPolicy
+from dacboenv.utils.math import sigmoid
 
-class Policy:
-    """Abstract base class for DACBOEnv policies.
+if TYPE_CHECKING:
+    from typing import Any, TypeAlias
 
-    A policy defines a mapping from observations to actions within
-    the DACBO environment.
-    """
+    from stable_baselines3.common.base_class import BaseAlgorithm
 
-    def __init__(self, env: DACBOEnv, **kwargs: Any) -> None:
-        """Initialize the policy.
+    from dacboenv.dacboenv import ActType, DACBOEnv, ObsType
 
-        Parameters
-        ----------
-        env : DACBOEnv
-            The environment in which the policy operates.
-        **kwargs : Any
-            Keyword arguments from child classes.
-        """
-        self._env = env
-        self._init_kwargs = kwargs.copy()
-
-    def get_init_kwargs(self) -> dict:
-        """Get kwargs from initialization.
-
-        Requirement is that each child class passes their kwargs to super.
-        """
-        return self._init_kwargs
-
-    @abstractmethod
-    def __call__(self, obs: ObsType) -> ActType:
-        """Select an action given the current observation.
-
-        Parameters
-        ----------
-        obs : ObsType
-            The current environment observation.
-
-        Returns
-        -------
-        ActType
-            The selected action.
-        """
-        raise NotImplementedError
-
-    def set_seed(self, seed: int | None) -> None:
-        """Set seed for stochastic policies.
-
-        Parameters
-        ----------
-        seed : int | None
-            Seed
-        """
+Policy: TypeAlias = AbstractPolicy
 
 
-class RandomPolicy(Policy):
+class RandomPolicy(AbstractPolicy):
     """Policy that samples actions uniformly at random."""
 
     def __call__(self, obs: ObsType | None = None) -> ActType:  # noqa: ARG002
@@ -106,7 +55,7 @@ class RandomPolicy(Policy):
         self._env.action_space.seed(seed=seed)
 
 
-class DefaultPolicy(Policy):
+class DefaultPolicy(AbstractPolicy):
     """Default policy that does nothing."""
 
     def __call__(self, obs: ObsType | None = None) -> None:  # noqa: ARG002
@@ -125,7 +74,7 @@ class DefaultPolicy(Policy):
         return
 
 
-class StaticParameterPolicy(Policy):
+class StaticParameterPolicy(AbstractPolicy):
     """Policy that always returns a fixed parameter value."""
 
     def __init__(self, env: DACBOEnv, par_val: float) -> None:
@@ -157,7 +106,7 @@ class StaticParameterPolicy(Policy):
         return self._par_val
 
 
-class LinearParameterPolicy(Policy):
+class LinearParameterPolicy(AbstractPolicy):
     """Policy that interpolates linearly between two parameter values
     across the optimization budget.
     """
@@ -205,7 +154,7 @@ class LinearParameterPolicy(Policy):
         return weight * self._high + (1 - weight) * self._low
 
 
-class JumpParameterPolicy(Policy):
+class JumpParameterPolicy(AbstractPolicy):
     """Policy that switches from a low to a high parameter value
     after a fraction of the optimization budget.
     """
@@ -254,7 +203,7 @@ class JumpParameterPolicy(Policy):
         return self._high
 
 
-class PiecewiseParameterPolicy(Policy):
+class PiecewiseParameterPolicy(AbstractPolicy):
     """Policy that sets the parameter based on a fixed piecewise-linear function."""
 
     def __init__(self, env: DACBOEnv, splits: np.ndarray) -> None:
@@ -292,7 +241,7 @@ class PiecewiseParameterPolicy(Policy):
         return val**2  # XXX: Circumvent squareroot
 
 
-class JumpFunctionPolicy(Policy):
+class JumpFunctionPolicy(AbstractPolicy):
     """Policy that switches the optimizer's acquisition function
     after a fraction of the optimization budget.
     """
@@ -339,7 +288,7 @@ class JumpFunctionPolicy(Policy):
         return self._high
 
 
-class PerceptronPolicy(Policy):
+class PerceptronPolicy(AbstractPolicy):
     r"""Perceptron policy.
 
     Simple form of:
@@ -575,7 +524,7 @@ class AlphaRuleNet(nn.Module):
         return torch.tensor(weights, dtype=torch.float32)
 
 
-class AlphaRulePolicy(Policy):
+class AlphaRulePolicy(AbstractPolicy):
     """AlphaRulePolicy.
 
     Expects the sawei observations of ubr_difference, acq_value_PI, acq_value_EI, previous_param.
@@ -678,7 +627,7 @@ class AlphaRulePolicy(Policy):
         return configspace
 
 
-class ModelPolicy(Policy):
+class ModelPolicy(AbstractPolicy):
     """Policy that uses a pre-trained RL model to select actions."""
 
     def __init__(

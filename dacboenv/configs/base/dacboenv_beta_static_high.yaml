@@ -2,7 +2,7 @@
 defaults:
 - dacboenv
 optimizer:
-  policy_class: dacboenv.policy.policy.StaticParameterPolicy
+  policy_class: dacboenv.policy.static.StaticParameterPolicy
   policy_kwargs:
     par_val: 6
   smac_cfg:

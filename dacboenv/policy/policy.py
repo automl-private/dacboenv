@@ -26,38 +26,6 @@ if TYPE_CHECKING:
 Policy: TypeAlias = AbstractPolicy
 
 
-class StaticParameterPolicy(AbstractPolicy):
-    """Policy that always returns a fixed parameter value."""
-
-    def __init__(self, env: DACBOEnv, par_val: float) -> None:
-        """Initialize the static parameter policy.
-
-        Parameters
-        ----------
-        env : DACBOEnv
-            The environment in which the policy operates.
-        par_val : float
-            Fixed parameter value to return for every action.
-        """
-        super().__init__(env, par_val=par_val)
-        self._par_val = par_val
-
-    def __call__(self, obs: ObsType | None = None) -> ActType:  # noqa: ARG002
-        """Return the fixed parameter value.
-
-        Parameters
-        ----------
-        obs : ObsType | None, optional
-            The current environment observation (unused). Default is None.
-
-        Returns
-        -------
-        ActType
-            The fixed parameter value.
-        """
-        return self._par_val
-
-
 class LinearParameterPolicy(AbstractPolicy):
     """Policy that interpolates linearly between two parameter values
     across the optimization budget.

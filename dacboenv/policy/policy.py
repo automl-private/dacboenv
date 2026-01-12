@@ -26,25 +26,6 @@ if TYPE_CHECKING:
 Policy: TypeAlias = AbstractPolicy
 
 
-class DefaultPolicy(AbstractPolicy):
-    """Default policy that does nothing."""
-
-    def __call__(self, obs: ObsType | None = None) -> None:  # noqa: ARG002
-        """Returns None.
-
-        Parameters
-        ----------
-        obs : ObsType | None, optional
-            The current environment observation (unused). Default is None.
-
-        Returns
-        -------
-        ActType
-            None.
-        """
-        return
-
-
 class StaticParameterPolicy(AbstractPolicy):
     """Policy that always returns a fixed parameter value."""
 

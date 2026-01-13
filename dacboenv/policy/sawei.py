@@ -219,8 +219,8 @@ class SAWEIPolicy(AbstractPolicy):
         elif "ubr_gradient" in obs:
             signal = obs["ubr_gradient"]
             compute_gradient = False
-        elif "ubr_gradient_smoothed" in obs:
-            signal = obs["ubr_gradient_smoothed"]
+        elif "ubr_smoothed_gradient" in obs:
+            signal = obs["ubr_smoothed_gradient"]
             compute_gradient = False
             smooth = False
         else:

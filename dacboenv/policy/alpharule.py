@@ -237,13 +237,13 @@ class AlphaRulePolicy(AbstractPolicy):
         int | float | list[float] | None
             The action, the WEI alpha parameter.
         """
-        self._ubr_diffs.append(obs["ubr_difference"])
+        self._ubr_diffs.append(obs["ubr_smoothed_gradient"])
         ubr_diff_std = np.std(self._ubr_diffs)
         if np.isnan(ubr_diff_std):
             ubr_diff_std = 1
         previous_param = float(obs["previous_param"]) if obs["previous_param"] is not None else self.alpha_start
         x_list = [
-            float(obs["ubr_difference"]),
+            float(obs["ubr_smoothed_gradient"]),
             float(obs["acq_value_PI"]),
             float(obs["acq_value_EI"]),
             previous_param,

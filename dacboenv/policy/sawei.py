@@ -143,6 +143,39 @@ class SAWEIPolicy(AbstractPolicy):
         ----------
         env : DACBOEnv
             The environment in which the policy operates.
+        alpha : float, optional
+            The initial weight of weighted expected improvement, by default 0.5.
+            This equals EI.
+        delta : float | str, optional
+            The additive magnitude of change, by default 0.1.
+            This is added or subtracted to the curent alpha.
+            The sign will be determined by the algorithm and is opposite to the
+            current search attitude.
+            Delta can also be "auto" which equals to auto_alpha=True. Experimental.
+        window_size : int, optional
+            Window size to smooth the UBR signal, by default 7.
+            We smooth the UBR because we observed it to be very noisy from step to step.
+        atol_rel : float, optional
+            The relative absolute tolerance, by default 0.1.
+            atol_rel is used to check whether the gradient of the smoothed UBR is
+            approximately zero. The bigger atol_rel, the more often we should
+            adjust. The absolute tolerance is determined by the current maximum
+            gradient times this parameter.
+        track_attitude : str, optional
+            How far the search attitude is tracked, by default "last".
+            Following options are available:
+            - last: Only compare the WEI terms from the last optimization step. This
+                worked best in the experiments.
+            - until_inc_change: The WEI terms are tracked from the last time the incumbent
+                changed.
+            - until_last_adjust: The WEI terms are tracked from the last time SAWEI
+                self-adjusted alpha, the exploration-exploitation trade-off.
+        bounds : bool, optional
+            The lower and upper bound for alpha. Defaults to (0, 1).
+        auto_alpha : bool, optional
+            By default False. Experimental feature. If set to true, directly determine
+            alpha based on the distance between the exploration and exploitation summands.
+            Empirically did not work that well.
         """
         super().__init__(env)
         self._alpha = alpha

@@ -135,7 +135,6 @@ class SAWEIPolicy(AbstractPolicy):
         atol_rel: float = 0.1,
         track_attitude: str = "last",
         bounds: tuple[float, float] | None = None,
-        use_pure_PI: bool = True,  # noqa: FBT001, FBT002, N803
         auto_alpha: bool = False,  # noqa: FBT001, FBT002
     ):
         """Initialize the SAWEI policy.
@@ -151,7 +150,6 @@ class SAWEIPolicy(AbstractPolicy):
         self._window_size = window_size
         self._atol_rel = atol_rel
         self._track_attitude = track_attitude
-        self._use_pure_PI = use_pure_PI
         self._auto_alpha = auto_alpha
 
         self._last_inc_count: int = 0
@@ -196,21 +194,17 @@ class SAWEIPolicy(AbstractPolicy):
             raise ValueError("No UBR information in observation.")
 
         signal = signal.item()
-        wei = solver._intensifier._config_selector._acquisition_function
         state = {
             "n_evaluated": solver.runhistory.finished,
             "alpha": self._alpha,
             "n_incumbent_changes": int(solver._intensifier._incumbents_changed),
-            "wei_ei_term": wei.ei_term[0][0],
-            "wei_pi_pure_term": wei.pi_pure_term[0][0],
-            "wei_pi_mod_term": wei.pi_mod_term[0][0],
+            "wei_ei_term": obs["acq_value_EI"].item(),
+            "wei_pi_term": obs["acq_value_PI"].item(),
             "ubr": signal,
         }
 
         adjust = False
         UBR = [s["ubr"] for s in self._history]
-
-        key_pi = "wei_pi_pure_term" if self._use_pure_PI else "wei_pi_mod_term"
 
         # We need at least 2 UBRs to compute the gradient
         if len(UBR) >= 2:  # noqa: PLR2004
@@ -222,7 +216,7 @@ class SAWEIPolicy(AbstractPolicy):
                 compute_gradient=compute_gradient,
             )[-1]
 
-        self._pi_term_sum += state[key_pi]
+        self._pi_term_sum += state["wei_pi_term"]
         self._ei_term_sum += state["wei_ei_term"]
 
         if adjust:
@@ -230,8 +224,8 @@ class SAWEIPolicy(AbstractPolicy):
                 # Calculate attitude: Exploring or exploiting?
                 # Exploring = when ei term is bigger
                 # Exploiting = when pi term is bigger
-                exploring = state[key_pi] <= state["wei_ei_term"]
-                distance = state["wei_ei_term"] - state[key_pi]
+                exploring = state["wei_pi_term"] <= state["wei_ei_term"]
+                distance = state["wei_ei_term"] - state["wei_pi_term"]
             elif self._track_attitude in ["until_inc_change", "until_last_adjust"]:
                 exploring = self._pi_term_sum <= self._ei_term_sum
                 distance = self._ei_term_sum - self._pi_term_sum

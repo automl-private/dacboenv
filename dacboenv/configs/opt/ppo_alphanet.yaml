@@ -20,7 +20,7 @@ optimizer:
       pi: [8]
       vf: [8]
   seed: ${seed}
-  n_epochs: 3
+  n_epochs: 3  # TODO WHY DOES IT WORK?????
   #n_steps: # Will be set during runtime in ppo.py  # TODO make variable for different dims in instance set
   #batch_size: ${divideint:${multiply:${experiment.n_workers},${optimizer.n_steps}},2}
 

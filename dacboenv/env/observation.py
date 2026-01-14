@@ -73,10 +73,38 @@ def enumerate_offset(hyperparameters: Sequence[Any]) -> Iterator[tuple[int, Any]
 
 
 def calc_last_diff(memory: Memory, key: str) -> float:
+    """Calc the last difference in a signal.
+
+    Parameters
+    ----------
+    memory : Memory
+        The memory/history of state features.
+    key : str
+        The name of the observation.
+
+    Returns
+    -------
+    float
+        The last diff.
+    """
     return 0 if len(memory[key]) == 0 else memory[key][-2] - memory[key][-1]
 
 
 def get_last_val(memory: Memory, key: str) -> float:
+    """Get the last value of a signal in memory.
+
+    Parameters
+    ----------
+    memory : Memory
+        The memory/history of state features.
+    key : str
+        The name of the observation.
+
+    Returns
+    -------
+    float
+        The last/newest value.
+    """
     return memory[key][-1]
 
 
@@ -153,37 +181,69 @@ trials_left_observation = ObservationType(
 ubr_observation = ObservationType(
     "ubr",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo, memory: get_last_val(memory=memory, key="ubr"),  # noqa: ARG005
+    lambda smbo, memory: get_last_val(memory=memory, key="ubr"),  # type: ignore[arg-type] # noqa: ARG005
     -1,
 )
 
 
 def calc_gradient(memory: Memory, key: str, smooth_signal: bool = False) -> np.ndarray:  # noqa: FBT001, FBT002
+    """Calc the gradient of a signal in memory.
+
+    Parameters
+    ----------
+    memory : Memory
+        The memory/history of state features/observations.
+    key : str
+        The name of the observation.
+    smooth_signal : bool, optional
+        Whether to smooth the signal, by default False. If True, a moving IQM is applied with a window length of 7.
+        This also introduces a slight delay in the signal.
+
+    Returns
+    -------
+    np.ndarray
+        The gradient of a signal, possibly smoothed.
+    """
     raw_signal = memory[key]
     maybe_smoothed_signal = apply_moving_iqm(raw_signal, window_size=7) if smooth_signal else raw_signal
     return np.gradient(maybe_smoothed_signal)
 
 
 def calc_ubr_gradient(memory: Memory, smooth_signal: bool = False) -> np.ndarray:  # noqa: FBT001, FBT002
+    """Calc the gradient of the UBR.
+
+    Parameters
+    ----------
+    memory : Memory
+        The memory/history of state features/observations.
+    smooth_signal : bool, optional
+        Whether to smooth the signal, by default False. If True, a moving IQM is applied with a window length of 7.
+        This also introduces a slight delay in the signal.
+
+    Returns
+    -------
+    np.ndarray
+        The gradient of UBR, possibly smoothed.
+    """
     return calc_gradient(memory=memory, key="ubr", smooth_signal=smooth_signal)
 
 
 ubr_gradient_observation = ObservationType(
     "ubr_gradient",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo, memory: calc_ubr_gradient(memory=memory, smooth_signal=False)[-1],  # noqa: ARG005
+    lambda smbo, memory: calc_ubr_gradient(memory=memory, smooth_signal=False)[-1],  # type: ignore[arg-type] # noqa: ARG005
     0,
 )
 ubr_smoothed_gradient_observation = ObservationType(
     "ubr_smoothed_gradient",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo, memory: calc_ubr_gradient(memory=memory, smooth_signal=True)[-1],  # noqa: ARG005
+    lambda smbo, memory: calc_ubr_gradient(memory=memory, smooth_signal=True)[-1],  # type: ignore[arg-type] # noqa: ARG005
     0,
 )
 ubr_smoothed_gradient_std_observation = ObservationType(
     "ubr_smoothed_gradient_std",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo, memory: np.std(calc_ubr_gradient(memory=memory, smooth_signal=True)),  # noqa: ARG005
+    lambda smbo, memory: np.std(calc_ubr_gradient(memory=memory, smooth_signal=True)),  # type: ignore[arg-type] # noqa: ARG005
     0,
 )
 modelfit_observation = ObservationType(
@@ -237,6 +297,18 @@ tsd_observation = ObservationType(
 
 
 def calculate_knn(smbo: SMBO) -> float:
+    """Calculate KNN exploration measure following Papenmeier et al. (2025, Exploring exploration in BO).
+
+    Parameters
+    ----------
+    smbo : SMBO
+        The SMAC instance.
+
+    Returns
+    -------
+    float
+        The KNN value.
+    """
     if len(configs := smbo.intensifier.config_selector._collect_data()[0]) > 3:  # noqa: PLR2004 (default k == 3)
         return knn_entropy(configs)
     return 0
@@ -245,7 +317,7 @@ def calculate_knn(smbo: SMBO) -> float:
 knn_entropy_observation = ObservationType(
     "knn_entropy",
     Box(low=0, high=np.inf, dtype=np.float32),
-    lambda smbo, memory: get_last_val(memory=memory, key="knn"),  # noqa: ARG005
+    lambda smbo, memory: get_last_val(memory=memory, key="knn"),  # type: ignore[arg-type] # noqa: ARG005
     0,
 )
 y_skewness_observation = ObservationType(
@@ -293,7 +365,7 @@ tsd_best_observation = ObservationType(
 knn_entropy_best_observation = ObservationType(
     "knn_entropy_best",
     Box(low=0, high=np.inf, dtype=np.float32),
-    lambda smbo: knn_entropy(configs)
+    lambda smbo, memory: knn_entropy(configs)  # type: ignore[arg-type] # noqa: ARG005
     if len(configs := get_best_percentile_configs(smbo, min_samples=4)) > 3  # noqa: PLR2004 (default k == 3)
     else 0,
     0,
@@ -329,7 +401,7 @@ std_best_observation = ObservationType(
 variability_best_observation = ObservationType(
     "y_variability_best",
     Box(low=0, high=np.inf, dtype=np.float32),
-    lambda smbo, memory: calc_variability(costs)  # noqa: ARG005
+    lambda smbo, memory: calc_variability(costs)  # type: ignore[arg-type] # noqa: ARG005
     if len(costs := get_best_percentile_costs(smbo, min_samples=4)) > 3  # noqa: PLR2004
     else -1,
     -1,
@@ -362,14 +434,14 @@ has_categorical_hps = ObservationType(
 knn_difference_observation = ObservationType(
     "knn_difference",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo, memory: knn_difference(memory=memory),  # noqa: ARG005
+    lambda smbo, memory: knn_difference(memory=memory),  # type: ignore[arg-type] # noqa: ARG005
     0,
 )
 ubr_difference_observation = ObservationType(
     "ubr_difference",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo, memory: ubr_difference(memory),
-    0,  # noqa: ARG005
+    lambda smbo, memory: ubr_difference(memory),  # type: ignore[arg-type] # noqa: ARG005
+    0,
 )
 
 # Must be computed INSIDE DACBOEnv, because observationspace does not have access to action space and last action
@@ -480,7 +552,7 @@ acq_value_pi_observation = ObservationType(
 
 gp_hp_observation = MultiObservationType(
     "gp_hp_observations",
-    lambda smbo, memory: [  # noqa: ARG005
+    lambda smbo, memory: [  # type: ignore[arg-type,misc] # noqa: ARG005
         ObservationType(
             f"gp_hp_{hp.name}{i}_observation",
             Box(hp.bounds[i][0], hp.bounds[i][1]),

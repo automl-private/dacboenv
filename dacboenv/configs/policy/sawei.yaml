@@ -1,8 +1,9 @@
 # @package _global_
 
-optimizer_id: DefaultPolicy
+optimizer_id: SAWEI
+policy_id: SAWEI
 optimizer:
   policy_class:
-    _target_: dacboenv.env.policy.DefaultPolicy
+    _target_: dacboenv.policy.sawei.SAWEIPolicy
     _partial_: true
   policy_kwargs: {}

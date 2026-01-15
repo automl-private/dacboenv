@@ -14,5 +14,5 @@ source .env/bin/activate
 # sbatch scripts/generate_report.sh
 
 python -m carps.analysis.gather_data \
-	'--rundir=["runs_eval/PPO-AlphaNet*","runs_eval/DefaultPolicy","runs_eval/SAWEI","runs_eval/SMAC-AC--dacbo_Cepisode_length_scaled_plus_logregret_AWEI-cont_Ssawei_Repisode_finished_scaled*","runs_eval/SMAC-AC--dacbo_Csymlogregret_AWEI-cont_Ssawei_Rsymlogregret*"]' \
+	'--rundir=["runs_eval/PPO-AlphaNet*","runs_eval/NoOpPolicy","runs_eval/SAWEI","runs_eval/SMAC-AC--dacbo_Cepisode_length_scaled_plus_logregret_AWEI-cont_Ssawei_Repisode_finished_scaled*","runs_eval/SMAC-AC--dacbo_Csymlogregret_AWEI-cont_Ssawei_Rsymlogregret*"]' \
 	--outdir=results_alphanet2

@@ -2,7 +2,7 @@
 defaults:
 - dacboenv
 optimizer:
-  policy_class: dacboenv.env.policy.JumpParameterPolicy
+  policy_class: dacboenv.policy.jump.JumpParameterPolicy
   policy_kwargs:
     high: -10
     jump: 0.75

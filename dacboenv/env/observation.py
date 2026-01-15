@@ -17,6 +17,7 @@ from smac.model.random_forest import RandomForest
 
 from dacboenv.features.signal.modelfit import calculate_model_fit
 from dacboenv.features.signal.ubr import calculate_ubr
+from dacboenv.policy.sawei import apply_moving_iqm
 
 if TYPE_CHECKING:
     from smac.acquisition.function.abstract_acquisition_function import AbstractAcquisitionFunction
@@ -35,20 +36,28 @@ from ConfigSpace.hyperparameters import (
 from scipy.stats import kurtosis, skew
 from smac.acquisition.function import EI, PI
 
-from dacboenv.features.X_features import exploration_tsp, knn_entropy
+from dacboenv.features.X_features import exploration_tsd, knn_entropy
 from dacboenv.features.y_features import calc_variability
 
-last_state: Dict[str, float | None] = {"ubr": None, "knn": None}
 
-
-def get_best_percentile_configs(smbo: SMBO, p: int = 10, min_samples: int = 1) -> np.ndarray:
+def get_best_percentile_configs(
+    smbo: SMBO,
+    p: int = 10,
+    min_samples: int = 1,
+    memory: Memory | None = None,  # noqa: ARG001
+) -> np.ndarray:
     """Returns the best 1/p percent of configs."""
     configs_sorted = [k.config_id for k, _ in sorted(smbo.runhistory._data.items(), key=lambda x: x[1].cost)]
     n = max(min_samples, len(configs_sorted) // p)
     return np.array([smbo.runhistory.get_config(config_id).get_array() for config_id in configs_sorted[:n]])
 
 
-def get_best_percentile_costs(smbo: SMBO, p: int = 10, min_samples: int = 1) -> np.ndarray:
+def get_best_percentile_costs(
+    smbo: SMBO,
+    p: int = 10,
+    min_samples: int = 1,
+    memory: Memory | None = None,  # noqa: ARG001
+) -> np.ndarray:
     """Returns the best 1/p percent of costs."""
     costs_sorted = [v.cost for _, v in sorted(smbo.runhistory._data.items(), key=lambda x: x[1].cost)]
     n = max(min_samples, len(costs_sorted) // p)
@@ -63,20 +72,50 @@ def enumerate_offset(hyperparameters: Sequence[Any]) -> Iterator[tuple[int, Any]
         offset += hp.n_elements
 
 
-def ubr_difference(smbo: SMBO) -> float:
-    """Computes the difference between the last two UBR values."""
-    ubr = calculate_ubr(trial_infos=None, trial_values=None, configspace=None, seed=None, smbo=smbo)["ubr"]
-    diff = 0 if last_state["ubr"] is None else last_state["ubr"] - ubr
-    last_state["ubr"] = ubr
-    return diff
+def calc_last_diff(memory: Memory, key: str) -> float:
+    """Calc the last difference in a signal.
+
+    Parameters
+    ----------
+    memory : Memory
+        The memory/history of state features.
+    key : str
+        The name of the observation.
+
+    Returns
+    -------
+    float
+        The last diff.
+    """
+    return 0 if len(memory[key]) == 0 else memory[key][-2] - memory[key][-1]
 
 
-def knn_difference(configs: np.ndarray) -> float:
+def get_last_val(memory: Memory, key: str) -> float:
+    """Get the last value of a signal in memory.
+
+    Parameters
+    ----------
+    memory : Memory
+        The memory/history of state features.
+    key : str
+        The name of the observation.
+
+    Returns
+    -------
+    float
+        The last/newest value.
+    """
+    return memory[key][-1]
+
+
+def ubr_difference(memory: Memory) -> float:
     """Computes the difference between the last two KNN values."""
-    knn = knn_entropy(configs)
-    diff = 0 if last_state["knn"] is None else last_state["knn"] - knn
-    last_state["knn"] = knn
-    return diff
+    return calc_last_diff(memory=memory, key="ubr")
+
+
+def knn_difference(memory: Memory) -> float:
+    """Computes the difference between the last two KNN values."""
+    return calc_last_diff(memory=memory, key="knn")
 
 
 @dataclass
@@ -97,8 +136,11 @@ class ObservationType:
 
     name: str
     space: Space
-    compute: Callable[[SMBO], Any]
+    compute: Callable[[SMBO, Memory | None], Any]
     default: Any
+
+
+Memory = dict[str, list[float]]
 
 
 @dataclass
@@ -119,74 +161,169 @@ class MultiObservationType:
 
 
 incumbent_change_observation = ObservationType(
-    "incumbent_changes", Box(low=0, high=np.inf, dtype=np.float32), lambda smbo: smbo.intensifier.incumbents_changed, 0
+    "incumbent_changes",
+    Box(low=0, high=np.inf, dtype=np.float32),
+    lambda smbo, memory: smbo.intensifier.incumbents_changed,  # noqa: ARG005
+    0,
 )
 trials_passed_observation = ObservationType(
-    "trials_passed", Box(low=0, high=np.inf, dtype=np.float32), lambda smbo: len(smbo.runhistory), 0
+    "trials_passed",
+    Box(low=0, high=np.inf, dtype=np.float32),
+    lambda smbo, memory: len(smbo.runhistory),  # noqa: ARG005
+    0,
 )
 trials_left_observation = ObservationType(
-    "trials_left", Box(low=0, high=np.inf, dtype=np.float32), lambda smbo: smbo.remaining_trials, -1
+    "trials_left",
+    Box(low=0, high=np.inf, dtype=np.float32),
+    lambda smbo, memory: smbo.remaining_trials,  # noqa: ARG005
+    -1,
 )
 ubr_observation = ObservationType(
     "ubr",
-    Box(low=0.0, high=np.inf, dtype=np.float32),
-    lambda smbo: calculate_ubr(trial_infos=None, trial_values=None, configspace=None, seed=None, smbo=smbo)["ubr"],
+    Box(low=-np.inf, high=np.inf, dtype=np.float32),
+    lambda smbo, memory: get_last_val(memory=memory, key="ubr"),  # type: ignore[arg-type] # noqa: ARG005
     -1,
+)
+
+
+def calc_gradient(memory: Memory, key: str, smooth_signal: bool = False) -> np.ndarray:  # noqa: FBT001, FBT002
+    """Calc the gradient of a signal in memory.
+
+    Parameters
+    ----------
+    memory : Memory
+        The memory/history of state features/observations.
+    key : str
+        The name of the observation.
+    smooth_signal : bool, optional
+        Whether to smooth the signal, by default False. If True, a moving IQM is applied with a window length of 7.
+        This also introduces a slight delay in the signal.
+
+    Returns
+    -------
+    np.ndarray
+        The gradient of a signal, possibly smoothed.
+    """
+    raw_signal = memory[key]
+    maybe_smoothed_signal = apply_moving_iqm(raw_signal, window_size=7) if smooth_signal else raw_signal
+    return np.gradient(maybe_smoothed_signal)
+
+
+def calc_ubr_gradient(memory: Memory, smooth_signal: bool = False) -> np.ndarray:  # noqa: FBT001, FBT002
+    """Calc the gradient of the UBR.
+
+    Parameters
+    ----------
+    memory : Memory
+        The memory/history of state features/observations.
+    smooth_signal : bool, optional
+        Whether to smooth the signal, by default False. If True, a moving IQM is applied with a window length of 7.
+        This also introduces a slight delay in the signal.
+
+    Returns
+    -------
+    np.ndarray
+        The gradient of UBR, possibly smoothed.
+    """
+    return calc_gradient(memory=memory, key="ubr", smooth_signal=smooth_signal)
+
+
+ubr_gradient_observation = ObservationType(
+    "ubr_gradient",
+    Box(low=-np.inf, high=np.inf, dtype=np.float32),
+    lambda smbo, memory: calc_ubr_gradient(memory=memory, smooth_signal=False)[-1],  # type: ignore[arg-type] # noqa: ARG005
+    0,
+)
+ubr_smoothed_gradient_observation = ObservationType(
+    "ubr_smoothed_gradient",
+    Box(low=-np.inf, high=np.inf, dtype=np.float32),
+    lambda smbo, memory: calc_ubr_gradient(memory=memory, smooth_signal=True)[-1],  # type: ignore[arg-type] # noqa: ARG005
+    0,
+)
+ubr_smoothed_gradient_std_observation = ObservationType(
+    "ubr_smoothed_gradient_std",
+    Box(low=-np.inf, high=np.inf, dtype=np.float32),
+    lambda smbo, memory: np.std(calc_ubr_gradient(memory=memory, smooth_signal=True)),  # type: ignore[arg-type] # noqa: ARG005
+    0,
 )
 modelfit_observation = ObservationType(
     "modelfit_mse",
     Box(low=0.0, high=np.inf, dtype=np.float32),
-    lambda smbo: -1 if np.isnan(scores := calculate_model_fit(smbo)["mean_scores"]).any() else scores[0],
+    lambda smbo, memory: -1 if np.isnan(scores := calculate_model_fit(smbo)["mean_scores"]).any() else scores[0],  # noqa: ARG005
     -1,
 )
 dimensions_observation = ObservationType(
     "searchspace_dim",
     Box(low=0, high=np.inf, dtype=np.int32),
-    lambda smbo: len(smbo._scenario.configspace),
+    lambda smbo, memory: len(smbo._scenario.configspace),  # noqa: ARG005
     0,
 )
 continuous_hp_observation = ObservationType(
     "continuous_hps",
     Box(low=0, high=np.inf, dtype=np.int32),
-    lambda smbo: len([hp for hp in smbo._scenario.configspace.values() if isinstance(hp, FloatHyperparameter)]),
+    lambda smbo, memory: len([hp for hp in smbo._scenario.configspace.values() if isinstance(hp, FloatHyperparameter)]),  # noqa: ARG005
     0,
 )
 categorical_hp_observation = ObservationType(
     "categorical_hps",
     Box(low=0, high=np.inf, dtype=np.int32),
-    lambda smbo: len([hp for hp in smbo._scenario.configspace.values() if isinstance(hp, CategoricalHyperparameter)]),
+    lambda smbo, memory: len(  # noqa: ARG005
+        [hp for hp in smbo._scenario.configspace.values() if isinstance(hp, CategoricalHyperparameter)]
+    ),
     0,
 )
 ordinal_hp_observation = ObservationType(
     "ordinal_hps",
     Box(low=0, high=np.inf, dtype=np.int32),
-    lambda smbo: len([hp for hp in smbo._scenario.configspace.values() if isinstance(hp, OrdinalHyperparameter)]),
+    lambda smbo, memory: len(  # noqa: ARG005
+        [hp for hp in smbo._scenario.configspace.values() if isinstance(hp, OrdinalHyperparameter)]
+    ),
     0,
 )
 int_hp_observation = ObservationType(
     "int_hps",
     Box(low=0, high=np.inf, dtype=np.int32),
-    lambda smbo: len([hp for hp in smbo._scenario.configspace.values() if isinstance(hp, IntegerHyperparameter)]),
+    lambda smbo, memory: len(  # noqa: ARG005
+        [hp for hp in smbo._scenario.configspace.values() if isinstance(hp, IntegerHyperparameter)]
+    ),
     0,
 )
-tsp_observation = ObservationType(
-    "tsp",
+tsd_observation = ObservationType(
+    "tsd",
     Box(low=0, high=np.inf, dtype=np.float32),
-    lambda smbo: exploration_tsp(smbo.intensifier.config_selector._collect_data()[0])[-1],
+    lambda smbo, memory: exploration_tsd(smbo.intensifier.config_selector._collect_data()[0])[-1],  # noqa: ARG005
     -1,
 )
+
+
+def calculate_knn(smbo: SMBO) -> float:
+    """Calculate KNN exploration measure following Papenmeier et al. (2025, Exploring exploration in BO).
+
+    Parameters
+    ----------
+    smbo : SMBO
+        The SMAC instance.
+
+    Returns
+    -------
+    float
+        The KNN value.
+    """
+    if len(configs := smbo.intensifier.config_selector._collect_data()[0]) > 3:  # noqa: PLR2004 (default k == 3)
+        return knn_entropy(configs)
+    return 0
+
+
 knn_entropy_observation = ObservationType(
     "knn_entropy",
     Box(low=0, high=np.inf, dtype=np.float32),
-    lambda smbo: knn_entropy(configs)
-    if len(configs := smbo.intensifier.config_selector._collect_data()[0]) > 3  # noqa: PLR2004 (default k == 3)
-    else 0,
+    lambda smbo, memory: get_last_val(memory=memory, key="knn"),  # type: ignore[arg-type] # noqa: ARG005
     0,
 )
 y_skewness_observation = ObservationType(
     "y_skewness",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo: np.nan_to_num(skew(costs).item(), nan=0)
+    lambda smbo, memory: np.nan_to_num(skew(costs).item(), nan=0)  # noqa: ARG005
     if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 0
     else 0,
     0,
@@ -194,7 +331,7 @@ y_skewness_observation = ObservationType(
 y_kurtosis_observation = ObservationType(
     "y_kurtosis",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo: np.nan_to_num(kurtosis(costs).item(), nan=0)
+    lambda smbo, memory: np.nan_to_num(kurtosis(costs).item(), nan=0)  # noqa: ARG005
     if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 0
     else 0,
     0,
@@ -202,34 +339,33 @@ y_kurtosis_observation = ObservationType(
 y_mean_observation = ObservationType(
     "y_mean",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo: np.mean(costs) if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 0 else 0,
+    lambda smbo, memory: np.mean(costs) if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 0 else 0,  # noqa: ARG005
     0,
 )
 std_observation = ObservationType(
     "y_std",
     Box(low=0, high=np.inf, dtype=np.float32),
-    lambda smbo: np.std(costs) if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 0 else -1,
+    lambda smbo, memory: np.std(costs) if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 0 else -1,  # noqa: ARG005
     -1,
 )
 variability_observation = ObservationType(
     "y_variability",
     Box(low=0, high=np.inf, dtype=np.float32),
-    lambda smbo: calc_variability(costs)
+    lambda smbo, memory: calc_variability(costs)  # noqa: ARG005
     if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 3  # noqa: PLR2004
     else -1,
     -1,
 )
-# TODO: rename tsp to tsd
-tsp_best_observation = ObservationType(
-    "tsp_best",
+tsd_best_observation = ObservationType(
+    "tsd_best",
     Box(low=0, high=np.inf, dtype=np.float32),
-    lambda smbo: exploration_tsp(get_best_percentile_configs(smbo))[-1],
+    lambda smbo, memory: exploration_tsd(get_best_percentile_configs(smbo))[-1],  # noqa: ARG005
     -1,
 )
 knn_entropy_best_observation = ObservationType(
     "knn_entropy_best",
     Box(low=0, high=np.inf, dtype=np.float32),
-    lambda smbo: knn_entropy(configs)
+    lambda smbo, memory: knn_entropy(configs)  # type: ignore[arg-type] # noqa: ARG005
     if len(configs := get_best_percentile_configs(smbo, min_samples=4)) > 3  # noqa: PLR2004 (default k == 3)
     else 0,
     0,
@@ -237,13 +373,15 @@ knn_entropy_best_observation = ObservationType(
 skewness_best_observation = ObservationType(
     "y_skewness_best",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo: np.nan_to_num(skew(costs).item(), nan=0) if len(costs := get_best_percentile_costs(smbo)) > 0 else 0,
+    lambda smbo, memory: np.nan_to_num(skew(costs).item(), nan=0)  # noqa: ARG005
+    if len(costs := get_best_percentile_costs(smbo)) > 0
+    else 0,
     0,
 )
 kurtosis_best_observation = ObservationType(
     "y_kurtosis_best",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo: np.nan_to_num(kurtosis(costs).item(), nan=0)
+    lambda smbo, memory: np.nan_to_num(kurtosis(costs).item(), nan=0)  # noqa: ARG005
     if len(costs := get_best_percentile_costs(smbo)) > 0
     else 0,
     0,
@@ -251,19 +389,19 @@ kurtosis_best_observation = ObservationType(
 mean_best_observation = ObservationType(
     "y_mean_best",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo: np.mean(costs) if len(costs := get_best_percentile_costs(smbo)) > 0 else 0,
+    lambda smbo, memory: np.mean(costs) if len(costs := get_best_percentile_costs(smbo)) > 0 else 0,  # noqa: ARG005
     0,
 )
 std_best_observation = ObservationType(
     "y_std_best",
     Box(low=0, high=np.inf, dtype=np.float32),
-    lambda smbo: np.std(costs) if len(costs := get_best_percentile_costs(smbo)) > 0 else -1,
+    lambda smbo, memory: np.std(costs) if len(costs := get_best_percentile_costs(smbo)) > 0 else -1,  # noqa: ARG005
     -1,
 )
 variability_best_observation = ObservationType(
     "y_variability_best",
     Box(low=0, high=np.inf, dtype=np.float32),
-    lambda smbo: calc_variability(costs)
+    lambda smbo, memory: calc_variability(costs)  # type: ignore[arg-type] # noqa: ARG005
     if len(costs := get_best_percentile_costs(smbo, min_samples=4)) > 3  # noqa: PLR2004
     else -1,
     -1,
@@ -271,13 +409,13 @@ variability_best_observation = ObservationType(
 budget_percentage_observation = ObservationType(
     "budget_percentage",
     Box(low=0, high=1, dtype=np.float32),
-    lambda smbo: len(smbo.runhistory) / smbo._scenario.n_trials,
+    lambda smbo, memory: len(smbo.runhistory) / smbo._scenario.n_trials,  # noqa: ARG005
     0,
 )
 inc_improvement_scaled_observation = ObservationType(
     "inc_improvement_scaled",
     Box(low=0, high=1, dtype=np.float32),
-    lambda smbo: 1 - min(curr, prev) / max(curr, prev)
+    lambda smbo, memory: 1 - min(curr, prev) / max(curr, prev)  # noqa: ARG005
     if len(t := smbo.intensifier.trajectory) > 1
     and t[-1].trial == len(smbo.runhistory)
     and max(curr := abs(t[-1].costs[-1]), prev := abs(t[-2].costs[-1])) != 0
@@ -287,27 +425,30 @@ inc_improvement_scaled_observation = ObservationType(
 has_categorical_hps = ObservationType(
     "has_categorical_hps",
     Box(low=0, high=1, dtype=bool),
-    lambda smbo: len([hp for hp in smbo._scenario.configspace.values() if isinstance(hp, CategoricalHyperparameter)])
+    lambda smbo, memory: len(  # noqa: ARG005
+        [hp for hp in smbo._scenario.configspace.values() if isinstance(hp, CategoricalHyperparameter)]
+    )
     > 0,
     False,  # noqa: FBT003
 )
 knn_difference_observation = ObservationType(
     "knn_difference",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo: knn_difference(configs)
-    if len(configs := smbo.intensifier.config_selector._collect_data()[0]) > 3  # noqa: PLR2004 (default k == 3)
-    else 0,
+    lambda smbo, memory: knn_difference(memory=memory),  # type: ignore[arg-type] # noqa: ARG005
     0,
 )
 ubr_difference_observation = ObservationType(
-    "ubr_difference", Box(low=-np.inf, high=np.inf, dtype=np.float32), lambda smbo: ubr_difference(smbo), 0
+    "ubr_difference",
+    Box(low=-np.inf, high=np.inf, dtype=np.float32),
+    lambda smbo, memory: ubr_difference(memory),  # type: ignore[arg-type] # noqa: ARG005
+    0,
 )
 
 # Must be computed INSIDE DACBOEnv, because observationspace does not have access to action space and last action
 previous_param_observation = ObservationType(
     name="previous_param",
     space=Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    compute=lambda x: None,  # noqa: ARG005
+    compute=lambda smbo, memory: None,  # noqa: ARG005
     default=None,
 )
 
@@ -365,13 +506,15 @@ def get_acq_value(solver: SMBO, acq_fun_class: AbstractAcquisitionFunction) -> f
     return acq_value
 
 
-def get_acq_value_ei(solver: SMBO) -> float | None:
+def get_acq_value_ei(solver: SMBO, memory: Memory | None = None) -> float | None:  # noqa: ARG001
     """Get acquisiton function value for last configuration with EI acquisition function.
 
     Parameters
     ----------
     solver : SMBO
         The SMAC instance.
+    memory : Memory, optional
+        Unused memory.
 
     Returns
     -------
@@ -381,13 +524,15 @@ def get_acq_value_ei(solver: SMBO) -> float | None:
     return get_acq_value(solver, EI)
 
 
-def get_acq_value_pi(solver: SMBO) -> float | None:
+def get_acq_value_pi(solver: SMBO, memory: Memory | None = None) -> float | None:  # noqa: ARG001
     """Get acquisiton function value for last configuration with PI acquisition function.
 
     Parameters
     ----------
     solver : SMBO
         The SMAC instance.
+    memory : Memory, optional
+        Unused memory.
 
     Returns
     -------
@@ -407,7 +552,7 @@ acq_value_pi_observation = ObservationType(
 
 gp_hp_observation = MultiObservationType(
     "gp_hp_observations",
-    lambda smbo: [
+    lambda smbo, memory: [  # type: ignore[arg-type,misc] # noqa: ARG005
         ObservationType(
             f"gp_hp_{hp.name}{i}_observation",
             Box(hp.bounds[i][0], hp.bounds[i][1]),
@@ -428,22 +573,19 @@ ALL_OBSERVATIONS = [
     incumbent_change_observation,
     trials_passed_observation,
     trials_left_observation,
-    ubr_observation,
     # modelfit_observation, # Disabled due to high computation time, behavior similar to UBR
     dimensions_observation,
     continuous_hp_observation,
     categorical_hp_observation,
     ordinal_hp_observation,
     int_hp_observation,
-    tsp_observation,
-    knn_entropy_observation,
+    tsd_observation,
     y_skewness_observation,
     y_kurtosis_observation,
     y_mean_observation,
     std_observation,
     variability_observation,
-    tsp_best_observation,
-    knn_entropy_best_observation,
+    tsd_best_observation,
     skewness_best_observation,
     kurtosis_best_observation,
     mean_best_observation,
@@ -452,11 +594,17 @@ ALL_OBSERVATIONS = [
     budget_percentage_observation,
     inc_improvement_scaled_observation,
     has_categorical_hps,
-    knn_difference_observation,
-    ubr_difference_observation,
     acq_value_ei_observation,
     acq_value_pi_observation,
     previous_param_observation,
+    ubr_observation,
+    ubr_gradient_observation,
+    ubr_smoothed_gradient_observation,
+    ubr_smoothed_gradient_std_observation,
+    ubr_difference_observation,
+    knn_entropy_observation,
+    knn_entropy_best_observation,
+    knn_difference_observation,
 ]
 
 MULTI_OBSERVATIONS = [gp_hp_observation]
@@ -534,6 +682,16 @@ class ObservationSpace:
         ]
         self._observation_space = Dict({obs.name: obs.space for obs in self._observation_types})
 
+        self._register_to_memory: dict[str, Callable] = {}
+        self._memory: Memory = {}
+        for obs in self._observation_types:
+            if obs.name.startswith("ubr"):
+                self._register_to_memory["ubr"] = calculate_ubr
+                self._memory["ubr"] = []
+            elif obs.name.startswith("knn") and "best" not in obs.name:
+                self._register_to_memory["knn"] = calculate_knn
+                self._memory["knn"] = []
+
     @property
     def space(self) -> Space:
         """Returns the Gymnasium Dict space for the selected observations.
@@ -553,7 +711,10 @@ class ObservationSpace:
         ObsType
             Dictionary mapping observation names to their computed values.
         """
+        for reg_key, compute_function in self._register_to_memory.items():
+            val = compute_function(self._smac_instance)
+            self._memory[reg_key].append(val)
         return {
-            obs.name: np.atleast_1d(obs.compute(self._smac_instance)).astype(np.float32)
+            obs.name: np.atleast_1d(obs.compute(self._smac_instance, self._memory)).astype(np.float32)
             for obs in self._observation_types
         }

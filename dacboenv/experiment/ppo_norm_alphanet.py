@@ -89,7 +89,8 @@ def main(cfg: DictConfig) -> None:
         policy_kwargs=policy_kwargs,
         tensorboard_log=rundir / "tensorboard",
         n_steps=len_episode,
-        batch_size=n_workers * len_episode // 2,
+        batch_size=n_workers * len_episode // 2,  # TODO check source of division by 2
+        # TODO increase budget to 48h
     )
     logger.info(f"Model: {model.policy}")
 

@@ -1,6 +1,6 @@
 # @package _global_
 
-optimizer_id: Jump-${optimizer.policy_kwargs.jump}
+optimizer_id: Jump-LtH
 optimizer:
   policy_class:
     _target_: dacboenv.policy.jump.JumpParameterPolicy

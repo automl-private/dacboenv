@@ -11,8 +11,7 @@ from scipy.special import digamma
 
 
 # TODO add normalized TSD
-# TODO rename TSP -> TSD
-def exploration_tsp(X: np.ndarray) -> np.ndarray:  # noqa: N803
+def exploration_tsd(X: np.ndarray) -> np.ndarray:  # noqa: N803
     """Movement of observation center over time.
 
     Parameters
@@ -24,12 +23,12 @@ def exploration_tsp(X: np.ndarray) -> np.ndarray:  # noqa: N803
     np.ndarray, shape (T, )
     """
     T, D = X.shape
-    tsp_solution = np.zeros(shape=(T,), dtype=np.float32)
+    tsd_solution = np.zeros(shape=(T,), dtype=np.float32)
 
     # Initialize with the first point's TSP solution
     current_path = [0, 0]
     cumulative_distance = 0.0
-    tsp_solution[0] = cumulative_distance
+    tsd_solution[0] = cumulative_distance
 
     # Precompute the distance matrix
     dist_matrix = squareform(pdist(X)).astype(np.float32)
@@ -58,9 +57,9 @@ def exploration_tsp(X: np.ndarray) -> np.ndarray:  # noqa: N803
         if best_insertion_index != -1:
             current_path.insert(best_insertion_index, t)
         cumulative_distance += best_distance_increase
-        tsp_solution[t] = cumulative_distance
+        tsd_solution[t] = cumulative_distance
 
-    return tsp_solution
+    return tsd_solution
 
 
 def knn_entropy(X: np.ndarray, k: int = 3) -> float:  # noqa: N803

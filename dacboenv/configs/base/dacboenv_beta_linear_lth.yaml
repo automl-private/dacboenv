@@ -2,7 +2,7 @@
 defaults:
 - dacboenv
 optimizer:
-  policy_class: dacboenv.env.policy.LinearParameterPolicy
+  policy_class: dacboenv.policy.linear.LinearParameterPolicy
   policy_kwargs:
     high: 6
     high_to_low: false

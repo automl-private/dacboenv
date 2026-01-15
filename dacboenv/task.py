@@ -13,8 +13,9 @@ from carps.utils.trials import TrialValue
 from ConfigSpace import Configuration, ConfigurationSpace, Float
 from hydra.utils import get_class
 
-from dacboenv.env.policy import AlphaRulePolicy, PerceptronPolicy, Policy
 from dacboenv.env.reward import get_initial_design_size
+from dacboenv.policy.alpharule import AlphaRulePolicy
+from dacboenv.policy.perceptron import PerceptronPolicy
 from dacboenv.utils.loggingutils import get_logger
 from dacboenv.utils.math import safe_log10
 
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
     from carps.utils.trials import TrialInfo
 
     from dacboenv.dacboenv import DACBOEnv
+    from dacboenv.policy.abstract_policy import Policy
 
 logger = get_logger("DACBOObjFun")
 

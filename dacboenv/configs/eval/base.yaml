@@ -5,6 +5,7 @@ dacboenv:
     - ${task.name}
   inner_seeds:
     - ${seed}
+  evaluation_mode: true
 
 baserundir: runs_eval
 optimizer_container_id: SMAC3

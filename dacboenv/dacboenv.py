@@ -102,6 +102,7 @@ class DACBOEnv(gym.Env):
         inner_seeds: list[int] | None = None,
         terminate_after_reference_performance_reached: bool = False,  # noqa: FBT001, FBT002
         instance_selector_class: type[InstanceSelector] | None = None,
+        evaluation_mode: bool = False,  # noqa: FBT001, FBT002
         **kwargs: dict,  # noqa: ARG002
     ) -> None:
         """Initialize the DACBOEnv environment.
@@ -128,6 +129,10 @@ class DACBOEnv(gym.Env):
             The seeds that the inner BO will run on.
         terminate_after_reference_performance_reached : bool, optional
             Terminate episode after a certain reference performance on a task/seed has been reached. Defaults to False.
+        evaluation_mode : bool, optional
+            Whether to be in train (default) or evaluation mode. Evaluation mode means that the episode is not
+            terminated after a reference performance has been reached, and the reward will be 0.
+            This circumvents running a reference optimizer on each evaluation task.
         """
         if reward_keys is None:
             reward_keys = ["incumbent_cost"]
@@ -161,16 +166,26 @@ class DACBOEnv(gym.Env):
         self.instance_set = (inner_seeds, task_ids)  # type: ignore[assignment]
         self._instance: tuple[int, str] | None = None
 
+        self._evaluation_mode = evaluation_mode
+        if self._evaluation_mode:
+            logger.info(
+                "Env is in evaluation mode! This means that a reward is not calculated, and episodes will be full "
+                "length."
+            )
+
         # Reference Performance
         self._terminate_after_reference_performance_reached = terminate_after_reference_performance_reached
+        if self._evaluation_mode:
+            self._terminate_after_reference_performance_reached = False
         self.reference_performance_fn = reference_performance_fn
         self.reference_performance_optimizer_id = "SMAC3-BlackBoxFacade"
-        self._reference_performance = ReferencePerformance(
-            optimizer_id=self.reference_performance_optimizer_id,
-            task_ids=self.instance_set.task_ids,
-            seeds=self.instance_set.seeds,
-            reference_performance_fn=self.reference_performance_fn,
-        )
+        if not self._evaluation_mode:
+            self._reference_performance = ReferencePerformance(
+                optimizer_id=self.reference_performance_optimizer_id,
+                task_ids=self.instance_set.task_ids,
+                seeds=self.instance_set.seeds,
+                reference_performance_fn=self.reference_performance_fn,
+            )
 
         self._carps_solver: Optimizer
         self._smac_facade: AbstractFacade
@@ -284,7 +299,9 @@ class DACBOEnv(gym.Env):
         reward : float
             The current reward signal.
         """
-        return self._reward.get_reward(self.current_threshold)
+        if not self._evaluation_mode:
+            return self._reward.get_reward(self.current_threshold)
+        return 0
 
     def get_next_instance(self) -> tuple[int, str]:
         """Get the next instance.
@@ -327,12 +344,13 @@ class DACBOEnv(gym.Env):
         terminated = False
 
         curr_incumbent = self.get_incumbent_cost()
-        threshold = self._reference_performance.query_cost(  # type: ignore[attr-defined]
-            optimizer_id=self.reference_performance_optimizer_id,
-            task_id=self.current_task_id,
-            seed=self.current_seed,
-        )
-        self.current_threshold = threshold
+        if not self._evaluation_mode:
+            threshold = self._reference_performance.query_cost(  # type: ignore[attr-defined]
+                optimizer_id=self.reference_performance_optimizer_id,
+                task_id=self.current_task_id,
+                seed=self.current_seed,
+            )
+            self.current_threshold = threshold
 
         if self._terminate_after_reference_performance_reached:
             distance = abs(curr_incumbent - threshold)
@@ -345,7 +363,7 @@ class DACBOEnv(gym.Env):
 
         # Compute observation + reward
         obs = self.get_observation()
-        reward = self.get_reward()
+        reward = self.get_reward() if not self._evaluation_mode else 0
 
         self._episode_reward += reward
         self._episode_length += 1

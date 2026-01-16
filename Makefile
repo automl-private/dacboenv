@@ -118,6 +118,7 @@ tmpeval:
 # TODO METABO
 # Fix 'scikit-learn=0.21.3' in environment.yml
 # For testing metabo, run with gpu.
+#  cd lib/MetaBO; python evaluate_metabo_gprice.py
 metabo:
 	# git clone https://github.com/boschresearch/MetaBO.git lib/MetaBO
 	conda env create -f lib/MetaBO/environment.yml

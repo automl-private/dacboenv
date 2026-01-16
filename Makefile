@@ -113,3 +113,12 @@ tmpeval:
 		+env/action=wei_alpha_continuous \
 		+policy/optimized/PPO-AlphaNet3/dacbo_Cepisode_length_scaled_plus_logregret_AWEI-cont_Ssawei_Repisode_finished_scaled_Ibbob2d_3seeds=seed1 \
 		dacboenv.terminate_after_reference_performance_reached=False
+
+
+# TODO METABO
+# Fix 'scikit-learn=0.21.3' in environment.yml
+# For testing metabo, run with gpu.
+metabo:
+	# git clone https://github.com/boschresearch/MetaBO.git lib/MetaBO
+	conda env create -f lib/MetaBO/environment.yml
+	conda activate metabo

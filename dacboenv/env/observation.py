@@ -90,6 +90,23 @@ def calc_last_diff(memory: Memory, key: str) -> float:
     return 0 if len(memory[key]) == 0 else memory[key][-2] - memory[key][-1]
 
 
+def compute_ubr(smbo: SMBO) -> float:
+    """Compute the UBR.
+
+    Parameters
+    ----------
+    smbo : SMBO
+        The SMAC instance.
+
+    Returns
+    -------
+    float
+        The current UBR.
+    """
+    result_dict = calculate_ubr(trial_infos=None, trial_values=None, configspace=None, smbo=smbo)
+    return result_dict["ubr"]
+
+
 def get_last_val(memory: Memory, key: str) -> float:
     """Get the last value of a signal in memory.
 
@@ -206,6 +223,10 @@ def calc_gradient(memory: Memory, key: str, smooth_signal: bool = False) -> np.n
     """
     raw_signal = memory[key]
     maybe_smoothed_signal = apply_moving_iqm(raw_signal, window_size=7) if smooth_signal else raw_signal
+    if len(maybe_smoothed_signal) == 1:
+        return np.array([0])
+    if len(maybe_smoothed_signal) < 3:  # noqa: PLR2004
+        return np.diff(maybe_smoothed_signal)
     return np.gradient(maybe_smoothed_signal)
 
 
@@ -686,7 +707,7 @@ class ObservationSpace:
         self._memory: Memory = {}
         for obs in self._observation_types:
             if obs.name.startswith("ubr"):
-                self._register_to_memory["ubr"] = calculate_ubr
+                self._register_to_memory["ubr"] = compute_ubr
                 self._memory["ubr"] = []
             elif obs.name.startswith("knn") and "best" not in obs.name:
                 self._register_to_memory["knn"] = calculate_knn

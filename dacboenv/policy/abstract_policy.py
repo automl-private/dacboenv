@@ -5,8 +5,6 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import TYPE_CHECKING
 
-from dacboenv.dacboenv import DACBOEnv, ObsType
-
 if TYPE_CHECKING:
     from typing import Any, TypeAlias
 

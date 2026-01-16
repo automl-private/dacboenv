@@ -142,6 +142,9 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
             Instance of a SMAC facade.
         """
         self._state, _ = self._dacboenv.reset()
+        # Increase the trial counter because the DACBOEnv works off initial design
+        # during reset. The initial design counts to the overall trials.
+        self.trial_counter += self._dacboenv.get_n_finished_trials()
         if self._seed != self._dacboenv._smac_instance._scenario.seed:
             raise ValueError(f"Seeds not the same: {self._seed} != {self._dacboenv._smac_instance._scenario.seed}")
         if self._dacboenv._carps_solver.task.name != self.task.name:

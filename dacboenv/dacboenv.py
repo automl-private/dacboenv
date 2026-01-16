@@ -471,3 +471,13 @@ class DACBOEnv(gym.Env):
         initial_obs = self.modify_obs(obs=initial_obs)
 
         return initial_obs, {}
+
+    def get_n_finished_trials(self) -> int:
+        """Get the number of told trials from the SMAC instance.
+
+        Returns
+        -------
+        int
+            Number of observations
+        """
+        return self._smac_instance._runhistory._finished

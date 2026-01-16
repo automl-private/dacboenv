@@ -87,7 +87,7 @@ def calc_last_diff(memory: Memory, key: str) -> float:
     float
         The last diff.
     """
-    return 0 if len(memory[key]) == 0 else memory[key][-2] - memory[key][-1]
+    return 0 if len(memory[key]) < 2 else memory[key][-2] - memory[key][-1]  # noqa: PLR2004
 
 
 def compute_ubr(smbo: SMBO) -> float:

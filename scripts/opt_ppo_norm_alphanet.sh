@@ -5,6 +5,8 @@
 #SBATCH --mem=16G
 #SBATCH -p normal
 #SBATCH --array=1-3
+#SBATCH --output=slurmlogs/ppo/slurm-%j.out     # stdout log
+#SBATCH --error=slurmlogs/ppo/slurm-%j.err      # stderr log
 
 
 if [ -z "$SLURM_ARRAY_TASK_ID" ]; then

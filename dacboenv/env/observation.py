@@ -18,6 +18,7 @@ from smac.model.random_forest import RandomForest
 from dacboenv.features.signal.modelfit import calculate_model_fit
 from dacboenv.features.signal.ubr import calculate_ubr
 from dacboenv.policy.sawei import apply_moving_iqm
+from dacboenv.utils.weighted_expected_improvement import WEI
 
 if TYPE_CHECKING:
     from smac.acquisition.function.abstract_acquisition_function import AbstractAcquisitionFunction
@@ -510,9 +511,34 @@ def get_acq_value(solver: SMBO, acq_fun_class: AbstractAcquisitionFunction) -> f
     float | None
         The acquisition value for the last configuration, or None, if the model has not been fitted yet.
     """
+    retval = get_af_and_acq_value(solver=solver, acq_fun_class=acq_fun_class)
+    if retval is not None:
+        _acq_fun, acq_value = retval
+        return acq_value
+    return None
+
+
+def get_af_and_acq_value(
+    solver: SMBO, acq_fun_class: AbstractAcquisitionFunction
+) -> tuple[AbstractAcquisitionFunction, float] | None:
+    """Get the acquisition function value for the last added configuration.
+
+    Parameters
+    ----------
+    solver : SMBO
+        The SMAC solver instance.
+    acq_fun_class : AbstractAcquisitionFunction
+        The acquisition function class.
+
+    Returns
+    -------
+    tuple[AbstractAcquisitionFunction, float] | None
+        The acquisition function, and the acquisition value for the last configuration, or None, if the model has not
+        been fitted yet.
+    """
     config_selector = solver._intensifier._config_selector
     model = config_selector._model
-    acq_value = None
+    retval = None
     if model_fitted(model):
         rh = config_selector._runhistory
         incumbent = solver._intensifier._incumbents[0]
@@ -523,8 +549,9 @@ def get_acq_value(solver: SMBO, acq_fun_class: AbstractAcquisitionFunction) -> f
         trial_key = list(rh.keys())[-1]
         config_id = trial_key.config_id
         config = rh.get_config(config_id)
-        acq_value = acq_fun([config])[0]  # Calculate summands
-    return acq_value
+        acq_value = acq_fun([config])[0]
+        retval = acq_fun, acq_value
+    return retval
 
 
 def get_acq_value_ei(solver: SMBO, memory: Memory | None = None) -> float | None:  # noqa: ARG001
@@ -562,6 +589,35 @@ def get_acq_value_pi(solver: SMBO, memory: Memory | None = None) -> float | None
     """
     return get_acq_value(solver, PI)
 
+
+def get_acq_value_wei_explore(solver: SMBO, memory: Memory | None = None) -> float | None:  # noqa: ARG001
+    """Get the exploration term of WEI for last configuration.
+
+    Parameters
+    ----------
+    solver : SMBO
+        The SMAC instance.
+    memory : Memory, optional
+        Unused memory.
+
+    Returns
+    -------
+    float | None
+        The exploration term of WEI, or None, if the model has not been fitted yet.
+    """
+    retval = get_af_and_acq_value(solver=solver, acq_fun_class=WEI)
+    if retval is not None:
+        acq_fun, _acq_value = retval
+        return acq_fun.ei_term[0][0]  # type: ignore[union-attr,index]
+    return None
+
+
+acq_value_wei_explore_observation = ObservationType(
+    name="acq_value_WEI_explore",
+    space=Box(low=0, high=np.inf, dtype=np.float32),
+    compute=get_acq_value_wei_explore,
+    default=0,
+)
 
 acq_value_ei_observation = ObservationType(
     name="acq_value_EI", space=Box(low=0, high=np.inf, dtype=np.float32), compute=get_acq_value_ei, default=0
@@ -617,6 +673,7 @@ ALL_OBSERVATIONS = [
     has_categorical_hps,
     acq_value_ei_observation,
     acq_value_pi_observation,
+    acq_value_wei_explore_observation,
     previous_param_observation,
     ubr_observation,
     ubr_gradient_observation,

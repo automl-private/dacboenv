@@ -1,6 +1,7 @@
 # @package _global_
 
-reward_id: symlogregret
+reference_performance_id: ???
+reward_id: symlogregret-${reference_performance_id}
 dacboenv:
   reward_keys:
     - symlogregret

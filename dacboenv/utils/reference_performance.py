@@ -121,7 +121,12 @@ def get_config_overrides(ids: list[str], index_csv: Path, group_name: str, id_co
         List of Hydra overrides like '+task/some/path=id1,id2'
     """
     df = pd.read_csv(index_csv)  # noqa: PD901
-    filtered = df.set_index(id_col).loc[ids].reset_index()
+    try:
+        filtered = df.set_index(id_col).loc[ids].reset_index()
+    except KeyError as e:
+        raise KeyError(f"Probably one of {ids} is not native carps! Original error message: {e}") from e
+    except Exception as e:
+        raise e from e
 
     # Extract relative path and last element
     filtered["rel_path"] = filtered["config_fn"].map(lambda x: x.split(f"{group_name}/")[-1].replace(".yaml", ""))

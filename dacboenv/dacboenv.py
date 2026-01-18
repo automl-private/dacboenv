@@ -100,6 +100,7 @@ class DACBOEnv(gym.Env):
         rho: float = 0.05,
         seed: int | None = None,
         reference_performance_fn: str = "reference_performance/reference_performance.parquet",
+        reference_performance_optimizer_id: str = "SMAC3-BlackBoxFacade",
         inner_seeds: list[int] | None = None,
         terminate_after_reference_performance_reached: bool = False,  # noqa: FBT001, FBT002
         instance_selector_class: type[InstanceSelector] | None = None,
@@ -179,7 +180,7 @@ class DACBOEnv(gym.Env):
         if self._evaluation_mode:
             self._terminate_after_reference_performance_reached = False
         self.reference_performance_fn = reference_performance_fn
-        self.reference_performance_optimizer_id = "SMAC3-BlackBoxFacade"
+        self.reference_performance_optimizer_id = reference_performance_optimizer_id
         if not self._evaluation_mode:
             self._reference_performance = ReferencePerformance(
                 optimizer_id=self.reference_performance_optimizer_id,

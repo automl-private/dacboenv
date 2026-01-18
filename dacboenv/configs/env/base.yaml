@@ -10,6 +10,7 @@ dacboenv:
   reward_keys: ???
   seed: ${seed}
   reference_performance_fn: reference_performance/reference_performance.parquet
+  reference_performance_optimizer_id: SMAC3-BlackBoxFacade
   terminate_after_reference_performance_reached: False
   instance_selector_class:
     _target_: dacboenv.env.instance.RoundRobinInstanceSelector

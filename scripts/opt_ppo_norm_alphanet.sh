@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH -t 24:00:00
+#SBATCH -t 48:00:00
 #SBATCH -J "ppo4dacbo"
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=16G
+#SBATCH --mem=20G
 #SBATCH -p normal
-#SBATCH --array=1-3
+#SBATCH --array=1-5
 #SBATCH --output=slurmlogs/ppo/slurm-%j.out     # stdout log
 #SBATCH --error=slurmlogs/ppo/slurm-%j.err      # stderr log
 
@@ -21,4 +21,4 @@ python -m dacboenv.experiment.ppo_norm_alphanet \
     experiment.n_episodes=1000 \
     seed=$SLURM_ARRAY_TASK_ID \
     +env/instance_selector=roundrobin \
-    baserundir=runsnew
+    baserundir=runsicml

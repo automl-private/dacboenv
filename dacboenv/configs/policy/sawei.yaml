@@ -1,6 +1,6 @@
 # @package _global_
 
-optimizer_id: SAWEI
+optimizer_id: SAWEI-P
 policy_id: SAWEI
 optimizer:
   policy_class:

@@ -4,8 +4,7 @@ observation_space_id: sawei
 dacboenv:
   observation_keys:
     - ubr_smoothed_gradient
-    - ubr_smoothed_gradient_std
     - acq_value_PI
-    - acq_value_EI
+    - acq_value_WEI_explore
     - previous_param
 

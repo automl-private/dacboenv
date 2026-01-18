@@ -8,7 +8,8 @@ from dacboenv.env.reward import get_initial_design_size
 from dacboenv.policy.abstract_policy import AbstractPolicy
 
 if TYPE_CHECKING:
-    from dacboenv.dacboenv import ActType, DACBOEnv, ObsType
+    from dacboenv.dacboenv import ActType, DACBOEnv
+    from dacboenv.env.observations.types import ObsType
 
 
 class JumpParameterPolicy(AbstractPolicy):

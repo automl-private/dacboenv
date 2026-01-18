@@ -29,7 +29,8 @@ if TYPE_CHECKING:
     from smac.facade.abstract_facade import AbstractFacade
     from smac.main.smbo import SMBO
 
-ObsType = dict[str, Any]
+    from dacboenv.env.observations.types import ObsType
+
 ActType = int | float | list[float] | None
 
 logger = get_logger("dacboenv")

@@ -12,7 +12,8 @@ from torch import nn
 from dacboenv.policy.abstract_policy import AbstractPolicy
 
 if TYPE_CHECKING:
-    from dacboenv.dacboenv import DACBOEnv, ObsType
+    from dacboenv.dacboenv import DACBOEnv
+    from dacboenv.env.observations.types import ObsType
 
 
 def get_nweights_alpharulenet() -> int:

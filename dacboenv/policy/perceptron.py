@@ -6,12 +6,12 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from dacboenv.dacboenv import DACBOEnv
 from dacboenv.policy.abstract_policy import AbstractPolicy
 from dacboenv.utils.math import sigmoid
 
 if TYPE_CHECKING:
-    from dacboenv.dacboenv import DACBOEnv, ObsType
+    from dacboenv.dacboenv import DACBOEnv
+    from dacboenv.env.observations.types import ObsType
 
 
 class PerceptronPolicy(AbstractPolicy):

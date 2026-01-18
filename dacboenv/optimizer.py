@@ -17,7 +17,8 @@ if TYPE_CHECKING:
     from carps.utils.trials import TrialInfo, TrialValue
     from smac.facade.abstract_facade import AbstractFacade
 
-    from dacboenv.dacboenv import DACBOEnv, ObsType
+    from dacboenv.dacboenv import DACBOEnv
+    from dacboenv.env.observations.types import ObsType
     from dacboenv.policy.abstract_policy import Policy
 
 from dacboenv.utils.loggingutils import dump_logs

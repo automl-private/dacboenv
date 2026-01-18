@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable, Iterator, Sequence
-from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -11,34 +11,33 @@ from typing import (
 )
 
 import numpy as np
-from gymnasium.spaces import Box, Dict, Space
-from smac.model.gaussian_process import GaussianProcess
-from smac.model.random_forest import RandomForest
-
-from dacboenv.features.signal.modelfit import calculate_model_fit
-from dacboenv.features.signal.ubr import calculate_ubr
-from dacboenv.policy.sawei import apply_moving_iqm
-from dacboenv.utils.weighted_expected_improvement import WEI
-
-if TYPE_CHECKING:
-    from smac.acquisition.function.abstract_acquisition_function import AbstractAcquisitionFunction
-    from smac.main.smbo import SMBO
-    from smac.model import AbstractModel
-
-    from dacboenv.dacboenv import ObsType
-
-
 from ConfigSpace.hyperparameters import (
     CategoricalHyperparameter,
     FloatHyperparameter,
     IntegerHyperparameter,
     OrdinalHyperparameter,
 )
+from gymnasium.spaces import Box, Dict, Space
 from scipy.stats import kurtosis, skew
-from smac.acquisition.function import EI, PI
+from smac.main.smbo import SMBO
 
+from dacboenv.env.observations.acquisition_function import (
+    acq_value_ei_observation,
+    acq_value_pi_observation,
+    acq_value_wei_explore_observation,
+    acq_value_wei_observation,
+)
+from dacboenv.env.observations.types import MultiObservationType, ObservationType, ObsType
+from dacboenv.features.signal.modelfit import calculate_model_fit
+from dacboenv.features.signal.ubr import calculate_ubr
 from dacboenv.features.X_features import exploration_tsd, knn_entropy
 from dacboenv.features.y_features import calc_variability
+from dacboenv.policy.sawei import apply_moving_iqm
+
+if TYPE_CHECKING:
+    from smac.main.smbo import SMBO
+
+    from dacboenv.env.observations.types import Memory, ObsType
 
 
 def get_best_percentile_configs(
@@ -91,21 +90,27 @@ def calc_last_diff(memory: Memory, key: str) -> float:
     return 0 if len(memory[key]) < 2 else memory[key][-2] - memory[key][-1]  # noqa: PLR2004
 
 
-def compute_ubr(smbo: SMBO) -> float:
+class ComputeUBR:
     """Compute the UBR.
 
-    Parameters
-    ----------
-    smbo : SMBO
-        The SMAC instance.
-
-    Returns
-    -------
-    float
-        The current UBR.
+    Currently no need to have it as a class.
     """
-    result_dict = calculate_ubr(trial_infos=None, trial_values=None, configspace=None, smbo=smbo)
-    return result_dict["ubr"]
+
+    def __call__(self, smbo: SMBO) -> float | None:
+        """Compute the UBR.
+
+        Parameters
+        ----------
+        smbo : SMBO
+            The SMAC instance.
+
+        Returns
+        -------
+        float
+            The current UBR.
+        """
+        result_dict = calculate_ubr(trial_infos=None, trial_values=None, configspace=None, smbo=smbo)
+        return result_dict.get("ubr", None)
 
 
 def get_last_val(memory: Memory, key: str) -> float:
@@ -134,48 +139,6 @@ def ubr_difference(memory: Memory) -> float:
 def knn_difference(memory: Memory) -> float:
     """Computes the difference between the last two KNN values."""
     return calc_last_diff(memory=memory, key="knn")
-
-
-@dataclass
-class ObservationType:
-    """Represents a single observation type.
-
-    Attributes
-    ----------
-    name : str
-        Name of the observation.
-    space : Space
-        Gymnasium space for the observation's value range and type.
-    compute : Callable[[SMBO], Any]
-        Function to compute the observation value from a SMAC instance.
-    default : int | float
-        The observation's default value.
-    """
-
-    name: str
-    space: Space
-    compute: Callable[[SMBO, Memory | None], Any]
-    default: Any
-
-
-Memory = dict[str, list[float]]
-
-
-@dataclass
-class MultiObservationType:
-    """Represents a multi observation type.
-    A multi observation is a collection of observation types that are created together.
-
-    Attributes
-    ----------
-    name : str
-        Name of the observation.
-    create : Callable[[SMBO], Sequence[ObservationType]]
-        Function to create the collection of ObservervationTypes from a SMAC instance.
-    """
-
-    name: str
-    create: Callable[[SMBO], Sequence[ObservationType]]
 
 
 incumbent_change_observation = ObservationType(
@@ -223,6 +186,9 @@ def calc_gradient(memory: Memory, key: str, smooth_signal: bool = False) -> np.n
         The gradient of a signal, possibly smoothed.
     """
     raw_signal = memory[key]
+    raw_signal = [r for r in raw_signal if r is not None]
+    if len(raw_signal) == 0:
+        return np.array([0])
     maybe_smoothed_signal = apply_moving_iqm(raw_signal, window_size=7) if smooth_signal else raw_signal
     if len(maybe_smoothed_signal) == 1:
         return np.array([0])
@@ -475,158 +441,6 @@ previous_param_observation = ObservationType(
 )
 
 
-def model_fitted(model: AbstractModel | None) -> bool:
-    """Check whether the surrogate model is fitted.
-
-    Parameters
-    ----------
-    model : AbstractModel
-        Surrogate model.
-
-    Returns
-    -------
-    bool
-        Model fitted or not.
-    """
-    fitted = False
-    if model is not None:
-        fitted = (isinstance(model, GaussianProcess) and model._is_trained) or (
-            isinstance(model, RandomForest) and model._rf is not None
-        )
-    return fitted
-
-
-def get_acq_value(solver: SMBO, acq_fun_class: AbstractAcquisitionFunction) -> float | None:
-    """Get the acquisition function value for the last added configuration.
-
-    Parameters
-    ----------
-    solver : SMBO
-        The SMAC solver instance.
-    acq_fun_class : AbstractAcquisitionFunction
-        The acquisition function class.
-
-    Returns
-    -------
-    float | None
-        The acquisition value for the last configuration, or None, if the model has not been fitted yet.
-    """
-    retval = get_af_and_acq_value(solver=solver, acq_fun_class=acq_fun_class)
-    if retval is not None:
-        _acq_fun, acq_value = retval
-        return acq_value
-    return None
-
-
-def get_af_and_acq_value(
-    solver: SMBO, acq_fun_class: AbstractAcquisitionFunction
-) -> tuple[AbstractAcquisitionFunction, float] | None:
-    """Get the acquisition function value for the last added configuration.
-
-    Parameters
-    ----------
-    solver : SMBO
-        The SMAC solver instance.
-    acq_fun_class : AbstractAcquisitionFunction
-        The acquisition function class.
-
-    Returns
-    -------
-    tuple[AbstractAcquisitionFunction, float] | None
-        The acquisition function, and the acquisition value for the last configuration, or None, if the model has not
-        been fitted yet.
-    """
-    config_selector = solver._intensifier._config_selector
-    model = config_selector._model
-    retval = None
-    if model_fitted(model):
-        rh = config_selector._runhistory
-        incumbent = solver._intensifier._incumbents[0]
-        eta = rh.get_cost(incumbent) if incumbent else 0
-
-        acq_fun = acq_fun_class()
-        acq_fun.update(model=model, eta=eta)
-        trial_key = list(rh.keys())[-1]
-        config_id = trial_key.config_id
-        config = rh.get_config(config_id)
-        acq_value = acq_fun([config])[0]
-        retval = acq_fun, acq_value
-    return retval
-
-
-def get_acq_value_ei(solver: SMBO, memory: Memory | None = None) -> float | None:  # noqa: ARG001
-    """Get acquisiton function value for last configuration with EI acquisition function.
-
-    Parameters
-    ----------
-    solver : SMBO
-        The SMAC instance.
-    memory : Memory, optional
-        Unused memory.
-
-    Returns
-    -------
-    float | None
-        The acquisition value, or None, if the model has not been fitted yet.
-    """
-    return get_acq_value(solver, EI)
-
-
-def get_acq_value_pi(solver: SMBO, memory: Memory | None = None) -> float | None:  # noqa: ARG001
-    """Get acquisiton function value for last configuration with PI acquisition function.
-
-    Parameters
-    ----------
-    solver : SMBO
-        The SMAC instance.
-    memory : Memory, optional
-        Unused memory.
-
-    Returns
-    -------
-    float | None
-        The acquisition value, or None, if the model has not been fitted yet.
-    """
-    return get_acq_value(solver, PI)
-
-
-def get_acq_value_wei_explore(solver: SMBO, memory: Memory | None = None) -> float | None:  # noqa: ARG001
-    """Get the exploration term of WEI for last configuration.
-
-    Parameters
-    ----------
-    solver : SMBO
-        The SMAC instance.
-    memory : Memory, optional
-        Unused memory.
-
-    Returns
-    -------
-    float | None
-        The exploration term of WEI, or None, if the model has not been fitted yet.
-    """
-    retval = get_af_and_acq_value(solver=solver, acq_fun_class=WEI)
-    if retval is not None:
-        acq_fun, _acq_value = retval
-        return acq_fun.ei_term[0][0]  # type: ignore[union-attr,index]
-    return None
-
-
-acq_value_wei_explore_observation = ObservationType(
-    name="acq_value_WEI_explore",
-    space=Box(low=0, high=np.inf, dtype=np.float32),
-    compute=get_acq_value_wei_explore,
-    default=0,
-)
-
-acq_value_ei_observation = ObservationType(
-    name="acq_value_EI", space=Box(low=0, high=np.inf, dtype=np.float32), compute=get_acq_value_ei, default=0
-)
-
-acq_value_pi_observation = ObservationType(
-    name="acq_value_PI", space=Box(low=0, high=1, dtype=np.float32), compute=get_acq_value_pi, default=0
-)
-
 gp_hp_observation = MultiObservationType(
     "gp_hp_observations",
     lambda smbo, memory: [  # type: ignore[arg-type,misc] # noqa: ARG005
@@ -672,6 +486,7 @@ ALL_OBSERVATIONS = [
     inc_improvement_scaled_observation,
     has_categorical_hps,
     acq_value_ei_observation,
+    acq_value_wei_observation,
     acq_value_pi_observation,
     acq_value_wei_explore_observation,
     previous_param_observation,
@@ -758,13 +573,16 @@ class ObservationSpace:
             if key in ObservationSpace._MULTI_OBSERVATION_MAP
             for space in ObservationSpace._MULTI_OBSERVATION_MAP[key].create(smac_instance)
         ]
+        for obs in self._observation_types:
+            if inspect.isclass(obs.compute):
+                obs.compute = obs.compute()
         self._observation_space = Dict({obs.name: obs.space for obs in self._observation_types})
 
         self._register_to_memory: dict[str, Callable] = {}
         self._memory: Memory = {}
         for obs in self._observation_types:
             if obs.name.startswith("ubr"):
-                self._register_to_memory["ubr"] = compute_ubr
+                self._register_to_memory["ubr"] = ComputeUBR()
                 self._memory["ubr"] = []
             elif obs.name.startswith("knn") and "best" not in obs.name:
                 self._register_to_memory["knn"] = calculate_knn

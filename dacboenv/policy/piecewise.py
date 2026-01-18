@@ -6,11 +6,11 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from dacboenv.dacboenv import DACBOEnv, ObsType
 from dacboenv.policy.abstract_policy import AbstractPolicy
 
 if TYPE_CHECKING:
-    from dacboenv.dacboenv import ActType, DACBOEnv, ObsType
+    from dacboenv.dacboenv import ActType, DACBOEnv
+    from dacboenv.env.observations.types import ObsType
 
 
 class PiecewiseParameterPolicy(AbstractPolicy):

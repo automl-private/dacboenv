@@ -12,7 +12,8 @@ from dacboenv.policy.abstract_policy import AbstractPolicy
 from dacboenv.utils.weighted_expected_improvement import WEI
 
 if TYPE_CHECKING:
-    from dacboenv.dacboenv import ActType, DACBOEnv, ObsType
+    from dacboenv.dacboenv import ActType, DACBOEnv
+    from dacboenv.env.observations.types import ObsType
 
 
 def sigmoid(x: float) -> float:
@@ -63,6 +64,9 @@ def detect_adjust(
     np.ndarray[bool]
         Adjust yes or no per UBR point.
     """
+    UBR = np.array(UBR)[~np.isnan(np.array(UBR))]
+    if len(UBR) == 1:
+        return np.array([0])
     signal = apply_moving_iqm(U=UBR, window_size=window_size) if smooth else UBR
 
     if compute_gradient:
@@ -196,7 +200,7 @@ class SAWEIPolicy(AbstractPolicy):
 
         assert isinstance(self._env._smac_instance._intensifier._config_selector._acquisition_function, WEI)
 
-    def __call__(self, obs: ObsType) -> ActType:  # noqa: C901, PLR0912
+    def __call__(self, obs: ObsType) -> ActType:  # noqa: C901, PLR0912, PLR0915
         """Return an action based on SAWEI.
 
         Parameters
@@ -216,11 +220,14 @@ class SAWEIPolicy(AbstractPolicy):
 
         if "ubr" in obs:
             signal = obs["ubr"]
-        elif "ubr_gradient" in obs:
-            signal = obs["ubr_gradient"]
-            compute_gradient = False
+            compute_gradient = True
+            smooth = True
         elif "ubr_smoothed_gradient" in obs:
             signal = obs["ubr_smoothed_gradient"]
+            compute_gradient = False
+            smooth = False
+        elif "ubr_gradient" in obs:
+            signal = obs["ubr_gradient"]
             compute_gradient = False
             smooth = False
         else:
@@ -231,8 +238,8 @@ class SAWEIPolicy(AbstractPolicy):
             "n_evaluated": solver.runhistory.finished,
             "alpha": self._alpha,
             "n_incumbent_changes": int(solver._intensifier._incumbents_changed),
-            "wei_ei_term": obs["acq_value_EI"].item(),
-            "wei_pi_term": obs["acq_value_PI"].item(),
+            "wei_ei_term": obs["acq_value_WEI_explore"].item(),
+            "wei_pi_term": obs["acq_value_PI"].item(),  # pure PI according to SAWEI paper
             "ubr": signal,
         }
 

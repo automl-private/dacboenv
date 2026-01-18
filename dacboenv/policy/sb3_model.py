@@ -12,7 +12,8 @@ from dacboenv.policy.abstract_policy import AbstractPolicy
 if TYPE_CHECKING:
     from stable_baselines3.common.base_class import BaseAlgorithm
 
-    from dacboenv.dacboenv import ActType, DACBOEnv, ObsType
+    from dacboenv.dacboenv import ActType, DACBOEnv
+    from dacboenv.env.observations.types import ObsType
 
 
 class ModelPolicy(AbstractPolicy):

@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from dacboenv.dacboenv import ObsType
 from dacboenv.policy.abstract_policy import AbstractPolicy
 
 if TYPE_CHECKING:
-    from dacboenv.dacboenv import ActType, DACBOEnv, ObsType
+    from dacboenv.dacboenv import ActType, DACBOEnv
+    from dacboenv.env.observations.types import ObsType
 
 
 class LinearParameterPolicy(AbstractPolicy):

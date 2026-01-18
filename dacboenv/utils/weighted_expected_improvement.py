@@ -152,7 +152,7 @@ class WEI(AbstractAcquisitionFunction):
             if len(X.shape) == 1:
                 X = X[:, np.newaxis]
 
-            m, v = self._model.predict_marginalized(X)  # TODO: can the variance become negative?
+            m, v = self._model.predict_marginalized(X)
             s = np.sqrt(v)
 
             def calculate_f() -> np.ndarray:
@@ -182,6 +182,5 @@ class WEI(AbstractAcquisitionFunction):
             #     # TODO is it okay if this acq fun is smaller than 0?
             #     logger.warn("Expected Improvement is smaller than 0 for at least one " "sample.")
             #     # raise ValueError("Expected Improvement is smaller than 0 for at least one " "sample.")
-
             return f
         raise NotImplementedError

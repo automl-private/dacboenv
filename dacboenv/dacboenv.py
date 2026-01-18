@@ -459,11 +459,16 @@ class DACBOEnv(gym.Env):
         self.current_seed = seed
         self.current_task_id = task_id
 
-        # Work off new initial design
-        for _ in self._smac_instance.intensifier.config_selector._initial_design_configs:
-            trial_info = self._smac_instance.ask()
-            _, trial_value = self._smac_instance._runner.run_wrapper(trial_info)
-            self._smac_instance.tell(trial_info, trial_value)
+        if not self._evaluation_mode:
+            # Work off new initial design
+            # This is important for training DAC policies because for the phase of the initial design, no action can
+            # be taken and this might lead to misleading signals.
+            # In evaluation, however, the initial design counts towards the total number of trials, controlled by
+            # carps optimizer.
+            for _ in self._smac_instance.intensifier.config_selector._initial_design_configs:
+                trial_info = self._smac_instance.ask()
+                _, trial_value = self._smac_instance._runner.run_wrapper(trial_info)
+                self._smac_instance.tell(trial_info, trial_value)
 
         initial_obs = {
             obs.name: np.atleast_1d(obs.default).astype(np.float32)

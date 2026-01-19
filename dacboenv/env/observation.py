@@ -22,6 +22,7 @@ from scipy.stats import kurtosis, skew
 from smac.main.smbo import SMBO
 
 from dacboenv.env.observations.acquisition_function import (
+    GetAFandAcqValue,
     acq_value_ei_observation,
     acq_value_pi_observation,
     acq_value_wei_explore_observation,
@@ -614,3 +615,9 @@ class ObservationSpace:
             obs.name: np.atleast_1d(obs.compute(self._smac_instance, self._memory)).astype(np.float32)
             for obs in self._observation_types
         }
+
+    def reset(self) -> None:
+        """Reset any stateful observations. Should be called when the env is reset."""
+        for obs in self._observation_types:
+            if isinstance(obs.compute, GetAFandAcqValue):
+                obs.compute.reset()

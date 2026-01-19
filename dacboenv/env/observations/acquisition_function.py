@@ -48,6 +48,7 @@ def get_acq_value(solver: SMBO, acq_fun_class: AbstractAcquisitionFunction) -> f
     return None
 
 
+# TODO Build proper stateful abstract class
 class GetAFandAcqValue:
     """Get the AF and query values using the previous incumbent.
 
@@ -63,6 +64,10 @@ class GetAFandAcqValue:
 
     def __init__(self) -> None:
         self._model = None
+        self._incumbent = None
+
+    def reset(self) -> None:
+        """Reset incumbent in case of environment reset."""
         self._incumbent = None
 
     def __call__(

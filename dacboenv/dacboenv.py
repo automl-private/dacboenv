@@ -445,6 +445,7 @@ class DACBOEnv(gym.Env):
 
         # Setup observation space
         self._dacbo_observation_space = ObservationSpace(self._smac_instance, self._observation_keys)
+        self._dacbo_observation_space.reset()
         self.observation_space = self._dacbo_observation_space.space  # gym observation space
 
         # Setup action space

@@ -8,8 +8,9 @@ tasks=(
     "+task=dacboenv_sawei_symlog"
 )
 ref_perfs=(
-    "+env/refperf=saweip"
-    "+env/refperf=smacbb"
+    # "+env/refperf=saweip"
+    # "+env/refperf=smacbb"
+    "+env/refperf=noop"
 )
 instance_sets=(
     # "+instances=bbob2d_1_3seeds"

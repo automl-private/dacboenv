@@ -26,17 +26,17 @@ TASKS_GENERAL=(
 
 OPT_BASES=(
     # "+policy/optimized/PPO-Perceptron"
-    "+policy/optimized/SMAC-AC"
-    "+policy/optimized/PPO-AlphaNet"
-    "+policy/optimized/PPO-AlphaNet2"
-    "+policy/optimized/PPO-AlphaNet3"
+    # "+policy/optimized/SMAC-AC"
+    # "+policy/optimized/PPO-AlphaNet"
+    # "+policy/optimized/PPO-AlphaNet2"
+    # "+policy/optimized/PPO-AlphaNet3"
     # "+policy/optimized/SMAC-AC-WS"
     # "+policy/optimized/CMA-1.3"
 )
 
 REWARDS=(
     "episode_finished_scaled"
-    "symlogregret"
+    # "symlogregret"
 )
 
 INSTANCE_SET="bbob2d_3seeds"
@@ -60,18 +60,21 @@ for base in "${OPT_BASES[@]}"; do
         fi
         ARGS="+eval=base +env=base +env/obs=$OBS $REWARDOVERRIDE +env/opt=base ${ACTIONSPACE_OVERRIDE} +cluster=cpu_noctua seed=range(1,11)"
 
-        run_eval() {
-            python -m $BASE $ARGS "$@" "dacboenv.terminate_after_reference_performance_reached=false" --multirun &
-        }
+        # run_eval() {
+        #     python -m $BASE $ARGS "$@" "dacboenv.terminate_after_reference_performance_reached=false" --multirun &
+        # }
         # Eval FID on 2D and 8D training tasks
-        instance_set="bbob2d_fid${fid}_3seeds"
-        TRAINTASK="dacbo_C${cost}_A${action_space}_S${OBS}_R${reward}_I${instance_set}"
+        # instance_set="bbob2d_fid${fid}_3seeds"
+        # TRAINTASK="dacbo_C${cost}_A${action_space}_S${OBS}_R${reward}_I${instance_set}"
         # for d in 2 8; do            
         #     run_eval "+task/BBOB=cfg_${d}_${fid}_0" \
         #             "${base}/${TRAINTASK}=${OUTER_SEEDS}"
         # done
-        run_eval "+task/BBOB=glob(cfg_2_*_0)" \
-                    "${base}/${TRAINTASK}=${OUTER_SEEDS}"
+        # d=8
+        # run_eval "+task/BBOB=cfg_${d}_${fid}_0" \
+        #             "${base}/${TRAINTASK}=${OUTER_SEEDS}"
+        # run_eval "+task/BBOB=glob(cfg_2_*_0)" \
+        #             "${base}/${TRAINTASK}=${OUTER_SEEDS}"
 
         # instance_set=$INSTANCE_SET
         # TRAINTASK="dacbo_C${cost}_A${action_space}_S${OBS}_R${reward}_I${instance_set}"
@@ -96,7 +99,18 @@ done
 #     run_eval $task "+policy=default"
 # done
 
-# # Eval SAWEI
+# Eval Random Policy
+REWARDOVERRIDE="+env/reward=symlogregret"
+ARGS="+eval=base +env=base +env/obs=$OBS $REWARDOVERRIDE +env/opt=base ${ACTIONSPACE_OVERRIDE} +env/refperf=smacbb +cluster=cpu_noctua seed=range(1,11)"
+run_eval() {
+    python -m $BASE $ARGS "$@" "dacboenv.terminate_after_reference_performance_reached=false" --multirun &
+}
+run_eval "+task/BBOB=glob(cfg_2_*_0)" "+policy=random"
+for task in "${TASKS_GENERAL[@]}"; do
+    run_eval $task "+policy=random"
+done
+
+# # Eval SAWEI original adaptaf
 # REWARDOVERRIDE="+env/reward=symlogregret"
 # ARGS="baserundir=runs_eval +cluster=cpu_noctua seed=range(1,11)"
 # run_eval() {
@@ -105,6 +119,17 @@ done
 # run_eval "+task/BBOB=glob(cfg_2_*_0)" "+method=sawei_20p"
 # for task in "${TASKS_GENERAL[@]}"; do
 #     run_eval $task "+method=sawei_20p"
+# done
+
+# # Eval SAWEI-P
+# REWARDOVERRIDE="+env/reward=symlogregret"
+# ARGS="+eval=base +env=base +env/obs=$OBS $REWARDOVERRIDE +env/opt=base ${ACTIONSPACE_OVERRIDE} +cluster=cpu_noctua seed=range(1,11)"
+# run_eval() {
+#     python -m $BASE $ARGS "$@" "dacboenv.terminate_after_reference_performance_reached=false" --multirun &
+# }
+# # run_eval "+task/BBOB=glob(cfg_2_*_0)" "+policy=sawei" "baserundir=runs_eval_SAWEI"
+# for task in "${TASKS_GENERAL[@]}"; do
+#     run_eval $task "+policy=sawei"
 # done
 
 wait

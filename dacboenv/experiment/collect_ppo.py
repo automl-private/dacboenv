@@ -96,6 +96,11 @@ def create_ppo_eval_configs(rundir: Path | str) -> None:
             raise ValueError(
                 f"No normalization wrapper found for model {model!s}. Filename: {normalization_wrapper_fn!s}"
             )
+        eval_conf.dacboenv = cfg.dacboenv
+        eval_conf.dacboenv.task_ids = ["${task.name}"]
+        eval_conf.dacboenv.inner_seeds = ["${seed}"]
+        eval_conf.dacboenv.evaluation_mode = True
+        eval_conf.dacboenv.terminate_after_reference_performance_reached = False
         yaml_str = OmegaConf.to_yaml(eval_conf)
         yaml_str = f"# @package _global_\n\n{yaml_str}"
         eval_cfg_fn = configs_path / f"{'-'.join(model.parts[-5].split('-')[:3])}/{model.parts[-3]}/seed{cfg.seed}.yaml"

@@ -65,6 +65,11 @@ adaptaf:
 	git clone git@github.com:automl-private/adaptaf.git lib/adaptaf
 	cd lib/adaptaf && uv pip install -e .
 
+optbench:
+	git clone git@github.com:automl/OptBench.git lib/OptBench
+	cd lib/OptBench && uv pip install -e .
+	python -m carps.utils.index_configs '--extra_task_paths=["lib/OptBench/optbench/configs/task"]'
+
 gather-data:
 	python -m carps.analysis.gather_data '--rundir=["runs_eval","/scratch/hpc-prf-intexml/tklenke/experiment_runs/dacboenv_ppo_semi"]' --outdir=results
 
@@ -74,6 +79,8 @@ gather-data-small:
 	--outdir=results_alphanet2
 # 	--n_processes=1
 
+gather-data-sawei:
+	python -m carps.analysis.gather_data '--rundir=runs_eval/SAWEI-P' --outdir=resultssawei --n_processes=1
 
 testppoalpha:
 	python -m dacboenv.experiment.ppo_norm_alphanet \
@@ -119,7 +126,32 @@ tmpeval:
 # Fix 'scikit-learn=0.21.3' in environment.yml
 # For testing metabo, run with gpu.
 #  cd lib/MetaBO; python evaluate_metabo_gprice.py
+# Interactive job for GPU testing: salloc -t 02:00:00 --qos=devel --partition=dgx --gres=gpu:a100:1
 metabo:
-	# git clone https://github.com/boschresearch/MetaBO.git lib/MetaBO
+	# git clone https://github.com/LUH-AI/MetaBO.git lib/MetaBO
 	conda env create -f lib/MetaBO/environment.yml
 	conda activate metabo
+
+# tensorboard regex: (?s:.*?)finished(?s:.*?)SAWEI(?s:.*?)fid8(?s:.*?)log_2
+
+runsaweitest:
+	python -m carps.run hydra.searchpath=[pkg://dacboenv/configs,pkg://adaptaf/configs] +task/BNNBO=TensionCompressionString +method=sawei_20p seed=3 baserundir=runstmp
+
+runsaweiptest:
+	python -m carps.run hydra.searchpath=[pkg://dacboenv/configs] \
+		+eval=base +env=base +env/obs=sawei +env/opt=base \
+		+env/action=wei_alpha_continuous +env/reward=ep_done_scaled +env/refperf=saweip \
+		+policy=sawei \
+		+task/BNNBO=TensionCompressionString \
+		seed=3 \
+		baserundir=runstmp \
+		dacboenv.evaluation_mode=false
+
+ppotest:
+	python -m dacboenv.experiment.ppo_norm_alphanet \
+		+task=dacboenv_sawei_symlog +instances=bbob2d_3seeds +opt=ppo_alphanet +env/refperf=saweip \
+		experiment.n_workers=1 \
+		experiment.n_episodes=2 \
+		seed=1 \
+		+env/instance_selector=roundrobin \
+		baserundir=tmp_runs_opt

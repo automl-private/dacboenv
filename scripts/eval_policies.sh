@@ -15,7 +15,7 @@ ACTIONSPACE_OVERRIDE="+env/action=wei_alpha_continuous"
 
 
 OBS="sawei"
-BASE="carps.run hydra.searchpath=[pkg://dacboenv/configs,pkg://adaptaf/configs]"
+BASE="carps.run hydra.searchpath=[pkg://dacboenv/configs,pkg://adaptaf/configs,pkg://optbench/configs]"
 
 
 TASKS_GENERAL=(
@@ -23,92 +23,113 @@ TASKS_GENERAL=(
     "+task/YAHPO/SO=glob(*)"
     "+task/BNNBO=glob(*) hydra.launcher.mem_per_cpu=16G"
 )
+TASKS_OPTBENCH="+task/OptBench=Ackley_2,Hartmann_3,Levy_2,Schwefel_2"
+TASKS_EVAL=(
+    "+task/BBOB=glob(cfg_2_*_0)"
+    "+task/BBOB=glob(cfg_8_*_0)"
+    "+task/YAHPO/SO=glob(*)"
+    "+task/BNNBO=glob(*) hydra.launcher.mem_per_cpu=16G"
+    "+task/OptBench=Ackley_2,Hartmann_3,Levy_2,Schwefel_2"
+)
+
+OUTER_SEEDS="seed1,seed2,seed3,seed4,seed5"
+# OUTER_SEEDS="seed1,seed2,seed3"
 
 OPT_BASES=(
-    # "+policy/optimized/PPO-Perceptron"
-    # "+policy/optimized/SMAC-AC"
-    # "+policy/optimized/PPO-AlphaNet"
-    # "+policy/optimized/PPO-AlphaNet2"
-    # "+policy/optimized/PPO-AlphaNet3"
-    # "+policy/optimized/SMAC-AC-WS"
-    # "+policy/optimized/CMA-1.3"
+    "+policy=noop"
+    "+policy=random"
+    "+policy=sawei"
+    "+policy/optimized/PPO-AlphaNet/dacbo_Cepisode_length_scaled_plus_logregret_AWEI-cont_Ssawei_Repisode_finished_scaled-SAWEI-P_Ibbob2d_3seeds=$OUTER_SEEDS"
+    "+policy/optimized/PPO-AlphaNet/dacbo_Cepisode_length_scaled_plus_logregret_AWEI-cont_Ssawei_Repisode_finished_scaled-SAWEI-P_Ibbob2d_fid8_3seeds=$OUTER_SEEDS"
+    "+policy/optimized/PPO-AlphaNet/dacbo_Cepisode_length_scaled_plus_logregret_AWEI-cont_Ssawei_Repisode_finished_scaled-SMAC3-BlackBoxFacade_Ibbob2d_3seeds=$OUTER_SEEDS"
+    "+policy/optimized/PPO-AlphaNet/dacbo_Cepisode_length_scaled_plus_logregret_AWEI-cont_Ssawei_Repisode_finished_scaled-SMAC3-BlackBoxFacade_Ibbob2d_fid8_3seeds=$OUTER_SEEDS"
+    "+policy/optimized/PPO-AlphaNet/dacbo_Csymlogregret_AWEI-cont_Ssawei_Rsymlogregret-SAWEI-P_Ibbob2d_3seeds=$OUTER_SEEDS"
+    "+policy/optimized/PPO-AlphaNet/dacbo_Csymlogregret_AWEI-cont_Ssawei_Rsymlogregret-SAWEI-P_Ibbob2d_fid8_3seeds=$OUTER_SEEDS"
+    "+policy/optimized/PPO-AlphaNet/dacbo_Csymlogregret_AWEI-cont_Ssawei_Rsymlogregret-SMAC3-BlackBoxFacade_Ibbob2d_3seeds=$OUTER_SEEDS"
+    "+policy/optimized/PPO-AlphaNet/dacbo_Csymlogregret_AWEI-cont_Ssawei_Rsymlogregret-SMAC3-BlackBoxFacade_Ibbob2d_fid8_3seeds=$OUTER_SEEDS"
 )
+    
+
+# PPO-AlphaNet--{task_id}--seed{seed}
 
 REWARDS=(
     "episode_finished_scaled"
-    # "symlogregret"
+    "symlogregret"
 )
 
-INSTANCE_SET="bbob2d_3seeds"
+INSTANCE_SETS=(
+    "bbob2d_3seeds"
+    "bbob2d_fid8_3seeds"
+)
 
-OUTER_SEEDS="seed1,seed2,seed3,seed4,seed5"
-OUTER_SEEDS="seed1,seed2,seed3"
+
 
 action_space=$ACTIONSPACE
-fid=8
+# fid=8
 
-for base in "${OPT_BASES[@]}"; do
+for optbase in "${OPT_BASES[@]}"; do
     for reward in "${REWARDS[@]}"; do
-        if [[ $reward = "episode_finished_scaled" ]]
-        then
-            REWARDOVERRIDE="+env/reward=ep_done_scaled"
-            cost="episode_length_scaled_plus_logregret"
-        elif [[ $reward = "symlogregret" ]]
-        then
-            REWARDOVERRIDE="+env/reward=symlogregret"
-            cost="symlogregret"
-        fi
-        ARGS="+eval=base +env=base +env/obs=$OBS $REWARDOVERRIDE +env/opt=base ${ACTIONSPACE_OVERRIDE} +cluster=cpu_noctua seed=range(1,11)"
+        for refperf in "${REFPERFS[@]}"; do
+            if [[ $reward = "episode_finished_scaled" ]]
+            then
+                REWARDOVERRIDE="+env/reward=ep_done_scaled"
+                cost="episode_length_scaled_plus_logregret"
+            elif [[ $reward = "symlogregret" ]]
+            then
+                REWARDOVERRIDE="+env/reward=symlogregret"
+                cost="symlogregret"
+            fi
+            ARGS="+eval=base +env=base +env/obs=$OBS $REWARDOVERRIDE +env/opt=base ${ACTIONSPACE_OVERRIDE} $refperf +cluster=cpu_noctua seed=range(1,11)"
 
-        # run_eval() {
-        #     python -m $BASE $ARGS "$@" "dacboenv.terminate_after_reference_performance_reached=false" --multirun &
-        # }
-        # Eval FID on 2D and 8D training tasks
-        # instance_set="bbob2d_fid${fid}_3seeds"
-        # TRAINTASK="dacbo_C${cost}_A${action_space}_S${OBS}_R${reward}_I${instance_set}"
-        # for d in 2 8; do            
-        #     run_eval "+task/BBOB=cfg_${d}_${fid}_0" \
-        #             "${base}/${TRAINTASK}=${OUTER_SEEDS}"
-        # done
-        # d=8
-        # run_eval "+task/BBOB=cfg_${d}_${fid}_0" \
-        #             "${base}/${TRAINTASK}=${OUTER_SEEDS}"
-        # run_eval "+task/BBOB=glob(cfg_2_*_0)" \
-        #             "${base}/${TRAINTASK}=${OUTER_SEEDS}"
+            run_eval() {
+                python -m $BASE $ARGS "$@" "dacboenv.terminate_after_reference_performance_reached=false" --multirun &
+            }
+            # TRAINTASK="dacbo_C${cost}_A${action_space}_S${OBS}_R${reward}_I${instance_set}"
 
-        # instance_set=$INSTANCE_SET
-        # TRAINTASK="dacbo_C${cost}_A${action_space}_S${OBS}_R${reward}_I${instance_set}"
-        # # Eval P2 on training set
-        # # run_eval "+task/BBOB=glob(cfg_2_*_0)" "${base}/${TRAINTASK}=${OUTER_SEEDS}"
+            # instance_set=$INSTANCE_SET
+            # TRAINTASK="dacbo_C${cost}_A${action_space}_S${OBS}_R${reward}_I${instance_set}"
 
-        # # Eval P2 for generalization
-        # for task in "${TASKS_GENERAL[@]}"; do
-        #     run_eval $task "${base}/${TRAINTASK}=${OUTER_SEEDS}"
-        # done
+            for task in "${TASKS_EVAL[@]}"; do
+                run_eval $task $optbase
+            done
+        done
     done
 done
 
-# # Eval Default Policy
-# REWARDOVERRIDE="+env/reward=symlogregret"
-# ARGS="+eval=base +env=base +env/obs=$OBS $REWARDOVERRIDE +env/opt=base ${ACTIONSPACE_OVERRIDE} +cluster=cpu_noctua seed=range(1,11)"
-# run_eval() {
-#     python -m $BASE $ARGS "$@" "dacboenv.terminate_after_reference_performance_reached=false" --multirun &
-# }
-# run_eval "+task/BBOB=glob(cfg_2_*_0)" "+policy=default"
-# for task in "${TASKS_GENERAL[@]}"; do
-#     run_eval $task "+policy=default"
-# done
 
-# Eval Random Policy
 REWARDOVERRIDE="+env/reward=symlogregret"
 ARGS="+eval=base +env=base +env/obs=$OBS $REWARDOVERRIDE +env/opt=base ${ACTIONSPACE_OVERRIDE} +env/refperf=smacbb +cluster=cpu_noctua seed=range(1,11)"
 run_eval() {
     python -m $BASE $ARGS "$@" "dacboenv.terminate_after_reference_performance_reached=false" --multirun &
 }
+
+BASELINES=(
+    "+policy=noop"
+    "+policy=random"
+    "+policy=sawei"
+)
+
+run_eval "+task/BBOB=glob(cfg_2_*_0)" $baseline
+run_eval $TASKS_OPTBENCH "+policy=noop"
+for task in "${TASKS_GENERAL[@]}"; do
+    run_eval $task "+policy=noop"
+done
+
+# Eval Random Policy
 run_eval "+task/BBOB=glob(cfg_2_*_0)" "+policy=random"
+run_eval $TASKS_OPTBENCH "+policy=random"
 for task in "${TASKS_GENERAL[@]}"; do
     run_eval $task "+policy=random"
 done
+
+
+# Eval SAWEI-P
+run_eval "+task/BBOB=glob(cfg_2_*_0)" "+policy=sawei"
+run_eval $TASKS_OPTBENCH "+policy=sawei"
+for task in "${TASKS_GENERAL[@]}"; do
+    run_eval $task "+policy=sawei"
+done
+
 
 # # Eval SAWEI original adaptaf
 # REWARDOVERRIDE="+env/reward=symlogregret"
@@ -121,16 +142,6 @@ done
 #     run_eval $task "+method=sawei_20p"
 # done
 
-# # Eval SAWEI-P
-# REWARDOVERRIDE="+env/reward=symlogregret"
-# ARGS="+eval=base +env=base +env/obs=$OBS $REWARDOVERRIDE +env/opt=base ${ACTIONSPACE_OVERRIDE} +cluster=cpu_noctua seed=range(1,11)"
-# run_eval() {
-#     python -m $BASE $ARGS "$@" "dacboenv.terminate_after_reference_performance_reached=false" --multirun &
-# }
-# # run_eval "+task/BBOB=glob(cfg_2_*_0)" "+policy=sawei" "baserundir=runs_eval_SAWEI"
-# for task in "${TASKS_GENERAL[@]}"; do
-#     run_eval $task "+policy=sawei"
-# done
 
 wait
 

@@ -41,7 +41,7 @@ def add_metadata_to_dict(D: dict | pd.DataFrame, cfg: DictConfig) -> dict | pd.D
     D["seed"] = cfg.seed
     D["task_id"] = cfg.task_id
     D["optimizer_id"] = cfg.optimizer_id
-    optional_attrs = ["reward_id", "instance_set_id", "action_space_id", "observations_id"]
+    optional_attrs = ["reward_id", "instance_set_id", "action_space_id", "observations_id", "reference_performance_id"]
     for attr in optional_attrs:
         if hasattr(cfg, attr):
             D[attr] = cfg.get(attr)

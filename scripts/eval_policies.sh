@@ -4,12 +4,6 @@ set -f
 
 export HYDRA_FULL_ERROR=1
 
-TASKS_GENERAL=(
-    "+task/BBOB=glob(cfg_8_*_0)"
-    "+task/YAHPO/SO=glob(*)"
-    "+task/BNNBO=glob(*) hydra.launcher.mem_per_cpu=16G"
-)
-TASKS_OPTBENCH="+task/OptBench=Ackley_2,Hartmann_3,Levy_2,Schwefel_2"
 TASKS_EVAL=(
     "+task/BBOB=glob(cfg_2_*_0)"
     "+task/BBOB=glob(cfg_8_*_0)"
@@ -21,10 +15,12 @@ TASKS_EVAL=(
 OUTER_SEEDS="seed1,seed2,seed3,seed4,seed5"
 # OUTER_SEEDS="seed1,seed2,seed3"
 
+BASEENV="+env=base +env/opt=base +env/action=wei_alpha_continuous +env/obs=sawei +env/reward=ep_done_scaled dacboenv.evaluation_mode=true"
+
 OPT_BASES=(
-    "+policy=noop"
-    "+policy=random"
-    "+policy=sawei"
+    "$BASEENV +policy=noop"
+    "$BASEENV +policy=random"
+    "$BASEENV +policy=sawei"
     "+policy/optimized/PPO-AlphaNet/dacbo_Cepisode_length_scaled_plus_logregret_AWEI-cont_Ssawei_Repisode_finished_scaled-SAWEI-P_Ibbob2d_3seeds=$OUTER_SEEDS"
     "+policy/optimized/PPO-AlphaNet/dacbo_Cepisode_length_scaled_plus_logregret_AWEI-cont_Ssawei_Repisode_finished_scaled-SAWEI-P_Ibbob2d_fid8_3seeds=$OUTER_SEEDS"
     "+policy/optimized/PPO-AlphaNet/dacbo_Cepisode_length_scaled_plus_logregret_AWEI-cont_Ssawei_Repisode_finished_scaled-SMAC3-BlackBoxFacade_Ibbob2d_3seeds=$OUTER_SEEDS"
@@ -37,7 +33,7 @@ OPT_BASES=(
 # PPO-AlphaNet--{task_id}--seed{seed}
 
 BASE="carps.run hydra.searchpath=[pkg://dacboenv/configs,pkg://adaptaf/configs,pkg://optbench/configs]"
-ARGS="+eval=base +cluster=cpu_noctua seed=range(1,11)"
+ARGS="+eval=base baserundir=runs_eval_icml +cluster=cpu_noctua seed=range(1,11)"
 run_eval() {
     python -m $BASE $ARGS "$@" --multirun &
 }

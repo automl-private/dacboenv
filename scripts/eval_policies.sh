@@ -15,7 +15,7 @@ TASKS_EVAL=(
 OUTER_SEEDS="seed1,seed2,seed3,seed4,seed5"
 # OUTER_SEEDS="seed1,seed2,seed3"
 
-BASEENV="+env=base +env/opt=base +env/action=wei_alpha_continuous +env/obs=sawei +env/reward=ep_done_scaled dacboenv.evaluation_mode=true"
+BASEENV="+env=base +env/opt=base +env/action=wei_alpha_continuous +env/obs=sawei +env/reward=ep_done_scaled +env/refperf=saweip dacboenv.evaluation_mode=true"
 
 OPT_BASES=(
     "$BASEENV +policy=noop"

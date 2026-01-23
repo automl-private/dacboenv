@@ -89,6 +89,8 @@ def get_task_config(task_id: str) -> DictConfig:
     task_index_fn = CARPS_ROOT / "configs/task/index.csv"
     df = pd.read_csv(task_index_fn)  # noqa: PD901
     ids = [task_id]
+    # TODO raise proper error if task_id not in index. Can happen when task comes from external module.
+    # Find smart registering method.
     config_fn = df.set_index("task_id").loc[ids].reset_index().iloc[0]["config_fn"]
     cfg = OmegaConf.load(config_fn)
     return maybe_add_defaults(cfg, config_fn)

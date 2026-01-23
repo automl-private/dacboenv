@@ -14,7 +14,8 @@ dependencies = [
     "carps",
     "tqdm",
     "stable-baselines3[extra]",
-    "umap-learn"
+    "umap-learn",
+    "sb3-contrib"
 ]
 
 requires-python = ">=3.9"

@@ -377,7 +377,7 @@ class DACBOEnv(gym.Env):
             self._episode_length = 0
 
         logger.info(
-            f"Step: {self._episode_length}, instance: {self.instance} Reward: {reward}, "
+            f"Step: {self._episode_length}, instance: {self.instance}, action: {action}, reward: {reward}, "
             f"terminated: {terminated}, truncated: {truncated}, info: {info}"
         )
 

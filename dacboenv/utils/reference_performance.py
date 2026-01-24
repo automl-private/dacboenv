@@ -329,7 +329,12 @@ def build_command(optimizer_override: str, task_override: str, seed: int | str, 
     -------
         List of strings representing the full command to execute.
     """
-    command = ["python", "-m", "carps.run", "hydra.searchpath=['pkg://dacboenv/configs']"]
+    command = [
+        "python",
+        "-m",
+        "carps.run",
+        "hydra.searchpath=['pkg://dacboenv/configs','pkg://adaptaf/configs','pkg://optbench/configs']",
+    ]
     overrides = [f"seed={seed}" if isinstance(seed, int) else seed, task_override, optimizer_override]
     if is_slurm_cluster():
         overrides.append("+cluster=cpu_noctua")

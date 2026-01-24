@@ -67,6 +67,26 @@ class RoundRobinInstanceSelector(InstanceSelector):
     Rotate through instances.
     """
 
+    def __init__(
+        self, task_ids: list[str], seeds: list[int], offset: int = 0, selector_seed: int | None = None
+    ) -> None:
+        """Initialize instance selector.
+
+        Parameters
+        ----------
+        task_ids : list[str]
+            List of carps task ids.
+        seeds : list[int]
+            List of seeds.
+        offset : int, 0
+            An optional offset to add to the index.
+        selector_seed : int | None, optional
+            Selector seed, e.g., needed in random selection, by default None
+        """
+        super().__init__(task_ids, seeds, selector_seed)
+        self._offset = offset
+        self.idx = (self.idx + self._offset) % len(self.instances)
+
     def select_instance(self, size: int = 1) -> tuple[int, str] | list[tuple[int, str]]:
         """Select next instance.
 

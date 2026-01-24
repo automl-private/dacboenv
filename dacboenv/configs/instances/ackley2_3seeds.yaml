@@ -1,0 +1,10 @@
+# @package _global_
+
+instance_set_id: ackley2d_3seeds
+dacboenv:
+  task_ids:
+    - Ackley-2
+  inner_seeds:
+    - 1
+    - 2
+    - 3

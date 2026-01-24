@@ -1,0 +1,14 @@
+# @package _global_
+defaults:
+  - base
+
+optimizer_id: PPO-MLP
+optimizer:
+  _target_: stable_baselines3.PPO
+  _partial_: true
+  policy: MultiInputPolicy
+  verbose: 1
+  policy_kwargs:
+    net_arch:
+      pi: [8]
+      vf: [8]

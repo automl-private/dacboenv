@@ -8,17 +8,10 @@ benchmark_id: ???
 experiment:
   n_workers: 2
   n_episodes: 10
+  vecnormalize: false
 
-optimizer_id: PPO-AlphaNet
+optimizer_id: ???
 optimizer:
-  _target_: stable_baselines3.PPO
-  _partial_: true
-  policy: MultiInputPolicy
-  verbose: 1
-  policy_kwargs:
-    net_arch:
-      pi: [8]
-      vf: [8]
   seed: ${seed}
   n_epochs: 10
   #n_steps: # Will be set during runtime in ppo.py  # TODO make variable for different dims in instance set
@@ -26,8 +19,9 @@ optimizer:
 
 dacboenv:
   instance_selector_class:
-    _target_: dacboenv.env.instance.RandomInstanceSelector
+    _target_: dacboenv.env.instance.RoundRobinInstanceSelector
     _partial_: true
+    offset: 0
 
 baserundir: runs
 outdir: ${baserundir}/${optimizer_id}/${benchmark_id}/${task_id}/${seed}

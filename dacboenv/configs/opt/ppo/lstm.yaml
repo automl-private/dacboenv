@@ -1,0 +1,15 @@
+# @package _global_
+defaults:
+  - base
+
+optimizer_id: PPO-RNN
+optimizer:
+  _target_: sb3_contrib.RecurrentPPO
+  _partial_: true
+  policy: MultiInputLstmPolicy
+  verbose: 1
+  policy_kwargs:
+    net_arch:
+      pi: [8]
+      vf: [8]
+    lstm_hidden_size: 8

@@ -8,6 +8,7 @@ benchmark_id: ???
 experiment:
   n_workers: 2
   n_episodes: 10
+  vecnormalize: true
 
 optimizer_id: PPO-AlphaNet3
 optimizer:

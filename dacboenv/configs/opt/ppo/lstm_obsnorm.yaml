@@ -1,0 +1,7 @@
+# @package _global_
+defaults:
+  - lstm
+
+optimizer_id: PPO-RNN-norm
+experiment:
+  vecnormalize: true

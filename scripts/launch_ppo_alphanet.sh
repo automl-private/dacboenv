@@ -10,7 +10,7 @@ tasks=(
 ref_perfs=(
     # "+env/refperf=saweip"
     # "+env/refperf=smacbb"
-    "+env/refperf=noop"
+    "+env/refperf=defaultaction"
 )
 instance_sets=(
     # "+instances=bbob2d_1_3seeds"

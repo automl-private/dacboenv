@@ -15,18 +15,15 @@ from typing import TYPE_CHECKING
 
 import hydra
 from carps.loggers.file_logger import get_run_directory
-from carps.utils.loggingutils import get_logger
 from carps.utils.running import make_task
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
-from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.evaluation import evaluate_policy
-from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
+from stable_baselines3.common.vec_env import SubprocVecEnv
 
 # Register OmegaConf resolvers
 import dacboenv  # noqa: F401
-from dacboenv.experiment.ppo_utils import ActionLoggingCallback
-from dacboenv.utils.loggingutils import maybe_remove_logs
+from dacboenv.utils.loggingutils import get_logger, maybe_remove_logs
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -52,18 +49,15 @@ def main(cfg: DictConfig) -> None:
         policy_kwargs = OmegaConf.to_container(cfg=cfg.optimizer.policy_kwargs, resolve=True)
         del cfg.optimizer.policy_kwargs
 
-    def make_env(cfg: DictConfig, offset: int = 0) -> Callable:
+    def make_env(cfg: DictConfig, seed_offset: int = 0) -> Callable:
         def _init() -> DACBOEnv:
-            config = cfg.copy()
-            config.seed = config.seed + offset
-            config.dacboenv.instance_selector_class.offset = offset
-            task = make_task(config)
+            cfg.seed = cfg.seed + seed_offset
+            task = make_task(cfg)
             return task.objective_function._env
 
         return _init
 
     n_workers = cfg.experiment.n_workers
-    n_envs = n_workers
     task = make_task(cfg)
 
     n_episodes = cfg.experiment.n_episodes
@@ -76,40 +70,20 @@ def main(cfg: DictConfig) -> None:
 
     del env
 
-    env_fns = [make_env(cfg=cfg, offset=i) for i in range(n_workers)]
+    env_fns = [make_env(cfg=cfg, seed_offset=i) for i in range(n_workers)]
     vec_env = SubprocVecEnv(env_fns)
 
-    # Obs normalization
-    if cfg.experiment.vecnormalize:
-        vec_env = VecNormalize(
-            vec_env,
-            norm_obs=True,
-            norm_reward=False,
-        )
-
     model: BaseAlgorithm = instantiate(cfg.optimizer)(
-        # policy=PerceptronPolicy,
         env=vec_env,
         policy_kwargs=policy_kwargs,
         tensorboard_log=rundir / "tensorboard",
         n_steps=len_episode,
-        batch_size=n_workers * len_episode // 2,  # TODO check source of division by 2
+        batch_size=n_workers * len_episode // 2,
     )
-    logger.info(f"Model: {model.policy}")
 
     logger.info("⚔ Start training...")
-    save_freq = n_workers * len_episode * 5
-    checkpoint_callback = CheckpointCallback(
-        save_freq=max(save_freq // n_envs, 1), save_path=str(rundir), save_vecnormalize=True
-    )
-    model.learn(
-        total_timesteps=n_workers * n_episodes * len_episode,
-        progress_bar=True,
-        tb_log_name="tb_log",
-        callback=[checkpoint_callback, ActionLoggingCallback(n_envs=n_envs)],
-    )
+    model.learn(total_timesteps=n_workers * n_episodes * len_episode, progress_bar=True, tb_log_name="tb.log")
     model.save(rundir / "model")
-    vec_env.save(rundir / "vecnormalize.pkl")
     logger.info("✅ Finished training.🥵")
 
     # Evaluate learned policy

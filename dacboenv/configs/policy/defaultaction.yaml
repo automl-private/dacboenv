@@ -1,7 +1,7 @@
 # @package _global_
 
-optimizer_id: NoOpPolicy
-policy_id: NoOpPolicy
+optimizer_id: DefaultPolicy
+policy_id: DefaultPolicy
 optimizer:
   policy_class:
     _target_: dacboenv.policy.noop.NoOpPolicy

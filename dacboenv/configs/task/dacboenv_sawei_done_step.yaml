@@ -1,0 +1,17 @@
+# @package _global_
+defaults:
+  - base
+  - objfun: alpharulenet
+  - ../env: base
+  - ../env/opt: base
+  - ../env/action: wei_alpha_step
+  - ../env/obs: sawei
+  - ../env/reward: ep_done_scaled
+
+dacboenv:
+  terminate_after_reference_performance_reached: true
+
+task:
+  objective_function:
+    weight_bounds: [-10, 10]
+    cost: episode_length_scaled_plus_logregret

@@ -204,7 +204,7 @@ class AcqParameterActionSpace(AbstractActionSpace):
         attribute = self._ATTRIBUTE_MAP[type(acquisition_function)]
         is_log = self._LOG[type(acquisition_function)]
 
-        if self._adjustment_type == "continuous":
+        if self._adjustment_type in {"continuous", "continuousstep"}:
             dacbo_action_space = ParameterAction(
                 attr=attribute, space=Box(low=self._bounds[0], high=self._bounds[1], dtype=np.float32), log=is_log
             )
@@ -240,6 +240,9 @@ class AcqParameterActionSpace(AbstractActionSpace):
 
         if self._adjustment_type == "continuous":
             param_val = action_val
+        elif self._adjustment_type == "continuousstep":
+            self._last = np.clip(self._last + action_val, self._bounds[0], self._bounds[1])
+            param_val = self._last
         elif self._adjustment_type == "step":
             if action_val == 0:
                 self._last -= self._step_size
@@ -248,7 +251,8 @@ class AcqParameterActionSpace(AbstractActionSpace):
             elif action_val == 2:  # noqa: PLR2004
                 self._last += self._step_size
 
-            param_val = max(self._bounds[0], min(self._last, self._bounds[1]))
+            self._last = np.clip(self._last, amin=self._bounds[0], amax=self._bounds[1])
+            param_val = self._last
         elif self._adjustment_type == "bucket":
             param_val = action_val + self._bounds[0]  # that value probably is below 0 so basically the offset
 

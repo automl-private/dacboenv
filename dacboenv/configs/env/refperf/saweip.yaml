@@ -4,4 +4,4 @@ reference_performance_id: SAWEI-P
 
 dacboenv:
   reference_performance_optimizer_id: SAWEI-P
-  reference_performance_fn: reference_performance_merged/reference_performance.parquet
+  reference_performance_fn: resultssawei/reference_performance.parquet

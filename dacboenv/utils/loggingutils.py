@@ -109,7 +109,7 @@ def dump_logs(log_data: dict, filename: str) -> None:
         a hydra session, the hydra run dir will be the log
         dir.
     """
-    log_data_str = json.dumps(log_data) + "\n"
+    log_data_str = json.dumps(log_data, cls=CustomEncoder) + "\n"
 
     try:
         # Check if we are in a hydra context

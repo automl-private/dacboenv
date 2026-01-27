@@ -111,7 +111,7 @@ class ComputeUBR:
             The current UBR.
         """
         result_dict = calculate_ubr(trial_infos=None, trial_values=None, configspace=None, smbo=smbo)
-        return result_dict.get("ubr", None)
+        return result_dict.get("ubr", 0)
 
 
 def get_last_val(memory: Memory, key: str) -> float:
@@ -442,23 +442,47 @@ previous_param_observation = ObservationType(
 )
 
 
+def build_gp_hp_observations(smbo: SMBO) -> list[ObservationType]:
+    """Build the GP Hyperparameter Observations.
+
+    Parameters
+    ----------
+    smbo : SMBO
+        The SMAC instance.
+
+    Returns
+    -------
+    list[ObservationType]
+        A list of the single GP HPs.
+    """
+    observations = []
+
+    for offset, hp in enumerate_offset(
+        smbo._intensifier._config_selector._acquisition_function.model._kernel.hyperparameters
+    ):
+        if hp.fixed:
+            continue
+
+        for i in range(hp.n_elements):
+            idx = i + offset
+
+            observations.append(
+                ObservationType(
+                    name=f"gp_hp_{hp.name}{i}_observation",
+                    space=Box(hp.bounds[i][0], hp.bounds[i][1]),
+                    compute=lambda smbo_, memory=None, idx=idx: (  # type: ignore[misc] # noqa: ARG005
+                        smbo_._intensifier._config_selector._acquisition_function.model._kernel.theta[idx]
+                    ),
+                    default=0,
+                )
+            )
+
+    return observations
+
+
 gp_hp_observation = MultiObservationType(
     "gp_hp_observations",
-    lambda smbo, memory: [  # type: ignore[arg-type,misc] # noqa: ARG005
-        ObservationType(
-            f"gp_hp_{hp.name}{i}_observation",
-            Box(hp.bounds[i][0], hp.bounds[i][1]),
-            lambda smbo_, idx=i + offset: smbo_._intensifier._config_selector._acquisition_function.model._kernel.theta[  # type: ignore
-                idx
-            ],
-            0,
-        )
-        for offset, hp in enumerate_offset(
-            smbo._intensifier._config_selector._acquisition_function.model._kernel.hyperparameters
-        )
-        for i in range(hp.n_elements)
-        if not hp.fixed
-    ],
+    build_gp_hp_observations,
 )
 
 ALL_OBSERVATIONS = [

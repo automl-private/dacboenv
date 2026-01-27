@@ -92,7 +92,7 @@ def create_ppo_eval_configs(rundir: Path | str) -> None:
             normalization_wrapper_fn = normalization_wrapper_fn.with_suffix(".pkl")
         if normalization_wrapper_fn.is_file():
             eval_conf.optimizer.policy_kwargs["normalization_wrapper"] = str(normalization_wrapper_fn)  # type: ignore[attr-defined]
-        else:
+        elif cfg.experiment.vecnormalize:
             raise ValueError(
                 f"No normalization wrapper found for model {model!s}. Filename: {normalization_wrapper_fn!s}"
             )

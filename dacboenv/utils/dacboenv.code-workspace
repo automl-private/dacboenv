@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "../.."
+		},
+		{
+			"path": "../../../../../tklenke/experiment_runs"
+		},
+		{
+			"path": "../../../../../tklenke/repos/dacboenv"
+		},
+		{
+			"path": "../../../../../tklenke/repos/DACBench"
+		}
+	],
+	"settings": {}
+}

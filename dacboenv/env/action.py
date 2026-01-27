@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from abc import abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, ClassVar
 
 import numpy as np
-from gymnasium.spaces import Box, Discrete, Space
+from gymnasium.spaces import Box, Discrete, MultiDiscrete, Space
 from smac.acquisition.function import EI, PI
+from smac.main.config_selector import ConfigSelector
 from smac.main.smbo import SMBO
 
 from dacboenv.utils.confidence_bound import UCB
@@ -128,6 +130,45 @@ class AbstractActionSpace:
             The action space.
         """
         return self._action_space
+
+
+class WEITempoRLActionSpace(AbstractActionSpace):
+    """TempoRL Action Space for WEI.
+
+    The first action is the skip duration, the second the action to hold.
+    This might prevent wild oscillating actions/parameter values.
+    """
+
+    def __init__(
+        self, smac_instance: SMBO, step_durations: list[int] | None, param_levels: list[float] | None = None
+    ) -> None:
+        self._step_durations = list(step_durations) if step_durations is not None else [1, 5, 10]
+        self._param_levels = list(param_levels) if param_levels is not None else [0.0, 0.25, 0.5, 0.75, 1]
+        super().__init__(smac_instance)
+
+    def _create_action(self) -> ParameterAction | FunctionAction:
+        nvec = [len(self._step_durations), len(self._param_levels)]
+        return ParameterAction(attr="_alpha", space=MultiDiscrete(nvec=nvec), log=False)
+
+    def update_optimizer(self, action: ActType) -> None:
+        """Update the acquisition function parameter value.
+
+        Parameters
+        ----------
+        action : ActType
+            A single numeric action value for the parameter.
+        """
+        assert isinstance(action, Sequence)
+        assert isinstance(self._smac_instance._intensifier._config_selector, ConfigSelector)
+
+        param_level_idx = int(action[1])
+        param_val = self._param_levels[param_level_idx]
+
+        setattr(
+            self._smac_instance._intensifier._config_selector._acquisition_function,
+            self._action.attr,  # type: ignore[union-attr]
+            param_val,
+        )
 
 
 class AcqParameterActionSpace(AbstractActionSpace):

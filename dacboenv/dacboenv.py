@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -12,9 +13,9 @@ from typing import (
 import gymnasium as gym
 import numpy as np
 from dataclasses_json import dataclass_json
-from gymnasium.spaces import Box
+from gymnasium.spaces import Box, MultiDiscrete
 
-from dacboenv.env.action import AbstractActionSpace, AcqParameterActionSpace
+from dacboenv.env.action import AbstractActionSpace, AcqParameterActionSpace, WEITempoRLActionSpace
 from dacboenv.env.instance import InstanceSelector, RoundRobinInstanceSelector
 from dacboenv.env.observation import ObservationSpace
 from dacboenv.env.reward import DACBOReward
@@ -274,12 +275,21 @@ class DACBOEnv(gym.Env):
         """
         if "previous_param" in obs:
             if self.last_action is not None:
-                last_action = self.last_action
+                previous_param = self.last_action
+                if isinstance(self._action_space, WEITempoRLActionSpace):
+                    assert isinstance(self.last_action, Sequence)
+                    previous_param = np.array([self._action_space._param_levels[int(self.last_action[1])]])
+            elif isinstance(self.action_space, Box):
+                # TODO adjust default/initial action. Right now: middle of action space
+                previous_param = (self.action_space.high - self.action_space.low) / 2
+            elif isinstance(self._action_space, WEITempoRLActionSpace):
+                assert isinstance(self.action_space, MultiDiscrete)
+                n_levels = self.action_space[1].n
+                previous_param = np.array([self._action_space._param_levels[n_levels // 2]])
             else:
-                assert isinstance(self.action_space, Box)
-                # TODO adjust default/initial action. Right now: middle of action space. And only works for Box.
-                last_action = (self.action_space.high - self.action_space.low) / 2
-            obs["previous_param"] = last_action
+                raise ValueError(f"Cannot handle space {self.action_space} to set last action.")
+
+            obs["previous_param"] = previous_param
         return obs
 
     def get_observation(self) -> ObsType:
@@ -316,6 +326,38 @@ class DACBOEnv(gym.Env):
         return self.instance_selector.select_instance()  # type: ignore[return-value]
 
     def step(self, action: ActType) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
+        """Execute one optimization step using the selected acquisition function and parameters.
+
+        Parameters
+        ----------
+        action : ActType
+            Action specifying either the acquisition function or its parameter.
+
+        Returns
+        -------
+        obs : dict
+            The new observation after taking the action.
+        reward : float
+            The reward for the action taken.
+        terminated : bool
+            Whether the episode has terminated (reference performance reached).
+        truncated : bool
+            Whether the episode was truncated (always False).
+        info : dict
+            Additional information (empty).
+        """
+        if isinstance(self._action_space, WEITempoRLActionSpace):
+            assert isinstance(action, Sequence)
+            step_duration = self._action_space._step_durations[int(action[0])]
+            param_level = action[1]
+            logger.info(f"Do action {param_level} for {step_duration} steps.")
+            for _i in range(step_duration):
+                # TODO Fix RL training logging for this as this seems that the episode length is way shorter
+                obs = self._step(action=action)
+            return obs
+        return self._step(action=action)
+
+    def _step(self, action: ActType) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
         """Execute one optimization step using the selected acquisition function and parameters.
 
         Parameters
@@ -455,8 +497,10 @@ class DACBOEnv(gym.Env):
         self.last_action = None
 
         # If previous_param is in obs, define the observation space for it
-        if "previous_param" in self._observation_keys:  # type: ignore
+        if "previous_param" in self._dacbo_observation_space._keys:  # type: ignore
             self._dacbo_observation_space._observation_space["previous_param"] = self.action_space
+            if isinstance(self._action_space, WEITempoRLActionSpace):
+                self._dacbo_observation_space._observation_space["previous_param"] = Box(low=0, high=1)
 
         # Setup reward
         self._reward = DACBOReward(self._smac_instance, self._reward_keys, self._rho)

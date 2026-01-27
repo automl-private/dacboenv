@@ -1,0 +1,16 @@
+# @package _global_
+
+action_space_id: WEI-skip
+dacboenv:
+  action_space_class:
+    _target_: dacboenv.env.action.WEITempoRLActionSpace
+    _partial_: true
+  action_space_kwargs:
+    step_durations: [1,5,10]
+    param_levels: [0., 0.25, 0.5, 0.75, 1]
+  
+  optimizer_cfg:
+    smac_cfg:
+      smac_kwargs:
+        acquisition_function:
+          _target_: dacboenv.utils.weighted_expected_improvement.WEI

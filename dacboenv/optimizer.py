@@ -9,6 +9,7 @@ import numpy as np
 from carps.optimizers.smac20 import SMAC3Optimizer
 from hydra.utils import get_class
 
+from dacboenv.env.action import WEITempoRLActionSpace
 from dacboenv.policy.random import RandomPolicy
 
 if TYPE_CHECKING:
@@ -21,7 +22,9 @@ if TYPE_CHECKING:
     from dacboenv.env.observations.types import ObsType
     from dacboenv.policy.abstract_policy import Policy
 
-from dacboenv.utils.loggingutils import dump_logs
+from dacboenv.utils.loggingutils import dump_logs, get_logger
+
+logger = get_logger("OptPolicy")
 
 
 class DACBOEnvOptimizer(SMAC3Optimizer):
@@ -132,6 +135,8 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         self._obsfile = "DACBOEnvLogs.jsonl"
         self._actionfile = "DACBOEnvActions.jsonl"
 
+        self._skip_duration: int = 0
+
     def _setup_optimizer(self) -> AbstractFacade:
         """Setup SMAC.
 
@@ -169,15 +174,34 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         # Don't update during initial design
         if len(self.solver.runhistory) > len(self.solver.intensifier.config_selector._initial_design_configs):
             assert self._policy is not None, "Policy must be initialized before calling ask."
-            action = self._policy(self._state)
+            if self._skip_duration == 0:
+                self.action = self._policy(self._state)
 
-            self._dacboenv.update_optimizer(action)
+                if isinstance(self._dacboenv._action_space, WEITempoRLActionSpace):
+                    self._skip_duration = self._dacboenv._action_space._step_durations[self.action[0]] - 1
+                    self._param_level = self.action[1]
+                    logger.info(f"Apply action {self._param_level} for {self._skip_duration+1} steps.")
+            else:
+                self._skip_duration -= 1
 
+            self._dacboenv.update_optimizer(self.action)
+
+            # Log actions
             logs = {
-                "action": np.array(action).item(),
                 "action_type": self._dacboenv._action_space._action.name,
                 "n_trials": len(self.solver.runhistory),
             }
+            if isinstance(self.action, np.ndarray):
+                action_to_log = self.action.item() if len(self.action) == 1 else list(self.action)
+
+                if isinstance(self._dacboenv._action_space, WEITempoRLActionSpace):
+                    logs["action_values"] = [
+                        self._dacboenv._action_space._step_durations[self.action[0]],
+                        self._dacboenv._action_space._param_levels[self.action[1]],
+                    ]
+            else:
+                action_to_log = self.action
+            logs["action"] = action_to_log
             dump_logs(logs, self._actionfile)
 
         return super().ask()

@@ -1,4 +1,6 @@
-### DACBO Env
+# Dynamic Algorithm Configuration for Bayesian Optimization
+This repository provides Bayesian Optimization as a contextual MDP, together with concrete learning setups
+and experimental code.
 
 ## Installation
 Create a `uv` environment.

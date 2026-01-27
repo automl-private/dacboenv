@@ -1,0 +1,8 @@
+task_id,f_min,source_seed
+bnnbo/TensionCompressionString,7.731379810138606e-06,2345
+bnnbo/WingWeightMultiFidelity,273.3086242675781,2345
+bnnbo/PestControl,14.999998092651367,2345
+bnnbo/SpeedReducer,2521.9501953125,2345
+bnnbo/BoreholeMultiFidelity,4.056482791900635,2345
+bnnbo/WeldedBeamSO,0.1605231612920761,2345
+bnnbo/PressureVessel,0.0,2345

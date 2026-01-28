@@ -48,8 +48,8 @@ if fidtrain == -1:
 afs_to_evaluate = ["MetaBO"]#, "TAF-ME", "TAF-RANKING", "EI", "Random"]
 # afs_to_evaluate = ["MetaBO", "EPS-GREEDY", "GMM-UCB", "EI"]
 rootdir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "bbob")
-logpath = os.path.join(rootdir, "log", f"MetaBO-BBOB-{fidtrain}-{d}D-v0", "2026-01-26")
-savepath = os.path.join(logpath, "eval", datetime.strftime(datetime.now(), "%Y-%m-%d"), f"MetaBO-BBOB-{fideval}-{d}D-v0")
+logpath = os.path.join(rootdir, "log", f"MetaBO-BBOB-{fidtrain}-{d}D-v0")
+savepath = os.path.join(logpath, "eval", f"MetaBO-BBOB-{fideval}-{d}D-v0")
 n_workers = 1  # TODO change back to 10
 n_episodes = 10
 

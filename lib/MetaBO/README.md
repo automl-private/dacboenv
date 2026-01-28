@@ -1,3 +1,26 @@
+# This is a modified library version of MetaBO
+
+Please follow the instructions below to install MetaBO.
+Afterwards, in order to reproduce the BBOB training instances, run
+
+```bash
+bash train_all.sh
+```
+
+For evaluation of the trained instances, run
+
+```bash
+bash eval_all.sh
+```
+
+For gathering the results, run
+
+```bash
+python gather_results.csv
+```
+
+---
+
 # MetaBO - Meta-Learning Acquisition Functions for Transfer Learning in Bayesian Optimization
 This is the source code accompanying the paper *Meta-Learning Acquisition Functions for Transfer Learning in Bayesian Optimization* by Volpp et al., ICLR 2020. The paper can be found [here](https://arxiv.org/abs/1904.02642). The code allows to reproduce the results from the paper and to train neural acquisition functions on new problems.
 

@@ -105,7 +105,7 @@ register(
 )
 
 # log data and weights go here, use this folder for evaluation afterwards
-logpath = os.path.join(rootdir, "log", env_spec["env_id"], datetime.strftime(datetime.now(), "%Y-%m-%d-%H-%M"))
+logpath = os.path.join(rootdir, "log", env_spec["env_id"])
 
 # set up policy
 policy_fn = lambda observation_space, action_space, deterministic: NeuralAF(observation_space=observation_space,

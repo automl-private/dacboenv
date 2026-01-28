@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=mbros
+#SBATCH --job-name=train_bbob
 #SBATCH --partition=normal
 #SBATCH --time=48:00:00            
 #SBATCH --cpus-per-task=17

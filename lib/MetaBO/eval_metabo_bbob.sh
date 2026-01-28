@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=evalmb
+#SBATCH --job-name=eval_bbob
 #SBATCH --partition=normal
 #SBATCH --time=48:00:00            
 #SBATCH --cpus-per-task=1

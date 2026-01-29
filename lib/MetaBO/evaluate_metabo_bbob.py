@@ -50,7 +50,7 @@ afs_to_evaluate = ["MetaBO"]#, "TAF-ME", "TAF-RANKING", "EI", "Random"]
 rootdir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "bbob")
 logpath = os.path.join(rootdir, "log", f"MetaBO-BBOB-{fidtrain}-{d}D-v0")
 savepath = os.path.join(logpath, "eval", f"MetaBO-BBOB-{fideval}-{d}D-v0")
-n_workers = 1  # TODO change back to 10
+n_workers = 10
 n_episodes = 10
 
 # evaluate all afs

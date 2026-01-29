@@ -43,9 +43,9 @@ d = args.d
 afs_to_evaluate = ["MetaBO"]#, "TAF-ME", "TAF-RANKING", "EI", "Random"]
 # afs_to_evaluate = ["MetaBO", "EPS-GREEDY", "GMM-UCB", "EI"]
 rootdir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "bbob2d")
-logpath = os.path.join(rootdir, "log", f"MetaBO-BBOB-{d}D-v0", "2026-01-27")
-savepath = os.path.join(logpath, "eval", datetime.strftime(datetime.now(), "%Y-%m-%d"), f"MetaBO-BBOB-{fideval}-{d}D-v0")
-n_workers = 1  # TODO change back to 10
+logpath = os.path.join(rootdir, "log", f"MetaBO-BBOB-{d}D-v0")
+savepath = os.path.join(logpath, "eval", f"MetaBO-BBOB-{fideval}-{d}D-v0")
+n_workers = 10
 n_episodes = 10
 
 # evaluate all afs

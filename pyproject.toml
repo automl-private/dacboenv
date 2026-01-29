@@ -20,8 +20,8 @@ dependencies = [
 
 requires-python = ">=3.9"
 authors = [
-  { name = "Carolin Benjamins", email = "c.benjamins@ai.uni-hannover.de" },
-  { name = "Thibaut Klenke", email = "thibaut.klenke@stud.uni-hannover.de" },
+  { name = "anonymous anonymous", email = "anonymous@anonymous" },
+  { name = "anonymous anonymous", email = "anonymousanonymous@anonymous" },
 ]
 readme = "README.md"
 description = "dacboenv"
@@ -39,10 +39,6 @@ classifiers = [
   'Programming Language :: Python :: 3.10',
 ]
 license = { file = "LICENSE" }
-
-[project.urls]
-documentation = "https://github.com/automl-private/dacboenv/"
-source = "https://github.com/automl-private/dacboenv/"
 
 [project.optional-dependencies]
 dev = [

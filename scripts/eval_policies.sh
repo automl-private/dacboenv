@@ -5,7 +5,7 @@ set -f
 export HYDRA_FULL_ERROR=1
 
 TASKS_EVAL=(
-    "+task/BBOB=glob(cfg_2_*_0)"
+    # "+task/BBOB=glob(cfg_2_*_0)"
     "+task/BBOB=glob(cfg_8_*_0)"
     "+task/YAHPO/SO=glob(*)"
     "+task/BNNBO=glob(*) hydra.launcher.mem_per_cpu=16G"
@@ -18,34 +18,36 @@ BASEENV="+env=base +env/opt=base +env/action=wei_alpha_continuous +env/obs=sawei
 
 OPT_BASES=(
     "$BASEENV +policy=defaultaction"
-    "$BASEENV +policy=random"
-    "$BASEENV +policy=sawei"
+    # "$BASEENV +policy=random"
+    # "$BASEENV +policy=sawei"
 )
+
+#PPO-MLP-norm--dacbo_Cepisode_length_scaled_plus_logregret_AWEI-cont_Ssawei_Repisode_finished_scaled-SAWEI-P_Ibbob2d_3seeds
 
 POLICY_ROOT="+policy/optimized"
 MODELS=(
-    "PPO-RNN"
-    "PPO-RNN-norm"
-    "PPO-MLP"
-    "PPO-MLP-norm"
+    # "PPO-RNN"
+    # "PPO-RNN-norm"
+    # "PPO-MLP"
+    # "PPO-MLP-norm"
 )
 ACTION_SPACES=(
-    "AWEI-cont"
-    "AWEI-skip"
+    # "AWEI-cont"
+    # "AWEI-skip"
 )
 REWARDS=(
-    "dacbo_Cepisode_length_scaled_plus_logregret_${actionspace}_Ssawei_Repisode_finished_scaled"
-    "dacbo_Csymlogregret_${actionspace}_Ssawei_Rsymlogregret"
+    # "dacbo_Cepisode_length_scaled_plus_logregret_${actionspace}_Ssawei_Repisode_finished_scaled"
+    # "dacbo_Csymlogregret_${actionspace}_Ssawei_Rsymlogregret"
 )
 REFPERFS=(
-    "SAWEI-P"
-    "DefaultAction"
+    # "SAWEI-P"
+    # "DefaultAction"
 )
 
 INSTANCESETS=(
-    "Iackley2d_3seeds"
-    "Ibbob2d_3seeds"
-    "Ibbob2d_fid8_3seeds"
+    # "Iackley2d_3seeds"
+    # "Ibbob2d_3seeds"
+    # "Ibbob2d_fid8_3seeds"
 )
 
 for model in "${MODELS[@]}"; do

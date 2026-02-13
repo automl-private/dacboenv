@@ -192,3 +192,4 @@ runtest
 results*
 tmp*
 *slurm*
+*.png

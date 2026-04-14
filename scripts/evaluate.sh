@@ -31,5 +31,5 @@ file_list=$(find "$policy_opt_folder" -maxdepth 1 -type f -printf "%f\n" \
 policy_override="$policy_override_base=$file_list"
 echo "Found configs of policies: $file_list"
 echo "Policy override: $policy_override"
-
+ 
 python -m $BASE $TASK $SEED +eval=base +eval/opt=base $policy_override $CLUSTER --multirun

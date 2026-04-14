@@ -3,6 +3,9 @@ requires = ["setuptools >= 70.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
+where = ["."]
+include = ["dacboenv*"]  # Only include packages starting with 'my_package'
+exclude = ["results*", "runs*"]  # Specifically exclude the tests subfolder
 
 [tool.setuptools]
 include-package-data = true
@@ -21,7 +24,8 @@ dependencies = [
     "tqdm",
     "stable-baselines3[extra]",
     "umap-learn",
-    "sb3-contrib"
+    "sb3-contrib",
+    "pandas<3.0.0"
 ]
 
 requires-python = ">=3.9"

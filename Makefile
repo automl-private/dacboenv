@@ -8,7 +8,7 @@ VERSION := 0.0.1
 DIST := dist
 UV ?= uv
 SMACBRANCH ?= development 
-CARPSBRANCH ?= plot_update
+CARPSBRANCH ?= development
 
 env:
 	$(PIP) install uv

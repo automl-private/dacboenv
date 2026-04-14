@@ -8,7 +8,7 @@ TASKS_EVAL=(
     "+task/BBOB=glob(cfg_2_*_0)"
     "+task/BBOB=glob(cfg_8_*_0)"
     "+task/YAHPO/SO=glob(*)"
-    "+task/BNNBO=glob(*) hydra.launcher.mem_per_cpu=16G"
+    "+task/nasengb=glob(*) hydra.launcher.mem_per_cpu=16G"
     "+task/OptBench=Ackley_2,Hartmann_3,Levy_2,Schwefel_2"
 )
 

@@ -1,0 +1,13 @@
+# @package _global_
+defaults:
+  - base
+
+optimizer_id: PPO-MLP-Def
+optimizer:
+  _target_: stable_baselines3.PPO
+  _partial_: true
+  policy: MultiInputPolicy
+  verbose: 1
+
+experiment:
+  vecnormalize: true

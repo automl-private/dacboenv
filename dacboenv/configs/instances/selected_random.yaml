@@ -1,0 +1,12 @@
+# @package _global_
+
+instance_set_id: bbob2d_fid1_3seeds
+dacboenv:
+  task_ids:
+    - bbob/2/1/1
+    - bbob/2/8/1
+    - bbob/2/10/1
+    - bbob/2/17/1
+    - bbob/2/21/1
+    - yahpo/so/rbv2_glmnet/375/None
+  inner_seeds: null

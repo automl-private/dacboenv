@@ -12,7 +12,7 @@ N_WORKERS=16
 BASERUNDIR="runsnips"
 if [ -z "$SLURM_ARRAY_TASK_ID" ]; then
     SLURM_ARRAY_TASK_ID=1
-    N_WORKERS=4
+    N_WORKERS=1
     BASERUNDIR="tmpruns"
     rm -rf tmpruns
 fi
@@ -24,7 +24,6 @@ export HYDRA_FULL_ERROR=1
 python -m dacboenv.experiment.ppo \
     $@ \
     experiment.n_workers=$N_WORKERS \
-    experiment.n_episodes=1000 \
     seed=$SLURM_ARRAY_TASK_ID \
     +env/instance_selector=roundrobin \
     baserundir=$BASERUNDIR

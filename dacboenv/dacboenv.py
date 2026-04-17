@@ -467,7 +467,7 @@ class DACBOEnv(gym.Env):
         self.instance = self.get_next_instance()
         seed, task_id = self.instance
         if seed is None:
-            seed = self._seeder.integers(low=0, high=2**32 - 1)
+            seed = self._seeder.integers(low=0)
         seed = int(seed)
 
         # Build carps optimizer (wrapper around smac) with appropriate objective function

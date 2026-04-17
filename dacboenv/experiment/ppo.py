@@ -14,6 +14,7 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 from typing import TYPE_CHECKING
 
 import hydra
+import numpy as np
 from carps.loggers.file_logger import get_run_directory
 from carps.utils.loggingutils import get_logger
 from carps.utils.running import make_task
@@ -52,10 +53,12 @@ def main(cfg: DictConfig) -> None:
         policy_kwargs = OmegaConf.to_container(cfg=cfg.optimizer.policy_kwargs, resolve=True)
         del cfg.optimizer.policy_kwargs
 
+    rng = np.random.default_rng(seed=cfg.seed)
+
     def make_env(cfg: DictConfig, offset: int = 0) -> Callable:
         def _init() -> DACBOEnv:
             config = cfg.copy()
-            config.seed = config.seed + offset
+            config.seed = rng.integers(low=0)
             config.dacboenv.instance_selector_class.offset = offset
             task = make_task(config)
             return task.objective_function._env
@@ -65,16 +68,6 @@ def main(cfg: DictConfig) -> None:
     n_workers = cfg.experiment.n_workers
     n_envs = n_workers
     task = make_task(cfg)
-
-    n_episodes = cfg.experiment.n_episodes
-
-    # Extract n_trials from inner opt
-    env = make_env(cfg)()
-    env.reset()
-    inner_optimizer = env._carps_solver
-    len_episode = inner_optimizer.task.optimization_resources.n_trials
-
-    del env
 
     env_fns = [make_env(cfg=cfg, offset=i) for i in range(n_workers)]
     vec_env = SubprocVecEnv(env_fns)
@@ -92,18 +85,16 @@ def main(cfg: DictConfig) -> None:
         env=vec_env,
         policy_kwargs=policy_kwargs,
         tensorboard_log=rundir / "tensorboard",
-        n_steps=len_episode,
-        batch_size=n_workers * len_episode // 2,  # TODO check source of division by 2
     )
     logger.info(f"Model: {model.policy}")
 
     logger.info("⚔ Start training...")
-    save_freq = n_workers * len_episode * 5
+    save_freq = n_workers * cfg.optimizer.n_steps * 5
     checkpoint_callback = CheckpointCallback(
         save_freq=max(save_freq // n_envs, 1), save_path=str(rundir), save_vecnormalize=True
     )
     model.learn(
-        total_timesteps=n_workers * n_episodes * len_episode,
+        total_timesteps=cfg.experiment.total_timesteps,
         progress_bar=True,
         tb_log_name="tb_log",
         callback=[checkpoint_callback, ActionLoggingCallback(n_envs=n_envs)],

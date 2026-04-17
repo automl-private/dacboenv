@@ -25,7 +25,7 @@ from carps.utils.env_vars import CARPS_ROOT
 from carps.utils.running import optimize
 
 with contextlib.suppress(ImportError):
-    from carps.utils.index_configs import get_index_config
+    from carps.utils.index_configs import get_index
 from hydra import compose, initialize_config_module
 
 from dacboenv.utils.loggingutils import get_logger
@@ -140,16 +140,18 @@ def get_config_overrides(ids: list[str], index_csv_subpath: str, group_name: str
         ] + [CARPS_ROOT / "configs" / index_csv_subpath]
     except ValueError:
         index_paths = [CARPS_ROOT / "configs" / index_csv_subpath]
+
     if group_name == "task":
         register_extra_paths([str(index_path.parent) for index_path in index_paths], None)
     elif group_name == "optimizer":
-        register_extra_paths(None, [str(index_path.parent) for index_path in index_paths])
+        register_extra_paths(None, [str(index_path) for index_path in index_paths])
 
-    try:
-        print(index_paths)
-        df = pd.concat([get_index_config(path) for path in index_paths])  # noqa: PD901
-    except NameError:
-        df = pd.concat([pd.read_csv(path) for path in index_paths])  # noqa: PD901
+    # try:
+    #     df = pd.concat([get_index_config(path) for path in index_paths])
+    # except NameError:
+    #     df = pd.concat([pd.read_csv(path) for path in index_paths])
+    # df.to_csv("tmp.csv")
+    df = get_index()  # noqa: PD901
     try:
         filtered = df.set_index(id_col).loc[ids].reset_index()
     except KeyError as e:

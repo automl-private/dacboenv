@@ -28,7 +28,7 @@ carps:
 	git clone --branch $(CARPSBRANCH) git@github.com:automl/CARP-S.git lib/CARP-S
 	cd lib/CARP-S && $(UV) pip install -e '.[dev]' && pre-commit install
 	export PIP="uv pip" && $(PYTHON) -m carps.build.make benchmark_bbob #benchmark_yahpo benchmark_mfpbench optimizer_optuna optimizer_ax
-	$(PYTHON) -m carps.utils.index_configs
+	$(PYTHON) -m carps.utils.index_configs '--extra_optimizer_paths=["dacboenv/configs/policy"]'
 
 smac:
 	git clone --branch $(SMACBRANCH) git@github.com:automl/SMAC3.git lib/SMAC3

@@ -179,6 +179,8 @@ reports/
 smac3_output*/
 training*/
 
+pyrightconfig.json
+
 tmp/
 outputs/
 *.out

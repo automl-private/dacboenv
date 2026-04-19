@@ -106,6 +106,7 @@ class DACBOEnv(gym.Env):
         terminate_after_reference_performance_reached: bool = False,  # noqa: FBT001, FBT002
         instance_selector_class: type[InstanceSelector] | None = None,
         evaluation_mode: bool = False,  # noqa: FBT001, FBT002
+        interaction_frequency: int = 1,
         **kwargs: dict,  # noqa: ARG002
     ) -> None:
         """Initialize the DACBOEnv environment.
@@ -136,6 +137,9 @@ class DACBOEnv(gym.Env):
             Whether to be in train (default) or evaluation mode. Evaluation mode means that the episode is not
             terminated after a reference performance has been reached, and the reward will be 0.
             This circumvents running a reference optimizer on each evaluation task.
+        interaction_frequency : int, optional
+            Number of steps between actions taken. Defaults to 1 (take action at every BO step).
+            Only used when the action space does not utilize TempoRL.
         """
         if reward_keys is None:
             reward_keys = ["incumbent_cost"]
@@ -158,6 +162,7 @@ class DACBOEnv(gym.Env):
         self._observation_keys = observation_keys
         self._reward_keys = reward_keys
         self._rho = rho
+        self._interaction_frequency = interaction_frequency
 
         # Instance Set
         self._instance_set: InstanceSet
@@ -351,11 +356,13 @@ class DACBOEnv(gym.Env):
             step_duration = self._action_space._step_durations[int(action[0])]
             param_level = action[1]
             logger.info(f"Do action {param_level} for {step_duration} steps.")
-            for _i in range(step_duration):
-                # TODO Fix RL training logging for this as this seems that the episode length is way shorter
-                obs = self._step(action=action)
-            return obs
-        return self._step(action=action)
+        else:
+            step_duration = self._interaction_frequency
+
+        for _ in range(step_duration):
+            # TODO Fix RL training logging for this as this seems that the episode length is way shorter
+            obs = self._step(action=action)
+        return obs
 
     def _step(self, action: ActType) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
         """Execute one optimization step using the selected acquisition function and parameters.

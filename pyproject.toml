@@ -25,7 +25,8 @@ dependencies = [
     "stable-baselines3[extra]",
     "umap-learn",
     "sb3-contrib",
-    "pandas<3.0.0"
+    "pandas<3.0.0",
+    "polars",
 ]
 
 requires-python = ">=3.9"

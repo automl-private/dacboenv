@@ -10,6 +10,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pandas as pd
 from carps.utils.index_configs import register_extra_paths
 from hydra.core.hydra_config import HydraConfig
@@ -51,7 +52,7 @@ class ReferencePerformance:
         self,
         optimizer_id: str,
         task_ids: list[str],
-        seeds: list[int],
+        seeds: list[int] | None,
         reference_performance_fn: str | Path = "reference_performance/reference_performance.parquet",
     ) -> None:
         """Init.
@@ -62,14 +63,14 @@ class ReferencePerformance:
             carps id of reference optimizer.
         task_ids : list[str]
             List of carps task ids.
-        seeds : list[int]
-            List of seeds.
+        seeds : list[int] | None
+            List of seeds. If None, defaults to 20 seeds to use average performance.
         reference_performance_fn : str | Path, optional
             Filename of performance data, by default "reference_performance/reference_performance.parquet"
         """
         self.optimizer_id = optimizer_id
         self.task_ids = task_ids
-        self.seeds = seeds
+        self.seeds = seeds if seeds else list(np.arange(1, 21))
         self.reference_performance_fn = Path(reference_performance_fn)
 
         self.perf_df = lookup_performance(
@@ -79,7 +80,9 @@ class ReferencePerformance:
             reference_performance_fn=self.reference_performance_fn,
         )
 
-    def query_cost(self, optimizer_id: str, task_id: str, seed: int) -> float:
+    def query_cost(
+        self, optimizer_id: str, task_id: str, seed: int | None, key_performance: str = "trial_value__cost_inc"
+    ) -> float:
         """Query cost from reference performance data.
 
         Parameters
@@ -88,17 +91,28 @@ class ReferencePerformance:
             The optimizer id.
         task_id : str
             The task id.
-        seed : int
-            The seed.
+        seed : int | None
+            The seed. If None, average over all available seeds.
+        key_performance : str, "trial_value__cost_inc"
+            The column holding the performance information.
 
         Returns
         -------
         float
             Cost of final incumbent.
         """
-        ids = [(optimizer_id, task_id, seed)]
+        if seed is None:
+            # Use only the columns available to identify the run
+            ids = [(optimizer_id, task_id)]
+            index_columns = ["optimizer_id", "task_id"]
+
+            # Filter the dataframe by the available indices and take the mean of all seeds
+            return self.perf_df.set_index(index_columns).loc[ids][key_performance].mean()
+
+        # Case where a specific seed is provided
+        ids = [(optimizer_id, task_id, seed)]  # type: ignore[list-item]
         index_columns = ["optimizer_id", "task_id", "seed"]
-        return self.perf_df.set_index(index_columns).loc[ids].iloc[0]["trial_value__cost_inc"]
+        return self.perf_df.set_index(index_columns).loc[ids].iloc[0][key_performance]
 
 
 def get_seed_override(seeds: list[int]) -> str:

@@ -9,10 +9,12 @@ DIST := dist
 UV ?= uv
 SMACBRANCH ?= development 
 CARPSBRANCH ?= development
+CARPS_DIR ?= lib/CARP-S
+SMAC_DIR ?= lib/SMAC3
 
 env:
 	$(PIP) install uv
-	$(PYTHON) -m $(UV) venv --python=3.12 .env --clear
+	$(PYTHON) -m $(UV) venv --python=3.13 .env --clear
 	. .env/bin/activate && $(PYTHON) -m ensurepip --upgrade && $(PYTHON) -m $(PIP) install uv --upgrade && $(UV) $(PIP) install setuptools wheel
 	# Manually activate env. Does not work with make somehow
 
@@ -25,13 +27,25 @@ install:
 	$(MAKE) optbench
 
 carps:
-	git clone --branch $(CARPSBRANCH) git@github.com:automl/CARP-S.git lib/CARP-S
-	cd lib/CARP-S && $(UV) pip install -e '.[dev]' && pre-commit install
+	@if [ ! -d "$(CARPS_DIR)" ]; then \
+		echo "Cloning CARP-S..."; \
+		git clone --branch $(CARPS_BRANCH) git@github.com:automl/CARP-S.git $(CARPS_DIR); \
+	else \
+		echo "CARP-S already exists. Pulling latest changes..."; \
+		cd $(CARPS_DIR) && git pull origin $(CARPS_BRANCH); \
+	fi
+	cd $(CARPS_DIR) && $(UV) pip install -e '.[dev]' && pre-commit install
 	export PIP="uv pip" && $(PYTHON) -m carps.build.make benchmark_bbob #benchmark_yahpo benchmark_mfpbench optimizer_optuna optimizer_ax
 	$(PYTHON) -m carps.utils.index_configs '--extra_optimizer_paths=["dacboenv/configs/policy"]'
 
 smac:
-	git clone --branch $(SMACBRANCH) git@github.com:automl/SMAC3.git lib/SMAC3
+	@if [ ! -d "$(SMAC_DIR)" ]; then \
+		echo "Cloning SMAC3..."; \
+		git clone --branch $(SMACBRANCH) git@github.com:automl/SMAC3.git $(SMAC_DIR); \
+	else \
+		echo "SMAC3 already exists. Pulling latest changes..."; \
+		cd $(SMAC_DIR) && git pull origin $(SMACBRANCH); \
+	fi
 	$(UV) pip install swig
 	cd lib/SMAC3 && $(UV) pip install -e '.[dev]' && pre-commit install
 

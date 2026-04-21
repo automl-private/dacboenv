@@ -12,6 +12,7 @@ dacboenv:
         deterministic: true
         n_workers: 1
         output_directory: ${outdir}/smac3_output
+        name: dacboenvrun
       smac_kwargs:
         logging_level:
           _target_: pathlib.Path

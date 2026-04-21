@@ -162,6 +162,7 @@ class DACBOEnv(gym.Env):
         self.instance_selector: InstanceSelector  # Set whenever task_id or inner_seeds are updated
         self.instance_set = (inner_seeds, task_ids)  # type: ignore[assignment]  # this is a setter
         self._instance: Instance | None = None
+        self.is_in_random_mode = inner_seeds is None  # Whether we use a new seed for each episode
 
         self._evaluation_mode = evaluation_mode
         if self._evaluation_mode:
@@ -388,7 +389,7 @@ class DACBOEnv(gym.Env):
             threshold = self._reference_performance.query_cost(  # type: ignore[attr-defined]
                 optimizer_id=self.reference_performance_optimizer_id,
                 task_id=self.current_task_id,
-                seed=self.current_seed,
+                seed=self.current_seed if not self.is_in_random_mode else None,
             )
             self.current_threshold = threshold
 

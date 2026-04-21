@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -12,11 +11,10 @@ from typing import (
 
 import gymnasium as gym
 import numpy as np
-from dataclasses_json import dataclass_json
 from gymnasium.spaces import Box, MultiDiscrete
 
 from dacboenv.env.action import AbstractActionSpace, AcqParameterActionSpace, WEITempoRLActionSpace
-from dacboenv.env.instance import InstanceSelector, RoundRobinInstanceSelector
+from dacboenv.env.instance import Instance, InstanceSelector, InstanceSet, RoundRobinInstanceSelector
 from dacboenv.env.observation import ObservationSpace
 from dacboenv.env.reward import DACBOReward
 from dacboenv.utils.carps_optimizer import build_carps_optimizer
@@ -35,15 +33,6 @@ if TYPE_CHECKING:
 ActType = int | float | list[float] | None
 
 logger = get_logger("dacboenv")
-
-
-@dataclass_json
-@dataclass(frozen=True)
-class InstanceSet:
-    """Instance Set."""
-
-    task_ids: list[str]
-    seeds: list[int]
 
 
 class DACBOEnv(gym.Env):
@@ -130,7 +119,9 @@ class DACBOEnv(gym.Env):
         rho : float, optional
             ParEGO scalarization parameter.
         inner_seeds : list[int], optional
-            The seeds that the inner BO will run on.
+            The seeds that the inner BO will run on. If it is None, a new seed will be drawn
+            randomly for each instance. In the latter case, the instance selector only
+            selects the task, and not the seed as well.
         terminate_after_reference_performance_reached : bool, optional
             Terminate episode after a certain reference performance on a task/seed has been reached. Defaults to False.
         evaluation_mode : bool, optional
@@ -153,7 +144,6 @@ class DACBOEnv(gym.Env):
         self._seed = seed
         # Create seed generator for resetting for new episodes
         self._seeder = np.random.default_rng(self._seed)
-        self._fallback_seeds = list(self._seeder.integers(low=344, high=46483, size=3))
 
         self._optimizer_cfg = optimizer_cfg
         self._action_space_class = action_space_class
@@ -170,9 +160,8 @@ class DACBOEnv(gym.Env):
             instance_selector_class if instance_selector_class else RoundRobinInstanceSelector
         )
         self.instance_selector: InstanceSelector  # Set whenever task_id or inner_seeds are updated
-        inner_seeds = inner_seeds or self._fallback_seeds
-        self.instance_set = (inner_seeds, task_ids)  # type: ignore[assignment]
-        self._instance: tuple[int, str] | None = None
+        self.instance_set = (inner_seeds, task_ids)  # type: ignore[assignment]  # this is a setter
+        self._instance: Instance | None = None
 
         self._evaluation_mode = evaluation_mode
         if self._evaluation_mode:
@@ -214,7 +203,7 @@ class DACBOEnv(gym.Env):
         return self._instance_set
 
     @instance_set.setter
-    def instance_set(self, seeds_taskids: tuple[list[int], list[str]]) -> None:
+    def instance_set(self, seeds_taskids: tuple[list[int] | None, list[str]]) -> None:
         seeds, task_ids = seeds_taskids
         self._instance_set = InstanceSet(task_ids=task_ids, seeds=seeds)
         self._build_instance_selector()
@@ -234,7 +223,7 @@ class DACBOEnv(gym.Env):
         return self._instance
 
     @instance.setter
-    def instance(self, instance: tuple[int, str]) -> None:
+    def instance(self, instance: Instance) -> None:
         self._instance = instance
 
     def _build_instance_selector(self) -> None:
@@ -320,12 +309,12 @@ class DACBOEnv(gym.Env):
             return self._reward.get_reward(self.current_threshold)
         return 0
 
-    def get_next_instance(self) -> tuple[int, str]:
+    def get_next_instance(self) -> Instance:
         """Get the next instance.
 
         Returns
         -------
-        tuple[int,str]
+        Instance
             (seed,task_id)
         """
         return self.instance_selector.select_instance()  # type: ignore[return-value]
@@ -474,7 +463,7 @@ class DACBOEnv(gym.Env):
         self.instance = self.get_next_instance()
         seed, task_id = self.instance
         if seed is None:
-            seed = self._seeder.integers(low=0)
+            seed = self._seeder.integers(low=0, high=2**32 - 1, size=None)
         seed = int(seed)
 
         # Build carps optimizer (wrapper around smac) with appropriate objective function

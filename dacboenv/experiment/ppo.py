@@ -58,7 +58,7 @@ def main(cfg: DictConfig) -> None:
     def make_env(cfg: DictConfig, offset: int = 0) -> Callable:
         def _init() -> DACBOEnv:
             config = cfg.copy()
-            config.seed = rng.integers(low=0)
+            config.seed = rng.integers(low=0, high=2**32 - 1, size=None)
             config.dacboenv.instance_selector_class.offset = offset
             task = make_task(config)
             return task.objective_function._env

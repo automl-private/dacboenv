@@ -276,7 +276,10 @@ class DACBOObjectiveFunction(ObjectiveFunction):
         int | None
             The internal seed, which is mapped from the external seed.
         """
-        if seed is None:
+        # If the seed is None, just pass it. If the internal seeds are None,
+        # which means, that we use a new random seed for each episode, return
+        # the seed from SMAC/the optimizer from the intensification.
+        if seed is None or self._internal_seeds is None:
             return seed
         external_seed = seed
         internal_seeds_used = set(self._seed_map.values())

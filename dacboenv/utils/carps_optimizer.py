@@ -7,11 +7,8 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 from carps.utils.env_vars import CARPS_ROOT
+from carps.utils.index_configs import get_index
 from carps.utils.running import make_optimizer, make_task
-try:
-    from carps.utils.index_configs import get_index_config
-except:
-    pass
 from omegaconf import OmegaConf
 
 if TYPE_CHECKING:
@@ -39,7 +36,7 @@ def load_optimizer_config(optimizer_id: str) -> DictConfig:
     else:
         index_fn = CARPS_ROOT / "configs/optimizer/index.csv"
         try:
-            df = get_index_config(index_fn)  # noqa: PD901
+            df = get_index()  # noqa: PD901
         except NameError:
             df = pd.read_csv(index_fn)  # noqa: PD901
         ids = [optimizer_id]
@@ -95,7 +92,7 @@ def get_task_config(task_id: str) -> DictConfig:
     """
     task_index_fn = CARPS_ROOT / "configs/task/index.csv"
     try:
-        df = get_index_config(task_index_fn)  # noqa: PD901
+        df = get_index()  # noqa: PD901
     except NameError:
         df = pd.read_csv(task_index_fn)  # noqa: PD901
 

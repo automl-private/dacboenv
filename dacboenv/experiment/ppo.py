@@ -94,7 +94,7 @@ def main(cfg: DictConfig) -> None:
         save_freq=max(save_freq // n_envs, 1), save_path=str(rundir), save_vecnormalize=True
     )
     model.learn(
-        total_timesteps=cfg.experiment.total_timesteps,
+        total_timesteps=cfg.experiment.total_timesteps // cfg.dacboenv.interaction_frequency,
         progress_bar=True,
         tb_log_name="tb_log",
         callback=[checkpoint_callback, ActionLoggingCallback(n_envs=n_envs)],

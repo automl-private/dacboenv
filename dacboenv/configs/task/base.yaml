@@ -3,7 +3,7 @@ benchmark_id: DACBO
 task_id: ${task.name}
 task:
   _target_: carps.utils.task.Task
-  name: ${get_dacbo_task_name:${task.objective_function.cost},${action_space_id},${observation_space_id},${reward_id},${instance_set_id}}
+  name: ${get_dacbo_task_name:${task.objective_function.cost},${action_space_id},${observation_space_id},${reward_id},${instance_set_id},${dacboenv.interaction_frequency}}
   seed: ${seed}
   optimization_resources:
     _target_: carps.utils.task.OptimizationResources

@@ -30,7 +30,12 @@ logger = get_logger("DACBOObjFun")
 
 
 def get_dacbo_task_name(
-    cost_type: str, action_space_id: str, observation_space_id: str, reward_id: str, instance_set_id: str
+    cost_type: str,
+    action_space_id: str,
+    observation_space_id: str,
+    reward_id: str,
+    instance_set_id: str,
+    interaction_frequency: int,
 ) -> str:
     """Get task name for DACBO task.
 
@@ -46,13 +51,18 @@ def get_dacbo_task_name(
         The reward id of DACBOEnv.
     instance_set_id : str
         The instance set id of DACBOEnv.
+    interaction_frequency : int
+        After how many BO steps an action can be taken.
 
     Returns
     -------
     str
         DACBO task name.
     """
-    return f"dacbo_C{cost_type}_A{action_space_id}_S{observation_space_id}_R{reward_id}_I{instance_set_id}"
+    return (
+        f"dacbo_C{cost_type}_A{action_space_id}_S{observation_space_id}_"
+        f"R{reward_id}_I{instance_set_id}_i{interaction_frequency}"
+    )
 
 
 def get_perceptron_configspace(n_obs: int, weight_bounds: tuple[float, float]) -> ConfigurationSpace:

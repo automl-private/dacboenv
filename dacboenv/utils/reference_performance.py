@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
+import hashlib
 import itertools
+import shlex
 import shutil
 import subprocess
 import time
 from collections import defaultdict
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 from carps.utils.index_configs import register_extra_paths
 from hydra.core.hydra_config import HydraConfig
+from omegaconf import DictConfig, OmegaConf
 
 try:  # There have been breaking changes in CARP-S
     from carps.analysis.gather_data_utils import filelogs_to_df, normalize_logs
@@ -27,14 +29,12 @@ from carps.utils.running import optimize
 
 with contextlib.suppress(ImportError):
     from carps.utils.index_configs import get_index
+from carps.loggers.file_logger import get_run_directory
 from hydra import compose, initialize_config_module
 
 from dacboenv.utils.loggingutils import get_logger
 
 logger = get_logger("ReferencePerformance")
-
-if TYPE_CHECKING:
-    from omegaconf import DictConfig
 
 
 def is_slurm_cluster() -> bool:
@@ -173,12 +173,11 @@ def get_config_overrides(ids: list[str], index_csv_subpath: str, group_name: str
     except Exception as e:
         raise e from e
 
-    # Extract relative path and last element
-    filtered["rel_path"] = filtered["config_fn"].map(lambda x: x.split(f"{group_name}/")[-1].replace(".yaml", ""))
+    filtered["rel_path"] = filtered["config_fn"].map(lambda x: x.split("configs/")[-1].replace(".yaml", ""))
     filtered["path"] = filtered["rel_path"].map(lambda x: "/".join(x.split("/")[:-1]))
     filtered["id_val"] = filtered["rel_path"].map(lambda x: x.split("/")[-1])
 
-    return [f"+{group_name}/{path}={','.join(group['id_val'])}" for path, group in filtered.groupby("path")]
+    return [f"+{path}={','.join(group['id_val'])}" for path, group in filtered.groupby("path")]
 
 
 def get_task_overrides(task_ids: list[str]) -> list[str]:
@@ -200,6 +199,10 @@ def get_task_overrides(task_ids: list[str]) -> list[str]:
 def get_optimizer_overrides(optimizer_ids: list[str]) -> list[str]:
     """Get optimizer overrides.
 
+    If the optimizer is actually a DACBO policy (as indicated by
+    having `policy` in its path), generate the appropriate
+    dacboenv config and create the correspoding overrides.
+
     Parameters
     ----------
     optimizer_ids : list[str]
@@ -210,7 +213,32 @@ def get_optimizer_overrides(optimizer_ids: list[str]) -> list[str]:
     list[str]
         Hydra overrides.
     """
-    return get_config_overrides(optimizer_ids, "optimizer/index.csv", "optimizer", "optimizer_id")
+    overrides = get_config_overrides(optimizer_ids, "optimizer/index.csv", "optimizer", "optimizer_id")
+
+    if any("policy" in o for o in overrides):
+        # Save the current active dacboenv as
+        # a config file to `env/tmp/hash.yaml`.
+        rundir = get_run_directory()
+        cfg_fn = rundir / ".hydra/config.yaml"
+        cfg = OmegaConf.load(cfg_fn)
+        config_path_header = Path("dacboenv/configs")
+        config_loc = "env/tmp"
+        cfg_dacboenv = DictConfig({"dacboenv": cfg.dacboenv})
+        hash_str = f"{rundir.resolve()}"
+        hash_digest = hashlib.sha256(hash_str.encode("utf-8")).hexdigest()
+        cfg_dacboenv_fn = config_path_header / config_loc / f"{hash_digest}.yaml"
+        cfg_dacboenv_fn.parent.mkdir(exist_ok=True, parents=True)
+        OmegaConf.save(config=cfg_dacboenv, f=cfg_dacboenv_fn)
+
+        with open(cfg_dacboenv_fn) as file:
+            cfg_dacboenv_yaml = file.read()
+        cfg_dacboenv_yaml = "# @package _global_\n" + cfg_dacboenv_yaml
+        with open(cfg_dacboenv_fn, "w") as file:
+            file.write(cfg_dacboenv_yaml)
+
+        overrides = [f"+{config_loc}={hash_digest} +eval=base {o}" for o in overrides]
+
+    return overrides
 
 
 def group_tuples(tuples: list[tuple], depth: int = 0) -> list:
@@ -346,6 +374,7 @@ def spawn_and_wait(commands: list[list[str]], poll_interval: float = 10.0) -> No
     # Spawn all processes
     for cmd in commands:
         logger.info(f"Spawning `{' '.join(cmd)}`...")
+    commands = [shlex.split(" ".join(cmd)) for cmd in commands]
     processes = [subprocess.Popen(cmd) for cmd in commands]  # noqa: S603
 
     # Monitor processes until all finish

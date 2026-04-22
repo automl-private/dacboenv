@@ -35,7 +35,7 @@ carps:
 		cd $(CARPS_DIR) && git pull origin $(CARPS_BRANCH); \
 	fi
 	cd $(CARPS_DIR) && $(UV) pip install -e '.[dev]' && pre-commit install
-	export PIP="uv pip" && $(PYTHON) -m carps.build.make benchmark_bbob #benchmark_yahpo benchmark_mfpbench optimizer_optuna optimizer_ax
+	export PIP="uv pip" && $(PYTHON) -m carps.build.make benchmark_bbob benchmark_yahpo #benchmark_mfpbench optimizer_optuna optimizer_ax
 	$(PYTHON) -m carps.utils.index_configs '--extra_optimizer_paths=["dacboenv/configs/policy"]'
 
 smac:

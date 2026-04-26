@@ -181,6 +181,10 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
                     self._skip_duration = self._dacboenv._action_space._step_durations[self.action[0]] - 1
                     self._param_level = self.action[1]
                     logger.info(f"Apply action {self._param_level} for {self._skip_duration+1} steps.")
+                elif self._dacboenv._interaction_frequency > 1:
+                    self._skip_duration = self._dacboenv._interaction_frequency - 1
+                    self._param_level = self.action
+                    logger.info(f"Apply action {self._param_level} for {self._skip_duration+1} steps.")
             else:
                 self._skip_duration -= 1
 

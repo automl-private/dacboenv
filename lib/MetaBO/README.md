@@ -16,7 +16,7 @@ bash eval_all.sh
 For gathering the results, run
 
 ```bash
-python gather_results.csv
+python gather_results.py
 ```
 
 ---

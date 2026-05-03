@@ -578,7 +578,9 @@ class ObservationSpace:
         self._keys = (
             keys
             if keys is not None
-            else list(ObservationSpace._OBSERVATION_MAP.keys()) + list(ObservationSpace._MULTI_OBSERVATION_MAP.keys())
+            else list(
+                ObservationSpace._OBSERVATION_MAP.keys()
+            )  # + list(ObservationSpace._MULTI_OBSERVATION_MAP.keys())
         )
 
         # Check for invalid keys

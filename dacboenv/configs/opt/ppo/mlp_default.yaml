@@ -2,7 +2,7 @@
 defaults:
   - base
 
-optimizer_id: PPO-MLP-Def
+optimizer_id: PPO-MLP-Def-nonorm
 optimizer:
   _target_: stable_baselines3.PPO
   _partial_: true

@@ -1,6 +1,6 @@
 # @package _global_
 
-instance_set_id: bbob2d_fid1_3seeds
+instance_set_id: selected-random
 dacboenv:
   task_ids:
     - bbob/2/1/1

@@ -83,3 +83,6 @@ metabo:
 	conda activate metabo
 
 # tensorboard regex: (?s:.*?)finished(?s:.*?)SAWEI(?s:.*?)fid8(?s:.*?)log_2
+
+
+# python -m carps.run hydra.searchpath=[pkg://dacboenv/configs,pkg://adaptaf/configs,pkg://optbench/configs] seed=1 +task/BBOB=cfg_2_1_1 +eval=base baserundir=tmprunseval +policy/optimized/PPO-MLP-Def/dacbo_Csymlogregret_AWEI-cont_Ssawei_Rsymlogregret-SAWEI-P_Ibbob2d_fid1_3seeds_i10=seed5

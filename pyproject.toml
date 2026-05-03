@@ -288,3 +288,13 @@ module = [
   "neps.*",
 ]
 ignore_missing_imports = true
+
+
+# Pyrefly header
+[tool.pyrefly]
+
+#### configuring what to type check and where to import from
+project-includes = ["dacboenv", "lib"]
+project-excludes = ["**/.[!/.]*", "**/tests"]
+search-path = ["dacboenv", "lib"]
+site-package-path = [".env/lib/python3.13/site-packages"]

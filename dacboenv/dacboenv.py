@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -272,7 +271,7 @@ class DACBOEnv(gym.Env):
             if self.last_action is not None:
                 previous_param = self.last_action
                 if isinstance(self._action_space, WEITempoRLActionSpace):
-                    assert isinstance(self.last_action, Sequence)
+                    assert isinstance(self.last_action, list | np.ndarray)
                     previous_param = np.array([self._action_space._param_levels[int(self.last_action[1])]])
             elif isinstance(self.action_space, Box):
                 # TODO adjust default/initial action. Right now: middle of action space
@@ -342,7 +341,7 @@ class DACBOEnv(gym.Env):
             Additional information (empty).
         """
         if isinstance(self._action_space, WEITempoRLActionSpace):
-            assert isinstance(action, Sequence)
+            assert isinstance(action, list | np.ndarray), type(action)
             step_duration = self._action_space._step_durations[int(action[0])]
             param_level = action[1]
             logger.info(f"Do action {param_level} for {step_duration} steps.")

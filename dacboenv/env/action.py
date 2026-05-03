@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, ClassVar
 
@@ -158,7 +157,7 @@ class WEITempoRLActionSpace(AbstractActionSpace):
         action : ActType
             A single numeric action value for the parameter.
         """
-        assert isinstance(action, Sequence)
+        assert isinstance(action, list | np.ndarray), type(action)
         assert isinstance(self._smac_instance._intensifier._config_selector, ConfigSelector)
 
         param_level_idx = int(action[1])

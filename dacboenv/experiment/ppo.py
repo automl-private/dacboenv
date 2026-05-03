@@ -89,7 +89,7 @@ def main(cfg: DictConfig) -> None:
     logger.info(f"Model: {model.policy}")
 
     logger.info("⚔ Start training...")
-    save_freq = n_workers * cfg.optimizer.n_steps * 5
+    save_freq = n_workers * cfg.optimizer.n_steps * 5 * cfg.dacboenv.interaction_frequency
     checkpoint_callback = CheckpointCallback(
         save_freq=max(save_freq // n_envs, 1), save_path=str(rundir), save_vecnormalize=True
     )

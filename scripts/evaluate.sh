@@ -1,9 +1,9 @@
 BASE="carps.run hydra.searchpath=[pkg://dacboenv/configs]"
 SEED="seed=range(1,11)"
-TASK1="+task/BBOB=cfg_2_1_0"
-TASK20="+task/BBOB=cfg_2_20_0"
-TASK8="+task/BBOB=cfg_2_8_0"
-TASKALL="+task/BBOB=glob(cfg_2_*_0)"
+TASK1="+task/BBOB=cfg_2_1_1"
+TASK20="+task/BBOB=cfg_2_20_1"
+TASK8="+task/BBOB=cfg_2_8_1"
+TASKALL="+task/BBOB=glob(cfg_2_*_1)"
 
 if command -v sinfo >/dev/null 2>&1 || [ -f /etc/slurm/slurm.conf ]; then
     CLUSTER="+cluster=cpu_noctua"

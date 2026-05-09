@@ -12,6 +12,7 @@ from sklearn.metrics import auc
 
 from dacboenv.utils.math import symlog
 from dacboenv.utils.parego import ParEGO
+from dacboenv.utils.weighted_expected_improvement import WEI
 
 if TYPE_CHECKING:
     from smac.main.smbo import SMBO
@@ -148,7 +149,44 @@ def calc_symlogregret_of_reference_performance(smbo: SMBO, reference_performance
     return symlog(diff)
 
 
+class SymlogRegretWithOscPenalty:
+    """Symlog regret with penalty for big action changes."""
+
+    def __init__(self, weight: float = 1) -> None:
+        self._last_action = None
+        self._weight = weight
+
+    def __call__(self, smbo: SMBO, reference_performance: float | None = None) -> float:
+        """Calculate the symmetric log regret to the reference performance.
+
+        Parameters
+        ----------
+        smbo : SMBO
+            The SMAC instance.
+        reference_performance : float | None, optional
+            The reference performance., by default None
+
+        Returns
+        -------
+        float
+            The symlog regret.
+        """
+        reward = calc_symlogregret_of_reference_performance(smbo=smbo, reference_performance=reference_performance)
+        action = getattr(
+            smbo._intensifier._config_selector._acquisition_function,  # type: ignore[union-attr]
+            "_alpha",
+            None,
+        )
+        assert isinstance(smbo._intensifier._config_selector._acquisition_function, WEI)
+        if action is None:
+            raise ValueError("Something is not right. OscPenalty only works with non-TempoRL.")
+        penalty = 0 if self._last_action is None else self._weight * (action - self._last_action) ** 2
+        self._last_action = action
+        return reward - penalty
+
+
 symlogregret_reward = RewardType("symlogregret", calc_symlogregret_of_reference_performance)
+symlogregret_oscpenalty_reward = RewardType("symlogregret_op", SymlogRegretWithOscPenalty())
 
 ALL_REWARDS = [
     auc_reward,
@@ -159,6 +197,7 @@ ALL_REWARDS = [
     episode_finished,
     episode_finished_scaled,
     symlogregret_reward,
+    symlogregret_oscpenalty_reward,
 ]
 
 

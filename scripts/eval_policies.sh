@@ -6,8 +6,8 @@ export HYDRA_FULL_ERROR=1
 
 TASKS_EVAL=(
     "+task/BBOB=glob(cfg_2_*_1)"
-    # "+task/BBOB=glob(cfg_8_*_1)"
-    # "+task/YAHPO/SO=glob(*)"
+    "+task/BBOB=glob(cfg_8_*_1)"
+    "+task/YAHPO/SO=glob(*)"
     # "+task/nasengb=glob(*) hydra.launcher.mem_per_cpu=16G"
     # "+task/OptBench=Ackley_2,Hartmann_3,Levy_2,Schwefel_2"
 )
@@ -28,13 +28,14 @@ POLICY_ROOT="+policy/optimized"
 MODELS=(
     # "PPO-RNN"
     # "PPO-RNN-norm"
-    # "PPO-MLP"
+    "PPO-MLP"
     # "PPO-MLP-norm"
-    "PPO-MLP-Def"
+    # "PPO-MLP-Def"
 )
 ACTION_SPACES=(
     # "AWEI-cont"
     "AWEI-skip"
+    # "AWEI-step"
 )
 REFPERFS=(
     "SAWEI-P"
@@ -46,7 +47,11 @@ INSTANCESETS=(
     # "Ibbob2d_3seeds"
     # "Ibbob2d_fid8_3seeds"
     # "Ibbob2d_fid1_3seeds"
-    "Iselected-random"
+    # "Iselected-random"
+    # "Isel2-random"
+    # "Ibbob2d-8-random"
+	"Iyahpo-glmnet375-random"
+	"Iyahpo-glmnet375-3seeds"
 )
 
 INTERACTION_FREQS=(
@@ -66,6 +71,7 @@ for model in "${MODELS[@]}"; do
             REWARDS=(
                 # "dacbo_Cepisode_length_scaled_plus_logregret_${actionspace}_Ssawei_Repisode_finished_scaled"
                 "dacbo_Csymlogregret_${actionspace}_S${obs}_Rsymlogregret"
+                # "dacbo_Csymlogregret_${actionspace}_S${obs}_Rsymlogregret-op"
             )
             for reward in "${REWARDS[@]}"; do
                 for refperf in "${REFPERFS[@]}"; do
@@ -92,18 +98,19 @@ run_eval() {
 
 SEEDS=(
     # "seed=1"
-    "seed=2"
-    "seed=3"
-    "seed=4"
-    "seed=5"
-    "seed=6"
-    "seed=7"
-    "seed=8"
-    "seed=9"
-    "seed=10"
+    # "seed=2"
+    # "seed=3"
+    # "seed=4"
+    # "seed=5"
+    # "seed=6"
+    # "seed=7"
+    # "seed=8"
+    # "seed=9"
+    # "seed=10"
     # "seed=range(1,5)"
     # "seed=range(5,8)"
     # "seed=range(8,11)"
+    "seed=range(1,11)"
 )
 
 for optbase in "${OPT_BASES[@]}"; do   

@@ -282,6 +282,7 @@ def extract_cfg_info(
 def postprocess_yahpo(data: pd.DataFrame, logs_cfg: pd.DataFrame) -> pd.DataFrame:
     """Postprocess YAHPO rundata (add log regret).
 
+    Applies processing strictly to YAHPO tasks, preserving other tasks.
     So far, works for every task containing 'acc' and 'val_accuracy'.
 
     Parameters
@@ -296,21 +297,30 @@ def postprocess_yahpo(data: pd.DataFrame, logs_cfg: pd.DataFrame) -> pd.DataFram
     pd.DataFrame
         YAHPO with task info and log regret.
     """
-    data = extract_cfg_info(data=data, logs_cfg=logs_cfg, func_to_extract_info=extract_yahpo_info)
+    yahpo_mask = data["task_id"].str.startswith("yahpo", na=False)
 
-    data.loc[:, "task_id"] = data["task_id"].str.replace("yahpo/so/", "")
+    if not yahpo_mask.any():
+        return data
 
-    ids_val_acc = data["metric"] == "val_accuracy"
-    data.loc[ids_val_acc, "trial_value__cost_inc"] /= 100
-    data.loc[ids_val_acc, "f_min"] /= 100
+    yahpo_df = data[yahpo_mask].copy()
+    other_df = data[~yahpo_mask].copy()
 
-    # Add log regret
-    # data["log_regret"] = data.progress_apply(add_yahpo_log_regret, axis=1)
-    data = data.groupby("task_id").apply(calc_fmin).reset_index(drop=True)
-    data["regret"] = data["trial_value__cost_inc"] - data["f_min"]
-    data["log_regret"] = calc_log_regret(data["trial_value__cost_inc"], data["f_min"])
+    yahpo_df = extract_cfg_info(data=yahpo_df, logs_cfg=logs_cfg, func_to_extract_info=extract_yahpo_info)
+    yahpo_df["task_id"] = yahpo_df["task_id"].str.replace("yahpo/so/", "")
 
-    return data
+    ids_val_acc = yahpo_df["metric"] == "val_accuracy"
+    yahpo_df.loc[ids_val_acc, "trial_value__cost_inc"] /= 100
+
+    if "f_min" in yahpo_df.columns:
+        yahpo_df.loc[ids_val_acc, "f_min"] /= 100
+
+    yahpo_df = yahpo_df.groupby("task_id", group_keys=False).apply(calc_fmin).reset_index(drop=True)
+    yahpo_df["regret"] = yahpo_df["trial_value__cost_inc"] - yahpo_df["f_min"]
+    yahpo_df["log_regret"] = calc_log_regret(yahpo_df["trial_value__cost_inc"], yahpo_df["f_min"])
+
+    # Recombine with untouched data
+    # non-YAHPO rows will  get NaNs for new columns
+    return pd.concat([other_df, yahpo_df], ignore_index=True)
 
 
 def extract_bnnbo_info(cfg_str: str) -> dict:

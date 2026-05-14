@@ -14,7 +14,7 @@ POLICY_JUMP05="+policy=jump_05"
 POLICY_RANDOM="+policy=random"
 
 ENV="+env=base +env/opt=base +env/reward=ep_done_scaled +env/obs=all +env/refperf=defaultaction"
-BASERUNDIR='baserundir=runs_statespace_icml/${action_space_id}'
+BASERUNDIR='baserundir=runs_statespace_v1/${action_space_id}'
 
 # CLUSTER=""
 # SEED="seed=1"

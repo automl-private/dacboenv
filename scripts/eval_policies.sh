@@ -71,7 +71,7 @@ done
 
 
 BASE="carps.run hydra.searchpath=[pkg://dacboenv/configs,pkg://adaptaf/configs,pkg://optbench/configs]"
-ARGS="+eval=base baserundir=runs_eval_icml +cluster=cpu_noctua seed=range(1,11)"
+ARGS="+eval=base baserundir=runs_eval_v1 +cluster=cpu_noctua seed=range(1,11)"
 run_eval() {
     python -m $BASE $ARGS "$@" --multirun &
 }

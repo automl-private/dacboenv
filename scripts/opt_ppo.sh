@@ -9,7 +9,7 @@
 #SBATCH --error=slurmlogs/ppo/slurm-%j.err      # stderr log
 
 N_WORKERS=16
-BASERUNDIR="runsicml2"
+BASERUNDIR="runs_v12"
 if [ -z "$SLURM_ARRAY_TASK_ID" ]; then
     SLURM_ARRAY_TASK_ID=1
     N_WORKERS=4

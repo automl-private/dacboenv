@@ -1,0 +1,7 @@
+# @package _global_
+
+instance_set_id: yahpo-glmnet375-random
+dacboenv:
+  task_ids:
+    - yahpo/so/rbv2_glmnet/375/None
+  inner_seeds: null

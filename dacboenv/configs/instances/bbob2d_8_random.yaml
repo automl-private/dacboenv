@@ -1,0 +1,7 @@
+# @package _global_
+
+instance_set_id: bbob2d-8-random
+dacboenv:
+  task_ids:
+    - bbob/2/8/1
+  inner_seeds: null

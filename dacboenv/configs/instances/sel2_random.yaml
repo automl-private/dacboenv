@@ -1,0 +1,8 @@
+# @package _global_
+
+instance_set_id: sel2-random
+dacboenv:
+  task_ids:
+    - bbob/2/21/1
+    - yahpo/so/rbv2_glmnet/375/None
+  inner_seeds: null

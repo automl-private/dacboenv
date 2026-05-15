@@ -5,7 +5,7 @@ optimizer:
     _target_: dacboenv.policy.sb3_model.ModelPolicy
     _partial_: true
   policy_kwargs:
-    model: /scratch/hpc-prf-intexml/cbenjamins/repos/dacboenv/runsicml2/PPO-MLP/DACBO/dacbo_Csymlogregret_AWEI-skip_Ssawei_Rsymlogregret-SAWEI-P_Ibbob2d_fid8_3seeds/5/rl_model_160160_steps
+    model: runs_v1/runs_v12/PPO-MLP/DACBO/dacbo_Csymlogregret_AWEI-skip_Ssawei_Rsymlogregret-SAWEI-P_Ibbob2d_fid8_3seeds/5/rl_model_160160_steps
     model_class: stable_baselines3.PPO
 policy_id: PPO-MLP--dacbo_Csymlogregret_AWEI-skip_Ssawei_Rsymlogregret-SAWEI-P_Ibbob2d_fid8_3seeds--seed5
 optimizer_id: PPO-MLP--dacbo_Csymlogregret_AWEI-skip_Ssawei_Rsymlogregret-SAWEI-P_Ibbob2d_fid8_3seeds--seed5

@@ -29,4 +29,4 @@ Warning: This creates a many many compute jobs. Check the scripts for syntax of 
     Now in `dacboenv/configs/policy/optimized` configurations for the single policies should appear.
 1. Evaluate baselines and PPO with `bash scripts/eval_policies.sh`.
 1. Gather data with `sbatch scripts/gather_data.sh`.
-1. Plot using `notebooks/plot_results_v1.ipynb`.
+1. Plot using `notebooks/plot_results.ipynb`.

@@ -1,25 +1,15 @@
 tasks=(
-    "+task=dacboenv_sawei_done"
     "+task=dacboenv_sawei_symlog"
-    "+task=dacboenv_sawei_done_step"
-    "+task=dacboenv_sawei_symlog_step"
     "+task=dacboenv_sawei_symlog_skip"
-    "+task=dacboenv_sawei_done_skip"
 )
 ref_perfs=(
     "+env/refperf=saweip"
-    "+env/refperf=defaultaction"
 )
 instance_sets=(
-    "+instances=ackley2_3seeds"
     "+instances=bbob2d_8_3seeds"
-    "+instances=bbob2d_3seeds"
 )
 opts=(
-    "+opt/ppo=lstm"
-    "+opt/ppo=lstm_obsnorm"
     "+opt/ppo=mlp"
-    "+opt/ppo=mlp_obsnorm"
 )
 
 for task in "${tasks[@]}"

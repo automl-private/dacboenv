@@ -16,7 +16,6 @@ import numpy as np
 from ConfigSpace import Configuration
 from smac import BlackBoxFacade
 from smac.acquisition.maximizer import LocalAndSortedRandomSearch
-from smac.model.gaussian_process import GaussianProcess
 from smac.model.random_forest import RandomForest
 from smac.scenario import Scenario
 from smac.utils.logging import get_logger
@@ -36,6 +35,9 @@ logger = get_logger(__name__)
 def model_fitted(model: AbstractModel | None) -> bool:
     """Check whether the surrogate model is fitted.
 
+    This handles both standard and MCMC Gaussian-process models, whose shared
+    fitted-state contract is the ``_is_trained`` attribute.
+
     Parameters
     ----------
     model : AbstractModel
@@ -46,12 +48,13 @@ def model_fitted(model: AbstractModel | None) -> bool:
     bool
         Model fitted or not.
     """
-    fitted = False
-    if model is not None:
-        fitted = (isinstance(model, GaussianProcess) and model._is_trained) or (
-            isinstance(model, RandomForest) and model._rf is not None
-        )
-    return fitted
+    if model is None:
+        return False
+
+    return bool(
+        getattr(model, "_is_trained", False)
+        or (isinstance(model, RandomForest) and model._rf is not None)
+    )
 
 
 def calculate_ubr(

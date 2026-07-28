@@ -1,0 +1,52 @@
+# @package _global_
+defaults:
+  - /task: dacboenv_structured_reference_free
+  - /instance_sets@training_instances: bbob_train_diverse
+  - /instance_sets@validation_instances: bbob_validation_holdout
+  - /opt/ppo: structured_mlp
+  - _self_
+
+# Train on the 48 contexts from the chat's diverse BBOB curriculum.
+instance_set_id: ${training_instances.id}
+dacboenv:
+  task_ids: ${training_instances.task_ids}
+  inner_seeds: ${training_instances.inner_seeds}
+  # Worker i uses outer selector seed `${seed} + i` and samples independently
+  # with replacement from the same 48 (inner seed, task) contexts. The inner
+  # seed selected for an episode is passed unchanged to CARP-S/SMAC.
+  instance_selector_class:
+    _target_: dacboenv.env.instance.RandomInstanceSelector
+    _partial_: true
+
+experiment:
+  n_workers: 32
+  vecnormalize: false
+  progress_bar: true
+  start_method: forkserver
+
+  # Keep inner-BO training compute comparable across interaction frequencies.
+  # SB3 counts policy decisions, so f5/f10 use 1/5 and 1/10 as many calls.
+  # 409,600 is divisible by the 2,048-transition PPO rollout and by all
+  # interaction frequencies, yielding exactly 200/40/20 nominal rollouts.
+  bo_evaluation_budget: 409600
+  total_timesteps: ${divideint:${experiment.bo_evaluation_budget},${dacboenv.interaction_frequency}}
+
+  # Keep checkpoint/model-selection opportunities aligned in inner BO work.
+  # The runner then converts decision transitions to vector callback calls.
+  checkpoint_bo_evaluations: 20480
+  checkpoint_freq: ${divideint:${experiment.checkpoint_bo_evaluations},${dacboenv.interaction_frequency}}
+  validation:
+    enabled: true
+    instance_set_id: ${validation_instances.id}
+    task_ids: ${validation_instances.task_ids}
+    inner_seeds: ${validation_instances.inner_seeds}
+    n_workers: 1
+    instance_selector_class:
+      _target_: dacboenv.env.instance.RoundRobinInstanceSelector
+      _partial_: true
+      offset: 0
+    n_eval_episodes: ${multiply:${len:${validation_instances.task_ids}},${len:${validation_instances.inner_seeds}}}
+    eval_bo_evaluations: 20480
+    eval_freq: ${divideint:${experiment.validation.eval_bo_evaluations},${dacboenv.interaction_frequency}}
+
+baserundir: runs_structured

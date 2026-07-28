@@ -8,8 +8,14 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from carps.optimizers.smac20 import SMAC3Optimizer
 from hydra.utils import get_class
+from omegaconf import DictConfig
 
-from dacboenv.env.action import WEITempoRLActionSpace
+from dacboenv.env.action import (
+    PosteriorModeActionSpace,
+    PosteriorQuantileActionSpace,
+    WEIDiscreteActionSpace,
+    WEITempoRLActionSpace,
+)
 from dacboenv.policy.random import RandomPolicy
 
 if TYPE_CHECKING:
@@ -25,6 +31,10 @@ if TYPE_CHECKING:
 from dacboenv.utils.loggingutils import dump_logs, get_logger
 
 logger = get_logger("OptPolicy")
+
+# Generated evaluation launchers use this capability marker to reject stale
+# installations that still try to convert NoOpPolicy's None action to int.
+SUPPORTS_NOOP_POLICY_ACTION = True
 
 
 class DACBOEnvOptimizer(SMAC3Optimizer):
@@ -113,9 +123,11 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         log_observations : bool, optional
             Whether to log observations. Could be many.
         """
+        smac_cfg = dacboenv._optimizer_cfg.smac_cfg if dacboenv._optimizer_cfg is not None else DictConfig({})
         super().__init__(
-            task,
-            loggers,
+            task=task,
+            smac_cfg=smac_cfg,
+            loggers=loggers,
             expects_fidelities=expects_fidelities,
             expects_multiple_objectives=expects_multiple_objectives,
         )
@@ -161,7 +173,31 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
                 f"{self._dacboenv.instance_selector.instances} != {[(self._seed, self.task.name)]}"
             )
         self._policy = self._policy_class(self._dacboenv, **self._policy_kwargs)
+        self._policy.set_seed(self._seed)
         return self._dacboenv._smac_facade
+
+    def _structured_action_values(self) -> list[Any] | None:
+        """Return human-readable values for the current structured action."""
+        action = getattr(self, "action", None)
+        action_space = self._dacboenv._action_space
+        if action is None:
+            return None
+        if isinstance(action_space, WEITempoRLActionSpace):
+            return [
+                action_space._step_durations[action[0]],
+                action_space._param_levels[action[1]],
+            ]
+
+        action_idx = int(np.asarray(action).item())
+        if isinstance(action_space, WEIDiscreteActionSpace):
+            action_value: Any = action_space._param_levels[action_idx]
+        elif isinstance(action_space, PosteriorQuantileActionSpace):
+            action_value = action_space.quantile_levels[action_idx]
+        elif isinstance(action_space, PosteriorModeActionSpace):
+            action_value = action_space.selected_mode
+        else:
+            return None
+        return [self._dacboenv.interaction_frequency, action_value]
 
     def ask(self) -> TrialInfo:
         """Ask the optimizer for a new trial to evaluate.
@@ -172,19 +208,25 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
             trial info (config, seed, instance, budget)
         """
         # Don't update during initial design
-        if len(self.solver.runhistory) > len(self.solver.intensifier.config_selector._initial_design_configs):
+        if len(self.solver.runhistory) >= len(self.solver.intensifier.config_selector._initial_design_configs):
             assert self._policy is not None, "Policy must be initialized before calling ask."
             if self._skip_duration == 0:
                 self.action = self._policy(self._state)
 
-                if isinstance(self._dacboenv._action_space, WEITempoRLActionSpace):
-                    self._skip_duration = self._dacboenv._action_space._step_durations[self.action[0]] - 1
-                    self._param_level = self.action[1]
-                    logger.info(f"Apply action {self._param_level} for {self._skip_duration+1} steps.")
+                # NoOpPolicy
+                if self.action is not None:
+                    if isinstance(self._dacboenv._action_space, WEITempoRLActionSpace):
+                        self._skip_duration = self._dacboenv._action_space._step_durations[self.action[0]] - 1
+                        self._param_level = self.action[1]
+                        logger.info(f"Apply action {self._param_level} for {self._skip_duration + 1} steps.")
+                    elif self._dacboenv.interaction_frequency > 1:
+                        self._skip_duration = self._dacboenv.interaction_frequency - 1
+                        self._param_level = self.action
+                        logger.info(f"Apply action {self._param_level} for {self._skip_duration + 1} steps.")
+
+                    self._dacboenv.update_optimizer(self.action)
             else:
                 self._skip_duration -= 1
-
-            self._dacboenv.update_optimizer(self.action)
 
             # Log actions
             logs = {
@@ -192,15 +234,13 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
                 "n_trials": len(self.solver.runhistory),
             }
             if isinstance(self.action, np.ndarray):
-                action_to_log = self.action.item() if len(self.action) == 1 else list(self.action)
-
-                if isinstance(self._dacboenv._action_space, WEITempoRLActionSpace):
-                    logs["action_values"] = [
-                        self._dacboenv._action_space._step_durations[self.action[0]],
-                        self._dacboenv._action_space._param_levels[self.action[1]],
-                    ]
+                action_array = np.asarray(self.action)
+                action_to_log = action_array.item() if action_array.size == 1 else action_array.tolist()
             else:
                 action_to_log = self.action
+            action_values = self._structured_action_values()
+            if action_values is not None:
+                logs["action_values"] = action_values
             logs["action"] = action_to_log
             dump_logs(logs, self._actionfile)
 

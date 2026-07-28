@@ -8,20 +8,23 @@ benchmark_id: ???
 experiment:
   n_workers: 2
   n_episodes: 10
+  total_timesteps: ${multiply:${multiply:${experiment.n_workers},${experiment.n_episodes}},${optimizer.n_steps}}
+  checkpoint_freq: ${multiply:${multiply:${experiment.n_workers},${optimizer.n_steps}},5}
   vecnormalize: false
+  progress_bar: true
+  start_method: forkserver
 
 optimizer_id: ???
 optimizer:
   seed: ${seed}
   n_epochs: 10
-  #n_steps: # Will be set during runtime in ppo.py  # TODO make variable for different dims in instance set
-  #batch_size: ${divideint:${multiply:${experiment.n_workers},${optimizer.n_steps}},2}
+  n_steps: 128
+  batch_size: 128
 
 dacboenv:
   instance_selector_class:
     _target_: dacboenv.env.instance.RoundRobinInstanceSelector
     _partial_: true
-    offset: 0
 
 baserundir: runs
 outdir: ${baserundir}/${optimizer_id}/${benchmark_id}/${task_id}/${seed}
@@ -31,4 +34,3 @@ hydra:
   sweep:
     dir: ${baserundir}  # /${now:%Y-%m-%d}/${now:%H-%M-%S}
     subdir: ${optimizer_id}/${benchmark_id}/${task_id}/${seed}  # those variables are set for individual jobs, therefore can only be in the subdir
-

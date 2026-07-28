@@ -1,0 +1,18 @@
+# @package _global_
+defaults:
+  - base
+  - objfun: alpharulenet
+  - ../env: base
+  - ../env/opt: base
+  - ../env/action: ucb_quantile_discrete
+  - ../env/interaction_freq: f1
+  - ../env/obs: structured_quantile
+  - ../env/reward: reference_free_improvement
+
+dacboenv:
+  terminate_after_reference_performance_reached: false
+
+task:
+  objective_function:
+    weight_bounds: [-10, 10]
+    cost: cost_inc

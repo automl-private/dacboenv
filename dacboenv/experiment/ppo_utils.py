@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import json
 from io import TextIOWrapper
 from pathlib import Path
 
@@ -39,56 +40,64 @@ class ActionLoggingCallback(BaseCallback):
         self.writer = None
         self.step = 0
         self._n_envs = n_envs
+        self._episode_ids = [0] * n_envs
+        self._instances: list[object] = []
 
-    def _reset_csv(self) -> None:
-        # Close old file
+    def _open_csv(self) -> None:
+        """Open a fresh append-only action log for this training run."""
         if self.file is not None:
             self.file.close()
 
-        # Delete previous CSV
-        if Path(self.csv_path).exists():
-            Path(self.csv_path).unlink()
-
-        # Create new CSV
+        Path(self.csv_path).parent.mkdir(parents=True, exist_ok=True)
         self.file = open(self.csv_path, "w", newline="")  # noqa: SIM115
         self.writer = csv.writer(self.file)  # type: ignore[assignment]
         assert self.writer is not None
 
-        # Header
         header = (
             ["step"]
             + [f"env_{i}/action" for i in range(self._n_envs)]
             + [f"env_{i}/instance" for i in range(self._n_envs)]
+            + [f"env_{i}/bo_evaluations" for i in range(self._n_envs)]
+            + [f"env_{i}/done" for i in range(self._n_envs)]
+            + [f"env_{i}/episode" for i in range(self._n_envs)]
         )
         self.writer.writerow(header)
 
         self.step = 0
+        self._episode_ids = [0] * self._n_envs
 
     def _on_training_start(self) -> None:
-        self._reset_csv()
+        self._open_csv()
+        self._instances = list(self.training_env.get_attr("instance"))
 
     def _on_step(self) -> bool:
         actions = self.locals["actions"]
         dones = self.locals["dones"]
 
-        # Flatten actions for CSV (handles discrete & continuous)
+        # Preserve every action component
         row = [self.step]
         for action in actions:
-            value = float(np.mean(action)) if np.ndim(action) > 0 else float(action)
-            row.append(value)  # type: ignore[arg-type]
+            action_array = np.asarray(action)
+            value = action_array.item() if action_array.size == 1 else json.dumps(action_array.tolist())
+            row.append(value)
 
-        env = self.locals["env"]  # VecEnv
-        instances = env.get_attr("instance")
-        row.extend(instances)
+        # VecEnv auto-resets completed environments before this callback. Keep
+        # the cached pre-step instance for the terminal action, then refresh it.
+        row.extend(self._instances)
+        row.extend(info.get("bo_evaluations", "") for info in self.locals["infos"])
+        row.extend(bool(done) for done in dones)
+        row.extend(self._episode_ids)
 
         self.writer.writerow(row)  # type: ignore[assignment,attr-defined]
         self.file.flush()  # type: ignore[assignment,union-attr]
 
         self.step += 1
-
-        # If any env finishes → new episode → overwrite CSV
         if np.any(dones):
-            self._reset_csv()
+            next_instances = self.locals["env"].get_attr("instance")
+            for env_id, done in enumerate(dones):
+                if done:
+                    self._episode_ids[env_id] += 1
+                    self._instances[env_id] = next_instances[env_id]
 
         return True
 

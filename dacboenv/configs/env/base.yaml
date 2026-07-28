@@ -9,6 +9,7 @@ dacboenv:
   action_space_kwargs: ???
   reward_keys: ???
   seed: ${seed}
+  interaction_frequency: 1
   reference_performance_fn: reference_performance/reference_performance.parquet
   reference_performance_optimizer_id: SMAC3-BlackBoxFacade
   terminate_after_reference_performance_reached: False

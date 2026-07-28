@@ -1,0 +1,8 @@
+# @package _global_
+defaults:
+  # Reuse the exact structured PPO curriculum, validation split, reward,
+  # architecture, and BO-evaluation schedule; replace only the task/controller.
+  - structured_ppo_base
+  - override /task: dacboenv_structured_lcb_quantile
+
+baserundir: runs_lcb_quantile

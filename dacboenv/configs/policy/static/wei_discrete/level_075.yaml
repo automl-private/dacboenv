@@ -1,0 +1,6 @@
+# @package _global_
+defaults:
+  - base
+
+alpha: 0.75
+static_action_index: 3

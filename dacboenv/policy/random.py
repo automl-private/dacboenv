@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import TYPE_CHECKING
 
 from dacboenv.policy.abstract_policy import AbstractPolicy
 
 if TYPE_CHECKING:
-    from dacboenv.dacboenv import ActType
+    from dacboenv.dacboenv import ActType, DACBOEnv
     from dacboenv.env.observations.types import ObsType
 
 
 class RandomPolicy(AbstractPolicy):
     """Policy that samples actions uniformly at random."""
+
+    def __init__(self, env: DACBOEnv) -> None:
+        """Initialize a policy-local copy of the environment action space."""
+        super().__init__(env)
+        self._policy_action_space = deepcopy(env.action_space)
 
     def __call__(self, obs: ObsType | None = None) -> ActType:  # noqa: ARG002
         """Select an action by sampling uniformly from the action space.
@@ -27,7 +33,7 @@ class RandomPolicy(AbstractPolicy):
         ActType
             A randomly sampled action.
         """
-        return self._env.action_space.sample()
+        return self._policy_action_space.sample()
 
     def set_seed(self, seed: int | None) -> None:
         """Set seed for the action space.
@@ -37,4 +43,4 @@ class RandomPolicy(AbstractPolicy):
         seed : int | None
             Seed
         """
-        self._env.action_space.seed(seed=seed)
+        self._policy_action_space.seed(seed=seed)

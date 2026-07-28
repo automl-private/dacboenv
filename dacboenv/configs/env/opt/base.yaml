@@ -16,9 +16,13 @@ dacboenv:
         logging_level:
           _target_: pathlib.Path
           _args_:
-            - dacboenv/configs/logging/smac_internal.yaml
+            - ${dacboenv_config:logging/smac_internal.yaml}
         dask_client: null
         overwrite: true
+        intensifier:
+          _target_: smac.intensifier.intensifier.Intensifier
+          _partial_: true
+          max_config_calls: 1
         initial_design:
           _target_: ${dacboenv.optimizer_cfg.smac_cfg.smac_class}.get_initial_design
           _partial_: true

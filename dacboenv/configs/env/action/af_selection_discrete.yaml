@@ -1,0 +1,19 @@
+# @package _global_
+
+# The five deterministic actions select posterior mean, PI, EI, a lower
+# posterior quantile (q=0.1), or maximum posterior variance.
+action_space_id: AF-select-f${dacboenv.interaction_frequency}
+dacboenv:
+  action_space_class:
+    _target_: dacboenv.env.action.PosteriorModeActionSpace
+    _partial_: true
+  action_space_kwargs: {}
+
+  optimizer_cfg:
+    smac_cfg:
+      smac_kwargs:
+        acquisition_function:
+          _target_: dacboenv.utils.posterior_decision.PosteriorModeAcquisition
+          mode: expected_improvement
+          xi: 0.0
+          lower_quantile: 0.1

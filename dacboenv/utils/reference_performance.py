@@ -11,13 +11,20 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pandas as pd
-from carps.analysis.gather_data import filelogs_to_df, normalize_logs
 from carps.analysis.utils import filter_only_final_performance
 from carps.utils.env_vars import CARPS_ROOT
 from carps.utils.running import optimize
 from hydra import compose, initialize_config_module
 
+from dacboenv.utils.carps_optimizer import get_carps_config_index
 from dacboenv.utils.loggingutils import get_logger
+
+try:
+    # CARPS before 1.1 exposed these helpers from gather_data.
+    from carps.analysis.gather_data import filelogs_to_df, normalize_logs
+except ImportError:
+    # CARPS 1.1 moved them without retaining the old re-export.
+    from carps.analysis.gather_data_utils import filelogs_to_df, normalize_logs
 
 logger = get_logger("ReferencePerformance")
 
@@ -40,7 +47,7 @@ class ReferencePerformance:
         self,
         optimizer_id: str,
         task_ids: list[str],
-        seeds: list[int],
+        seeds: list[int] | None,
         reference_performance_fn: str | Path = "reference_performance/reference_performance.parquet",
     ) -> None:
         """Init.
@@ -51,14 +58,15 @@ class ReferencePerformance:
             carps id of reference optimizer.
         task_ids : list[str]
             List of carps task ids.
-        seeds : list[int]
-            List of seeds.
+        seeds : list[int] | None
+            List of seeds. If ``None``, use the fixed reference seeds 1 through
+            20 so randomly seeded environments have a stable comparison.
         reference_performance_fn : str | Path, optional
             Filename of performance data, by default "reference_performance/reference_performance.parquet"
         """
         self.optimizer_id = optimizer_id
         self.task_ids = task_ids
-        self.seeds = seeds
+        self.seeds = seeds if seeds is not None else list(range(1, 21))
         self.reference_performance_fn = Path(reference_performance_fn)
 
         self.perf_df = lookup_performance(
@@ -68,7 +76,7 @@ class ReferencePerformance:
             reference_performance_fn=self.reference_performance_fn,
         )
 
-    def query_cost(self, optimizer_id: str, task_id: str, seed: int) -> float:
+    def query_cost(self, optimizer_id: str, task_id: str, seed: int | None) -> float:
         """Query cost from reference performance data.
 
         Parameters
@@ -77,17 +85,26 @@ class ReferencePerformance:
             The optimizer id.
         task_id : str
             The task id.
-        seed : int
-            The seed.
+        seed : int | None
+            The seed. If ``None``, average over all available reference seeds.
 
         Returns
         -------
         float
             Cost of final incumbent.
         """
+        if seed is None:
+            ids = [(optimizer_id, task_id)]
+            index_columns = ["optimizer_id", "task_id"]
+            return float(
+                self.perf_df.set_index(index_columns)
+                .loc[ids]["trial_value__cost_inc"]
+                .mean()
+            )
+
         ids = [(optimizer_id, task_id, seed)]
         index_columns = ["optimizer_id", "task_id", "seed"]
-        return self.perf_df.set_index(index_columns).loc[ids].iloc[0]["trial_value__cost_inc"]
+        return float(self.perf_df.set_index(index_columns).loc[ids].iloc[0]["trial_value__cost_inc"])
 
 
 def get_seed_override(seeds: list[int]) -> str:
@@ -120,7 +137,11 @@ def get_config_overrides(ids: list[str], index_csv: Path, group_name: str, id_co
     -------
         List of Hydra overrides like '+task/some/path=id1,id2'
     """
-    df = pd.read_csv(index_csv)  # noqa: PD901
+    df = (
+        pd.read_csv(index_csv)
+        if index_csv.is_file()
+        else get_carps_config_index(group_name)
+    )
     try:
         filtered = df.set_index(id_col).loc[ids].reset_index()
     except KeyError as e:

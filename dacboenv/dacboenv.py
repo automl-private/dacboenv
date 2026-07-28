@@ -13,11 +13,18 @@ from typing import (
 import gymnasium as gym
 import numpy as np
 from dataclasses_json import dataclass_json
-from gymnasium.spaces import Box, MultiDiscrete
+from gymnasium.spaces import Box
 
-from dacboenv.env.action import AbstractActionSpace, AcqParameterActionSpace, WEITempoRLActionSpace
+from dacboenv.env.action import (
+    AbstractActionSpace,
+    AcqParameterActionSpace,
+    PosteriorModeActionSpace,
+    PosteriorQuantileActionSpace,
+    WEIDiscreteActionSpace,
+    WEITempoRLActionSpace,
+)
 from dacboenv.env.instance import InstanceSelector, RoundRobinInstanceSelector
-from dacboenv.env.observation import ObservationSpace
+from dacboenv.env.observation import WEI_ALPHA_LEVELS, ObservationSpace
 from dacboenv.env.reward import DACBOReward
 from dacboenv.utils.carps_optimizer import build_carps_optimizer
 from dacboenv.utils.loggingutils import get_logger
@@ -32,7 +39,7 @@ if TYPE_CHECKING:
 
     from dacboenv.env.observations.types import ObsType
 
-ActType = int | float | list[float] | None
+ActType = int | float | list[float] | np.ndarray | None
 
 logger = get_logger("dacboenv")
 
@@ -90,7 +97,7 @@ class DACBOEnv(gym.Env):
         Computes the current reward from the optimizer.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(  # noqa: PLR0913, PLR0917
         self,
         task_ids: list[str],
         optimizer_cfg: DictConfig | None = None,
@@ -106,6 +113,7 @@ class DACBOEnv(gym.Env):
         terminate_after_reference_performance_reached: bool = False,  # noqa: FBT001, FBT002
         instance_selector_class: type[InstanceSelector] | None = None,
         evaluation_mode: bool = False,  # noqa: FBT001, FBT002
+        interaction_frequency: int = 1,
         **kwargs: dict,  # noqa: ARG002
     ) -> None:
         """Initialize the DACBOEnv environment.
@@ -128,6 +136,9 @@ class DACBOEnv(gym.Env):
             this might not make sense for DAC as the tasks live on different scales.
         rho : float, optional
             ParEGO scalarization parameter.
+        seed : int, optional
+            Seed for the outer Gym environment and instance selector. This
+            does not replace explicitly configured inner BO seeds.
         inner_seeds : list[int], optional
             The seeds that the inner BO will run on.
         terminate_after_reference_performance_reached : bool, optional
@@ -136,6 +147,10 @@ class DACBOEnv(gym.Env):
             Whether to be in train (default) or evaluation mode. Evaluation mode means that the episode is not
             terminated after a reference performance has been reached, and the reward will be 0.
             This circumvents running a reference optimizer on each evaluation task.
+        interaction_frequency : int, optional
+            Number of BO evaluations for which a non-Tempo action is held.
+            Defaults to one evaluation per policy decision. Tempo actions
+            continue to obtain their duration from the action itself.
         """
         if reward_keys is None:
             reward_keys = ["incumbent_cost"]
@@ -146,10 +161,10 @@ class DACBOEnv(gym.Env):
             }
         super().__init__()
 
-        self._seed = seed
-        # Create seed generator for resetting for new episodes
-        self._seeder = np.random.default_rng(self._seed)
-        self._fallback_seeds = list(self._seeder.integers(low=344, high=46483, size=3))
+        # ``seed`` controls the outer environment: context selection and any
+        # generated fallback seeds. The selected inner BO seed is kept
+        # separate in ``current_seed`` and is passed to CARPS/SMAC.
+        self._initialize_outer_seed(seed)
 
         self._optimizer_cfg = optimizer_cfg
         self._action_space_class = action_space_class
@@ -158,13 +173,21 @@ class DACBOEnv(gym.Env):
         self._observation_keys = observation_keys
         self._reward_keys = reward_keys
         self._rho = rho
+        if not isinstance(interaction_frequency, int) or isinstance(interaction_frequency, bool):
+            raise TypeError(f"interaction_frequency must be a positive integer, got {interaction_frequency!r}.")
+        if interaction_frequency <= 0:
+            raise ValueError(f"interaction_frequency must be > 0, got {interaction_frequency}.")
+        self._interaction_frequency = interaction_frequency
 
         # Instance Set
+        self._prepared_reset_result: tuple[ObsType, dict[str, Any], int | None] | None = None
         self._instance_set: InstanceSet
         self._instance_selector_class = (
             instance_selector_class if instance_selector_class else RoundRobinInstanceSelector
         )
         self.instance_selector: InstanceSelector  # Set whenever task_id or inner_seeds are updated
+        self.is_in_random_mode = inner_seeds is None or all(seed is None for seed in inner_seeds)
+        self._uses_fallback_seeds = not inner_seeds
         inner_seeds = inner_seeds or self._fallback_seeds
         self.instance_set = (inner_seeds, task_ids)  # type: ignore[assignment]
         self._instance: tuple[int, str] | None = None
@@ -182,11 +205,14 @@ class DACBOEnv(gym.Env):
             self._terminate_after_reference_performance_reached = False
         self.reference_performance_fn = reference_performance_fn
         self.reference_performance_optimizer_id = reference_performance_optimizer_id
-        if not self._evaluation_mode:
+        self._requires_reference_performance = not self._evaluation_mode and (
+            "symlogregret" in self._reward_keys or self._terminate_after_reference_performance_reached
+        )
+        if self._requires_reference_performance:
             self._reference_performance = ReferencePerformance(
                 optimizer_id=self.reference_performance_optimizer_id,
                 task_ids=self.instance_set.task_ids,
-                seeds=self.instance_set.seeds,
+                seeds=None if self.is_in_random_mode else self.instance_set.seeds,
                 reference_performance_fn=self.reference_performance_fn,
             )
 
@@ -214,6 +240,8 @@ class DACBOEnv(gym.Env):
         self._instance_set = InstanceSet(task_ids=task_ids, seeds=seeds)
         self._build_instance_selector()
         self._instance = None
+        # A prepared episode belongs to the old selector/context set.
+        self._prepared_reset_result = None
 
     @property
     def instance(self) -> tuple[int, str]:
@@ -232,12 +260,47 @@ class DACBOEnv(gym.Env):
     def instance(self, instance: tuple[int, str]) -> None:
         self._instance = instance
 
+    @property
+    def interaction_frequency(self) -> int:
+        """Number of BO evaluations represented by a non-Tempo transition."""
+        return self._interaction_frequency
+
     def _build_instance_selector(self) -> None:
         self.instance_selector = self._instance_selector_class(  # type: ignore[operator]
             task_ids=self._instance_set.task_ids,
             seeds=self._instance_set.seeds,
             selector_seed=self._seed,
         )
+
+    def _initialize_outer_seed(self, seed: int | None) -> None:
+        """Initialize outer RNG state and its candidate fallback BO seeds."""
+        self._seed = seed
+        self._seeder = np.random.default_rng(seed)
+        self._fallback_seeds = list(
+            self._seeder.integers(low=344, high=46483, size=3),
+        )
+
+    def _reseed_episode_selection(self, seed: int) -> None:
+        """Restart outer context selection without changing fixed BO seeds."""
+        uses_current_fallbacks = self._uses_fallback_seeds and self._instance_set.seeds == self._fallback_seeds
+        self._initialize_outer_seed(seed)
+
+        # When no inner seeds were configured, make the generated fallback
+        # context set reproducible from the Gym reset seed. Explicit inner
+        # seeds remain an independent, unchanged experimental factor.
+        if uses_current_fallbacks:
+            self._instance_set = InstanceSet(
+                task_ids=self._instance_set.task_ids,
+                seeds=self._fallback_seeds,
+            )
+
+        self._build_instance_selector()
+        self._instance = None
+
+    def _apply_reset_seed(self, seed: int | None) -> None:
+        """Apply an explicitly requested Gym reset seed to outer state."""
+        if seed is not None:
+            self._reseed_episode_selection(int(seed))
 
     def update_optimizer(self, action: ActType) -> None:
         """Update the SMAC optimizer with the given action.
@@ -255,6 +318,49 @@ class DACBOEnv(gym.Env):
         if action is not None:
             self._action_space.update_optimizer(action)
             self.last_action = action
+
+    def _validate_action_feature_space(self) -> None:
+        """Ensure action-conditioned rows match the environment action indices."""
+        observation_keys = set(self._dacbo_observation_space._keys)  # type: ignore[arg-type]
+        if "action_features" in observation_keys:
+            if isinstance(
+                self._action_space,
+                WEIDiscreteActionSpace | WEITempoRLActionSpace,
+            ):
+                parameter_levels = np.asarray(
+                    self._action_space._param_levels,
+                    dtype=float,
+                )
+                if parameter_levels.shape != WEI_ALPHA_LEVELS.shape or not np.allclose(
+                    parameter_levels,
+                    WEI_ALPHA_LEVELS,
+                ):
+                    raise ValueError(
+                        "The action_features rows require WEI alpha levels "
+                        f"{WEI_ALPHA_LEVELS.tolist()}, got {parameter_levels.tolist()}."
+                    )
+            elif isinstance(self._action_space, PosteriorQuantileActionSpace):
+                if len(self._action_space.quantile_levels) != len(WEI_ALPHA_LEVELS):
+                    raise ValueError(
+                        "The action_features table has five rows and therefore "
+                        "requires exactly five posterior quantiles, got "
+                        f"{list(self._action_space.quantile_levels)}."
+                    )
+            else:
+                raise ValueError(
+                    "The action_features observation requires WEIDiscreteActionSpace, "
+                    "WEITempoRLActionSpace, or PosteriorQuantileActionSpace."
+                )
+
+        if "af_action_features" in observation_keys:
+            if not isinstance(self._action_space, PosteriorModeActionSpace):
+                raise ValueError(
+                    "The af_action_features observation requires PosteriorModeActionSpace."
+                )
+            if self._action_space.space.n != 5:  # noqa: PLR2004
+                raise ValueError(
+                    "The af_action_features table requires exactly five posterior modes."
+                )
 
     def modify_obs(self, obs: ObsType) -> ObsType:
         """Modify observations.
@@ -277,15 +383,33 @@ class DACBOEnv(gym.Env):
             if self.last_action is not None:
                 previous_param = self.last_action
                 if isinstance(self._action_space, WEITempoRLActionSpace):
-                    assert isinstance(self.last_action, Sequence)
+                    assert isinstance(self.last_action, Sequence | np.ndarray)
                     previous_param = np.array([self._action_space._param_levels[int(self.last_action[1])]])
+                elif isinstance(self._action_space, WEIDiscreteActionSpace):
+                    action_idx = int(np.asarray(self.last_action).item())
+                    previous_param = np.array([self._action_space._param_levels[action_idx]])
+                elif isinstance(self._action_space, PosteriorQuantileActionSpace):
+                    action_idx = int(np.asarray(self.last_action).item())
+                    previous_param = np.array(
+                        [self._action_space.quantile_levels[action_idx]],
+                    )
+                elif isinstance(self._action_space, PosteriorModeActionSpace):
+                    previous_param = np.array(
+                        [self._action_space.normalized_action],
+                    )
             elif isinstance(self.action_space, Box):
                 # TODO adjust default/initial action. Right now: middle of action space
-                previous_param = (self.action_space.high - self.action_space.low) / 2
-            elif isinstance(self._action_space, WEITempoRLActionSpace):
-                assert isinstance(self.action_space, MultiDiscrete)
-                n_levels = self.action_space[1].n
+                previous_param = (self.action_space.high + self.action_space.low) / 2
+            elif isinstance(self._action_space, WEIDiscreteActionSpace | WEITempoRLActionSpace):
+                n_levels = len(self._action_space._param_levels)
                 previous_param = np.array([self._action_space._param_levels[n_levels // 2]])
+            elif isinstance(
+                self._action_space,
+                PosteriorQuantileActionSpace | PosteriorModeActionSpace,
+            ):
+                previous_param = np.array(
+                    [self._action_space.current_control_value],
+                )
             else:
                 raise ValueError(f"Cannot handle space {self.action_space} to set last action.")
 
@@ -347,15 +471,39 @@ class DACBOEnv(gym.Env):
             Additional information (empty).
         """
         if isinstance(self._action_space, WEITempoRLActionSpace):
-            assert isinstance(action, Sequence)
+            assert isinstance(action, Sequence | np.ndarray)
             step_duration = self._action_space._step_durations[int(action[0])]
             param_level = action[1]
             logger.info(f"Do action {param_level} for {step_duration} steps.")
-            for _i in range(step_duration):
-                # TODO Fix RL training logging for this as this seems that the episode length is way shorter
-                obs = self._step(action=action)
-            return obs
-        return self._step(action=action)
+        else:
+            step_duration = self._interaction_frequency
+
+        # Apply a policy decision once per agent transition. In particular,
+        # incremental actions must not be accumulated once per Tempo sub-step.
+        self.update_optimizer(action)
+        total_reward = 0.0
+        for _ in range(step_duration):
+            obs, reward, terminated, truncated, info = self._step(action=action)
+            total_reward += float(reward)
+            if terminated or truncated:
+                break
+
+        # Gym/SB3 episode statistics count agent transitions, not the BO
+        # evaluations hidden inside one held action.
+        self._episode_reward += total_reward
+        self._episode_length += 1
+        info = dict(info)
+        info["bo_evaluations"] = self.get_n_finished_trials()
+        info["policy_decisions"] = self._episode_length
+        if terminated or truncated:
+            info["episode"] = {
+                "r": self._episode_reward,
+                "l": self._episode_length,
+            }
+            self._episode_reward = 0.0
+            self._episode_length = 0
+
+        return obs, total_reward, terminated, truncated, info
 
     def _step(self, action: ActType) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
         """Execute one optimization step using the selected acquisition function and parameters.
@@ -378,8 +526,6 @@ class DACBOEnv(gym.Env):
         info : dict
             Additional information (empty).
         """
-        self.update_optimizer(action)
-
         # BO step
         trial_info = self._smac_instance.ask()
         _, trial_value = self._smac_instance._runner.run_wrapper(trial_info)
@@ -388,38 +534,39 @@ class DACBOEnv(gym.Env):
         terminated = False
 
         curr_incumbent = self.get_incumbent_cost()
-        if not self._evaluation_mode:
+        threshold = self.current_threshold
+        if self._requires_reference_performance:
             threshold = self._reference_performance.query_cost(  # type: ignore[attr-defined]
                 optimizer_id=self.reference_performance_optimizer_id,
                 task_id=self.current_task_id,
-                seed=self.current_seed,
+                seed=None if self.is_in_random_mode else self.current_seed,
             )
             self.current_threshold = threshold
 
         if self._terminate_after_reference_performance_reached:
+            if threshold is None:
+                raise RuntimeError("Reference-performance termination requires a threshold.")
             distance = abs(curr_incumbent - threshold)
             log_distance = safe_log10(distance)
             logger.info(f"Current: {curr_incumbent:.4f}, threshold: {threshold:.4f}, log distance: {log_distance:.4f}")
-            terminated = curr_incumbent < threshold  # We minimize
+            terminated = curr_incumbent <= threshold  # We minimize
 
         remaining_trials = self._smac_instance._scenario.n_trials - self._smac_instance.runhistory.finished
-        truncated = remaining_trials <= 0
+        # The BO budget is part of the MDP state and defines its finite
+        # horizon. Treat budget exhaustion as a genuine terminal state so
+        # value-based RL code does not bootstrap beyond the final BO trial.
+        terminated = terminated or remaining_trials <= 0
+        truncated = False
 
         # Compute observation + reward
         obs = self.get_observation()
         reward = self.get_reward() if not self._evaluation_mode else 0
 
-        self._episode_reward += reward
-        self._episode_length += 1
-
         info = {}
-        if terminated or truncated:
-            info["episode"] = {"r": self._episode_reward, "l": self._episode_length}
-            self._episode_reward = 0
-            self._episode_length = 0
 
         logger.info(
-            f"Step: {self._episode_length}, instance: {self.instance}, action: {action}, reward: {reward}, "
+            f"BO trial: {self._smac_instance.runhistory.finished}, "
+            f"instance: {self.instance}, action: {action}, reward: {reward}, "
             f"terminated: {terminated}, truncated: {truncated}, info: {info}"
         )
 
@@ -435,6 +582,42 @@ class DACBOEnv(gym.Env):
         """
         return self._smac_instance.runhistory.get_min_cost(self._smac_instance.intensifier.get_incumbent())
 
+    def prepare_for_first_reset(self) -> None:
+        """Initialize spaces once and preserve that episode for the first caller.
+
+        CARPS constructs a DACBO objective before handing its environment to
+        SB3. The objective needs concrete Gym spaces, but an eager reset also
+        evaluates the full initial design. Caching that reset prevents SB3
+        from immediately discarding and repeating those evaluations.
+        """
+        if self._prepared_reset_result is not None:
+            return
+        prepared_seed = self._seed
+        observation, info = self.reset(seed=prepared_seed)
+        self._prepared_reset_result = (
+            {key: value.copy() for key, value in observation.items()},
+            info.copy(),
+            prepared_seed,
+        )
+
+    def _consume_prepared_reset(
+        self,
+        seed: int | None,
+    ) -> tuple[ObsType, dict[str, Any]] | None:
+        """Return a compatible prepared episode once, or discard it."""
+        if self._prepared_reset_result is None:
+            return None
+
+        observation, info, prepared_seed = self._prepared_reset_result
+        self._prepared_reset_result = None
+        if seed is not None and seed != prepared_seed:
+            return None
+
+        return (
+            {key: value.copy() for key, value in observation.items()},
+            info.copy(),
+        )
+
     def reset(
         self,
         *,
@@ -446,7 +629,9 @@ class DACBOEnv(gym.Env):
         Parameters
         ----------
         seed : int, optional
-            Random seed.
+            Gymnasium seed for the outer environment and context selector.
+            Explicitly configured inner BO seeds are not replaced by this
+            value.
         options : dict, optional
             Additional reset options.
 
@@ -457,6 +642,23 @@ class DACBOEnv(gym.Env):
         info : dict
             Additional information (empty).
         """
+        # Gymnasium owns this RNG and requires it to be initialized from the
+        # reset seed before any environment-specific reset logic.
+        super().reset(seed=seed)
+
+        # Space discovery may have prepared the first full BO episode. Reuse
+        # it for an unseeded reset or the same outer seed. A new explicit seed
+        # must restart context selection so the result corresponds to it.
+        prepared_result = self._consume_prepared_reset(seed)
+        if prepared_result is not None:
+            return prepared_result
+
+        self._apply_reset_seed(seed)
+
+        self._episode_reward = 0.0
+        self._episode_length = 0
+        self.current_threshold = None
+
         # Reset SMAC instance
         if hasattr(self, "_carps_solver"):
             del self._carps_solver
@@ -465,17 +667,17 @@ class DACBOEnv(gym.Env):
 
         # Get next instance which is a combo of task id and seed
         self.instance = self.get_next_instance()
-        seed, task_id = self.instance
-        if seed is None:
-            seed = self._seeder.integers(low=0, high=2**32 - 1)
-        seed = int(seed)
+        inner_seed, task_id = self.instance
+        if inner_seed is None:
+            inner_seed = self._seeder.integers(low=0, high=2**32 - 1)
+        inner_seed = int(inner_seed)
 
         # Build carps optimizer (wrapper around smac) with appropriate objective function
         optimizer_id = "SMAC3-BlackBoxFacade" if self._optimizer_cfg is None else None
         self._carps_solver = build_carps_optimizer(
             optimizer_id=optimizer_id,
             task_id=task_id,
-            seed=seed,
+            seed=inner_seed,
             optimizer_cfg=self._optimizer_cfg,
         )
         # Get the smac instance
@@ -485,28 +687,40 @@ class DACBOEnv(gym.Env):
         if self._smac_instance._scenario.count_objectives() != 1:
             raise NotImplementedError("Multi-objective not supported.")
 
-        # Setup observation space
-        self._dacbo_observation_space = ObservationSpace(self._smac_instance, self._observation_keys)
-        self._dacbo_observation_space.reset()
-        self.observation_space = self._dacbo_observation_space.space  # gym observation space
-
-        # Setup action space
+        # Build the action controller before structured observations so their
+        # rows and previous-control state describe the installed acquisition
+        # operation. Legacy observations do not depend on this ordering.
         self._action_space = self._action_space_class(smac_instance=self._smac_instance, **self._action_space_kwargs)
         self.action_space = self._action_space.space  # gym action space
-        self.action_space.seed(seed)  # Seed with current seed
+        self.action_space.seed(inner_seed)
         self.last_action = None
+
+        # Setup observation space
+        self._dacbo_observation_space = ObservationSpace(
+            self._smac_instance,
+            self._observation_keys,
+            action_space=self._action_space,
+        )
+        self._dacbo_observation_space.reset()
+        self.observation_space = self._dacbo_observation_space.space  # gym observation space
+        self._validate_action_feature_space()
 
         # If previous_param is in obs, define the observation space for it
         if "previous_param" in self._dacbo_observation_space._keys:  # type: ignore
             self._dacbo_observation_space._observation_space["previous_param"] = self.action_space
-            if isinstance(self._action_space, WEITempoRLActionSpace):
+            if isinstance(
+                self._action_space,
+                WEIDiscreteActionSpace
+                | WEITempoRLActionSpace
+                | PosteriorQuantileActionSpace
+                | PosteriorModeActionSpace,
+            ):
                 self._dacbo_observation_space._observation_space["previous_param"] = Box(low=0, high=1)
 
         # Setup reward
         self._reward = DACBOReward(self._smac_instance, self._reward_keys, self._rho)
 
-        super().reset(seed=seed)
-        self.current_seed = seed
+        self.current_seed = inner_seed
         self.current_task_id = task_id
 
         if not self._evaluation_mode:
@@ -515,15 +729,22 @@ class DACBOEnv(gym.Env):
             # be taken and this might lead to misleading signals.
             # In evaluation, however, the initial design counts towards the total number of trials, controlled by
             # carps optimizer.
-            for _ in self._smac_instance.intensifier.config_selector._initial_design_configs:
+            initial_design_size = len(self._smac_instance.intensifier.config_selector._initial_design_configs)
+            # One ask does not necessarily advance to a new configuration:
+            # intensifiers may re-queue a configuration for additional calls.
+            # Count configurations actually consumed instead of counting asks.
+            while (
+                len(self._smac_instance.runhistory.get_configs()) < initial_design_size
+                and self._smac_instance.runhistory.finished < self._smac_instance._scenario.n_trials
+            ):
                 trial_info = self._smac_instance.ask()
                 _, trial_value = self._smac_instance._runner.run_wrapper(trial_info)
                 self._smac_instance.tell(trial_info, trial_value)
 
-        initial_obs = {
-            obs.name: np.atleast_1d(obs.default).astype(np.float32)
-            for obs in self._dacbo_observation_space._observation_types
-        }
+        # The initial design is already part of the BO state. Returning hard
+        # coded defaults would hide the consumed budget, fitted surrogate and
+        # action consequences from the first policy decision.
+        initial_obs = self._dacbo_observation_space.get_initial_observation()
         initial_obs = self.modify_obs(obs=initial_obs)
 
         return initial_obs, {}

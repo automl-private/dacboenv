@@ -110,9 +110,10 @@ def rollout(env: DACBOEnv, policy: Policy, max_episode_length: int = 100000) -> 
     Returns
     -------
     dict
-        instance, cost_inc, reward_mean, rewards, episode_length
+        Instance, incumbent cost, reward statistics, RL decision count, and
+        total finished BO evaluations.
     """
-    obs, info = env.reset()
+    obs, _info = env.reset()
 
     terminated = False
     truncated = False
@@ -121,7 +122,7 @@ def rollout(env: DACBOEnv, policy: Policy, max_episode_length: int = 100000) -> 
 
     while not (terminated or truncated):
         action = policy(obs)
-        obs, reward, terminated, truncated, info = env.step(action=action)
+        obs, reward, terminated, truncated, _info = env.step(action=action)
         counter += 1
         rewards.append(reward)
         if counter == max_episode_length:
@@ -134,9 +135,11 @@ def rollout(env: DACBOEnv, policy: Policy, max_episode_length: int = 100000) -> 
     return {
         "instance": env.instance,
         "cost_inc": cost_inc,
+        "reward_sum": float(np.sum(rewards)),
         "reward_mean": reward_mean,
         "reward_std": reward_std,
         "episode_length": counter,
+        "bo_evaluations": env.get_n_finished_trials(),
     }
 
 
@@ -182,8 +185,9 @@ class DACBOObjectiveFunction(ObjectiveFunction):
         assert cost in ["episode_length_scaled", "cost_inc", "episode_length_scaled_plus_logregret", "symlogregret"]
         self._cost = cost
 
-        # Create action space and observation space
-        self._env.reset()
+        # Create concrete Gym spaces, but let the first consumer reuse the
+        # initialized episode instead of repeating its initial design.
+        self._env.prepare_for_first_reset()
 
     @abstractmethod
     def make_policy(self, config: Configuration, seed: int | None = None) -> Policy:

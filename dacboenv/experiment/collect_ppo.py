@@ -12,100 +12,156 @@ from rich.progress import track
 
 logger = get_logger("CollectPPO")
 
+_CHECKPOINT_PATTERN = re.compile(r"rl_model_(\d+)_steps\.zip")
+_STRUCTURED_OBSERVATION_IDS = {
+    "structured",
+    "structured-quantile",
+    "structured-af-selection",
+}
 
-# def gather_trained_ppo(rundir: Path | str) -> list[Path]:
-#     """Gathers PPO model paths."""
-#     if isinstance(rundir, str):
-#         rundir = Path(rundir)
-#     model_zips = list(rundir.glob("**/model.zip"))
-#     logger.info(f"Found {len(model_zips)} in {rundir!s}.")
-#     return [p.resolve() for p in model_zips]
+
+def _select_run_model(run_directory: Path) -> Path | None:
+    """Select the model artifact that should represent one training run.
+
+    Validation-selected models are preferred over the final training state.
+    Runs created before validation was added retain the historical final-model
+    and latest-checkpoint fallbacks.
+    """
+    best_model = run_directory / "validation" / "best_model.zip"
+    if best_model.is_file():
+        return best_model
+
+    final_model = run_directory / "model.zip"
+    if final_model.is_file():
+        return final_model
+
+    checkpoints: list[tuple[int, Path]] = []
+    for checkpoint in run_directory.glob("rl_model_*_steps.zip"):
+        match = _CHECKPOINT_PATTERN.fullmatch(checkpoint.name)
+        if match is not None:
+            checkpoints.append((int(match.group(1)), checkpoint))
+    if checkpoints:
+        return max(checkpoints, key=lambda candidate: candidate[0])[1]
+    return None
+
+
+def _find_run_directory(model: Path) -> Path:
+    """Find the Hydra run directory that owns a possibly nested model."""
+    for directory in model.parents:
+        if (directory / ".hydra" / "config.yaml").is_file():
+            return directory
+    raise FileNotFoundError(f"Could not find .hydra/config.yaml in any parent of model {model!s}.")
+
+
+def _uses_structured_reference_free_mdp(cfg: DictConfig) -> bool:
+    """Whether evaluation must retain the structured training MDP semantics."""
+    observation_space_id = str(cfg.get("observation_space_id", ""))
+    reward_id = str(cfg.get("reward_id", ""))
+    reward_keys = {str(key) for key in cfg.dacboenv.get("reward_keys", [])}
+    return observation_space_id in _STRUCTURED_OBSERVATION_IDS and (
+        reward_id == "reference-free-improvement" or "reference_free_improvement" in reward_keys
+    )
+
+
+def _normalization_wrapper(model: Path, run_directory: Path) -> Path | None:
+    """Locate normalization statistics corresponding to a selected model."""
+    checkpoint_match = _CHECKPOINT_PATTERN.fullmatch(model.name)
+    if checkpoint_match is not None:
+        checkpoint_wrapper = run_directory / f"rl_model_vecnormalize_{checkpoint_match.group(1)}_steps.pkl"
+        if checkpoint_wrapper.is_file():
+            return checkpoint_wrapper
+
+    candidates = [model.parent / "vecnormalize.pkl"]
+    if model.parent != run_directory:
+        candidates.append(run_directory / "vecnormalize.pkl")
+    return next((candidate for candidate in candidates if candidate.is_file()), None)
 
 
 def gather_trained_ppo(rundir: Path | str) -> list[Path]:
-    """Gathers PPO model paths recursively, preferring model.zip,
-    otherwise the highest-numbered rl_model_*.zip per directory.
+    """Gather one selected PPO model per Hydra training run.
+
+    Selection prefers ``validation/best_model.zip``, then ``model.zip``, then
+    the highest-numbered ``rl_model_*_steps.zip`` compatibility checkpoint.
     """
     if isinstance(rundir, str):
         rundir = Path(rundir)
 
     model_paths: list[Path] = []
-    pattern = re.compile(r"rl_model_(\d+)_steps\.zip")
+    run_directories = sorted(config.parent.parent for config in rundir.rglob(".hydra/config.yaml"))
+    logger.info(f"Found {len(run_directories)} Hydra run dirs.")
 
-    run_dirs = []
-    for p in rundir.glob("*/*/*/*"):
-        if p.is_dir():
-            for _ in p.glob("*.zip"):
-                run_dirs.append(p)
-                break
-
-    logger.info(f"Found {len(run_dirs)} run dirs ")
-
-    for directory in track(run_dirs, total=len(run_dirs), description="Finding models..."):
-        # 1. Prefer model.zip if it exists
-        model_zip = directory / "model.zip"
-        if model_zip.exists():
-            model_paths.append(model_zip.resolve())
-            logger.info(f"Found {model_zip}")
-            continue
-
-        # 2. Otherwise, find highest-numbered rl_model_*.zip
-        candidates = []
-        for file in directory.glob("rl_model_*.zip"):
-            match = pattern.match(file.name)
-            if match:
-                candidates.append((int(match.group(1)), file))
-
-        if candidates:
-            best_model = max(candidates, key=lambda x: x[0])[1]
-            logger.info(f"Found {best_model}")
-            model_paths.append(best_model.resolve())
+    for directory in track(
+        run_directories,
+        total=len(run_directories),
+        description="Finding models...",
+    ):
+        model = _select_run_model(directory)
+        if model is not None:
+            logger.info(f"Found {model}")
+            model_paths.append(model.resolve())
 
     logger.info(f"Found {len(model_paths)} trained models in {rundir!s}.")
     return model_paths
 
 
-def create_ppo_eval_configs(rundir: Path | str) -> None:
+def _config_output_path(configs_path: Path, cfg: DictConfig) -> Path:
+    """Build a stable optimized-policy config path from run metadata."""
+    optimizer_group = "-".join(str(cfg.optimizer_id).split("-")[:3])
+    return configs_path / optimizer_group / str(cfg.task_id) / f"seed{cfg.seed}.yaml"
+
+
+def create_ppo_eval_configs(
+    rundir: Path | str,
+    configs_path: Path | str | None = None,
+) -> None:
     """Creates PPO configs. To be called on the targeted runs directory from the DACBOENV repo root."""
     if isinstance(rundir, str):
         rundir = Path(rundir)
     models = gather_trained_ppo(rundir)
-    configs_path = Path(__file__).parent.parent / "configs/policy/optimized/"
+    if configs_path is None:
+        configs_path = Path(__file__).parent.parent / "configs/policy/optimized/"
+    elif isinstance(configs_path, str):
+        configs_path = Path(configs_path)
 
     eval_conf = DictConfig({})
     eval_conf.optimizer = {}
     eval_conf.optimizer.policy_class = {"_target_": "dacboenv.policy.sb3_model.ModelPolicy", "_partial_": True}  # type: ignore[attr-defined]
 
     for model in track(models, description="Creating model config...", total=len(models)):
-        cfg_fn = model.parent / ".hydra/config.yaml"
-        cfg = OmegaConf.load(cfg_fn)
+        run_directory = _find_run_directory(model)
+        cfg_fn = run_directory / ".hydra" / "config.yaml"
+        loaded_cfg = OmegaConf.load(cfg_fn)
+        if not isinstance(loaded_cfg, DictConfig):
+            raise TypeError(f"Expected mapping at {cfg_fn!s}, got {type(loaded_cfg).__name__}.")
+        cfg = loaded_cfg
         eval_conf.optimizer.policy_kwargs = {  # type: ignore[attr-defined]
-            "model": str(model.with_suffix("")),
+            # Keep the exact absolute artifact path. SB3 also accepts a path
+            # without ``.zip``, but an explicit existing file is safer when
+            # CARPS evaluates from a different Hydra working directory.
+            "model": str(model),
             "model_class": "stable_baselines3.PPO",
         }
         eval_conf.policy_id = f"{cfg.optimizer_id}--{cfg.task_id}--seed{cfg.seed}"
         eval_conf.optimizer_id = eval_conf.policy_id
-        if model.name == "model.zip":
-            normalization_wrapper_fn = model.parent / "vecnormalize.pkl"
-        else:
-            normalization_wrapper_fn = model.parent / model.name.replace("model_", "model_vecnormalize_")
-            normalization_wrapper_fn = normalization_wrapper_fn.with_suffix(".pkl")
-        if normalization_wrapper_fn.is_file():
-            eval_conf.optimizer.policy_kwargs["normalization_wrapper"] = str(normalization_wrapper_fn)  # type: ignore[attr-defined]
-        elif cfg.experiment.vecnormalize:
-            raise ValueError(
-                f"No normalization wrapper found for model {model!s}. Filename: {normalization_wrapper_fn!s}"
-            )
+        normalization_wrapper = _normalization_wrapper(model, run_directory)
+        if normalization_wrapper is not None:
+            eval_conf.optimizer.policy_kwargs["normalization_wrapper"] = str(normalization_wrapper)  # type: ignore[attr-defined]
+        elif bool(cfg.experiment.get("vecnormalize", False)):
+            raise ValueError(f"No normalization wrapper found for model {model!s}.")
         eval_conf.dacboenv = cfg.dacboenv
         eval_conf.dacboenv.task_ids = ["${task.name}"]
         eval_conf.dacboenv.inner_seeds = ["${seed}"]
-        eval_conf.dacboenv.evaluation_mode = True
+        # Structured reference-free policies must see exactly the MDP used in
+        # training: consume the initial design before the first decision and
+        # keep the potential-difference reward active. Legacy reference-based
+        # evaluation retains its zero-reward compatibility mode.
+        eval_conf.dacboenv.evaluation_mode = not _uses_structured_reference_free_mdp(cfg)
         eval_conf.dacboenv.terminate_after_reference_performance_reached = False
         yaml_str = OmegaConf.to_yaml(eval_conf)
         yaml_str = f"# @package _global_\n\n{yaml_str}"
-        eval_cfg_fn = configs_path / f"{'-'.join(model.parts[-5].split('-')[:3])}/{model.parts[-3]}/seed{cfg.seed}.yaml"
+        eval_cfg_fn = _config_output_path(configs_path, cfg)
         eval_cfg_fn.parent.mkdir(parents=True, exist_ok=True)
-        with open(eval_cfg_fn, "w") as file:
+        with eval_cfg_fn.open("w", encoding="utf-8") as file:
             file.write(yaml_str)
 
 

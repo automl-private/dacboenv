@@ -1,0 +1,8 @@
+# @package _global_
+defaults:
+  # UCB uses the same action strengths and PPO setup as LCB but selects the
+  # mirrored upper posterior quantiles.
+  - structured_ppo_base
+  - override /task: dacboenv_structured_ucb_quantile
+
+baserundir: runs_ucb_quantile

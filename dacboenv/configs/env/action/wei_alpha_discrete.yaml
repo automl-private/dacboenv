@@ -1,0 +1,15 @@
+# @package _global_
+
+action_space_id: WEI-discrete-f${dacboenv.interaction_frequency}
+dacboenv:
+  action_space_class:
+    _target_: dacboenv.env.action.WEIDiscreteActionSpace
+    _partial_: true
+  action_space_kwargs:
+    param_levels: [0.0, 0.25, 0.5, 0.75, 1.0]
+
+  optimizer_cfg:
+    smac_cfg:
+      smac_kwargs:
+        acquisition_function:
+          _target_: dacboenv.utils.weighted_expected_improvement.WEI

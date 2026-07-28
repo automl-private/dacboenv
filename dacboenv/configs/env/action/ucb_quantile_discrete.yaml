@@ -1,0 +1,22 @@
+# @package _global_
+
+# For cost minimization, upper posterior quantiles are pessimistic: maximizing
+# -(mu + kappa * sigma) penalizes posterior uncertainty as the tail grows.
+action_space_id: UCB-quantile-discrete-f${dacboenv.interaction_frequency}
+dacboenv:
+  action_space_class:
+    _target_: dacboenv.env.action.PosteriorQuantileActionSpace
+    _partial_: true
+  action_space_kwargs:
+    quantile_levels: [0.5, 0.75, 0.9, 0.975, 0.995]
+
+  optimizer_cfg:
+    smac_cfg:
+      smac_kwargs:
+        acquisition_function:
+          _target_: dacboenv.utils.confidence_bound.UCB
+          # The policy owns beta through its quantile action.
+          # Start at q=0.9, which is action index 2.
+          beta: 1.642374415149816
+          update_beta: false
+          nu: 1.0

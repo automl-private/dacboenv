@@ -1,0 +1,30 @@
+# @package _global_
+defaults:
+  - mlp
+
+optimizer_id: PPO-Structured-MLP
+optimizer:
+  # SB3 flattens the Dict entries. WEI/quantile policies have 33 inputs;
+  # AF-selection policies have 63 because their rows include a five-way
+  # one-hot mode identity and rank-normalized consequence features.
+  # Actor and critic layouts remain independently overrideable from the CLI.
+  policy_kwargs:
+    net_arch:
+      pi: [64, 64, 64]
+      vf: [64, 64, 64]
+    share_features_extractor: false
+  learning_rate: 2.0e-4
+  n_steps: 64
+  # In SB3 this is the PPO minibatch size. 32 envs x 64 steps yield the
+  # 2,048-transition rollout batch from the training design.
+  batch_size: 256
+  n_epochs: 5
+  # The reference-free potential reward telescopes for undiscounted returns.
+  gamma: 1.0
+  gae_lambda: 0.95
+  clip_range: 0.15
+  clip_range_vf: null
+  ent_coef: 0.01
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  target_kl: 0.015

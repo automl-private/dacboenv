@@ -1,0 +1,22 @@
+# @package _global_
+
+# For cost minimization, lower posterior quantiles are optimistic: maximizing
+# -(mu - kappa * sigma) increases exploration as the tail probability shrinks.
+action_space_id: LCB-quantile-discrete-f${dacboenv.interaction_frequency}
+dacboenv:
+  action_space_class:
+    _target_: dacboenv.env.action.PosteriorQuantileActionSpace
+    _partial_: true
+  action_space_kwargs:
+    quantile_levels: [0.5, 0.25, 0.1, 0.025, 0.005]
+
+  optimizer_cfg:
+    smac_cfg:
+      smac_kwargs:
+        acquisition_function:
+          _target_: dacboenv.utils.confidence_bound.LCB
+          # The policy owns beta through its quantile action.
+          # Start at q=0.1, which is action index 2.
+          beta: 1.642374415149816
+          update_beta: false
+          nu: 1.0

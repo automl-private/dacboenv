@@ -1,0 +1,4 @@
+# @package _global_
+defaults:
+  - af_selection_ppo_base
+  - /env/interaction_freq: f1

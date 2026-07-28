@@ -2,17 +2,120 @@
 
 from __future__ import annotations
 
+import math
+import re
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pandas as pd
 from carps.utils.env_vars import CARPS_ROOT
 from carps.utils.running import make_optimizer, make_task
-from omegaconf import OmegaConf
+from ConfigSpace import ConfigurationSpace, Float
+from omegaconf import DictConfig, OmegaConf
 
 if TYPE_CHECKING:
     from carps.optimizers.optimizer import Optimizer
-    from omegaconf import DictConfig
+
+_BBOB_TASK_ID = re.compile(r"^bbob/(?P<dimension>\d+)/(?P<function_id>\d+)/(?P<instance_id>\d+)$")
+_BBOB_MAX_FUNCTION_ID = 24
+
+
+def make_bbob_configuration_space(dimension: int) -> ConfigurationSpace:
+    """Create the continuous ``[-5, 5]^d`` BBOB configuration space."""
+    if not isinstance(dimension, int) or isinstance(dimension, bool):
+        raise TypeError(f"BBOB dimension must be an integer, got {dimension!r}.")
+    if dimension <= 0:
+        raise ValueError(f"BBOB dimension must be > 0, got {dimension}.")
+
+    configuration_space = ConfigurationSpace()
+    configuration_space.add([Float(name=f"x{i}", bounds=(-5.0, 5.0)) for i in range(dimension)])
+    return configuration_space
+
+
+def get_bbob_n_trials(dimension: int) -> int:
+    """Return the CARP-S BBOB budget for one dimension."""
+    if not isinstance(dimension, int) or isinstance(dimension, bool):
+        raise TypeError(f"BBOB dimension must be an integer, got {dimension!r}.")
+    if dimension <= 0:
+        raise ValueError(f"BBOB dimension must be > 0, got {dimension}.")
+    return math.ceil(20 + 40 * math.sqrt(dimension))
+
+
+def _yaml_scalar(value: str) -> str:
+    """Read the simple scalar forms used by CARPS config identifiers."""
+    return value.split(" #", maxsplit=1)[0].strip().strip("'\"")
+
+
+def _config_id_from_text(text: str, id_column: str) -> str | None:
+    """Extract a CARPS ID without resolving the complete Hydra config."""
+    config_id: str | None = None
+    task_name: str | None = None
+    in_task_node = False
+
+    for line in text.splitlines():
+        if line.startswith(f"{id_column}:"):
+            config_id = _yaml_scalar(line.split(":", maxsplit=1)[1])
+            continue
+
+        if id_column != "task_id":
+            continue
+        if line.startswith("task:"):
+            in_task_node = True
+            continue
+        if in_task_node and line and not line.startswith((" ", "#")):
+            in_task_node = False
+        if in_task_node and line.startswith("  name:"):
+            task_name = _yaml_scalar(line.split(":", maxsplit=1)[1])
+
+    if config_id == "${task.name}":
+        return task_name
+    if config_id is None or config_id.startswith("${"):
+        return None
+    return config_id
+
+
+@lru_cache(maxsize=2)
+def get_carps_config_index(group_name: str) -> pd.DataFrame:
+    """Return a read-only CARPS config index across CARPS releases.
+
+    CARPS 1.1 moved its generated index to a user-cache file, which may not
+    exist (and may not be writable on a cluster node). Older releases shipped
+    ``configs/<group>/index.csv``. Prefer that file when present; otherwise
+    build the same table in memory from packaged YAML files and cache it for
+    this process.
+    """
+    id_column_by_group = {
+        "task": "task_id",
+        "optimizer": "optimizer_id",
+    }
+    if group_name not in id_column_by_group:
+        raise ValueError(f"group_name must be one of {sorted(id_column_by_group)}, got {group_name!r}.")
+
+    config_root = Path(CARPS_ROOT) / "configs" / group_name
+    legacy_index = config_root / "index.csv"
+    if legacy_index.is_file():
+        return pd.read_csv(legacy_index)
+
+    id_column = id_column_by_group[group_name]
+    rows: list[dict[str, str]] = []
+    for config_path in sorted(config_root.rglob("*.yaml")):
+        config_id = _config_id_from_text(
+            config_path.read_text(encoding="utf-8"),
+            id_column,
+        )
+        if config_id is None:
+            continue
+        rows.append(
+            {
+                "config_fn": str(config_path),
+                id_column: config_id,
+            }
+        )
+
+    if not rows:
+        raise FileNotFoundError(f"Could not index CARPS {group_name} configs below {config_root}.")
+    return pd.DataFrame(rows)
 
 
 def load_optimizer_config(optimizer_id: str) -> DictConfig:
@@ -33,11 +136,12 @@ def load_optimizer_config(optimizer_id: str) -> DictConfig:
     if optimizer_id.endswith(".yaml"):
         config_fn = optimizer_id
     else:
-        index_fn = CARPS_ROOT / "configs/optimizer/index.csv"
-        df = pd.read_csv(index_fn)  # noqa: PD901
+        df = get_carps_config_index("optimizer")
         ids = [optimizer_id]
-    config_fn = df.set_index("optimizer_id").loc[ids].reset_index().iloc[0]["config_fn"]
+        config_fn = df.set_index("optimizer_id").loc[ids].reset_index().iloc[0]["config_fn"]
     cfg = OmegaConf.load(config_fn)
+    if not isinstance(cfg, DictConfig):
+        raise TypeError(f"Expected a mapping in optimizer config {config_fn}.")
     return maybe_add_defaults(cfg, config_fn)
 
 
@@ -66,10 +170,101 @@ def maybe_add_defaults(cfg: DictConfig, cfg_fn: str) -> DictConfig:
     defaults = cfg.get("defaults", None)
     if defaults is not None:
         if list(cfg.defaults) == ["base"]:
-            cfg = OmegaConf.merge(cfg, OmegaConf.load(Path(cfg_fn).parent / "base.yaml"))
+            base_cfg = OmegaConf.load(Path(cfg_fn).parent / "base.yaml")
+            merged_cfg = OmegaConf.merge(base_cfg, cfg)
+            if not isinstance(merged_cfg, DictConfig):
+                raise TypeError(f"Expected mapping configs while merging defaults for {cfg_fn}.")
+            cfg = merged_cfg
             del cfg.defaults
         else:
             raise ValueError(f"Can only handle defaults=['base'], but got {cfg.defaults}")
+    return cfg
+
+
+def _build_bbob_task_config(task_id: str) -> DictConfig:
+    """Build a CARPS BBOB task for any positive dimension.
+
+    CARPS distributions commonly pre-generate only dimensions 2, 4, 8, 16,
+    and 32. DACBO's training curriculum also uses dimensions 3 and 5, so
+    constructing the same task schema dynamically avoids depending on a
+    generated task index.
+    """
+    match = _BBOB_TASK_ID.fullmatch(task_id)
+    if match is None:
+        raise ValueError(f"Invalid BBOB task id: {task_id!r}")
+
+    dimension = int(match.group("dimension"))
+    function_id = int(match.group("function_id"))
+    instance_id = int(match.group("instance_id"))
+    if not 1 <= function_id <= _BBOB_MAX_FUNCTION_ID:
+        raise ValueError(f"BBOB function id must be in [1, {_BBOB_MAX_FUNCTION_ID}], got {function_id}.")
+
+    configuration_space = make_bbob_configuration_space(dimension)
+    n_trials = get_bbob_n_trials(dimension)
+
+    cfg = OmegaConf.create(
+        {
+            "benchmark_id": "BBOB",
+            "task_id": "${task.name}",
+            "task": {
+                "_target_": "carps.utils.task.Task",
+                "name": task_id,
+                "seed": "${seed}",
+                "objective_function": {
+                    "_target_": "carps.objective_functions.bbob.BBOBObjectiveFunction",
+                    "dimension": dimension,
+                    "fid": function_id,
+                    "instance": instance_id,
+                    "seed": "${seed}",
+                },
+                "input_space": {
+                    "_target_": "carps.utils.task.InputSpace",
+                    "configuration_space": {
+                        "_target_": ("ConfigSpace.configuration_space.ConfigurationSpace.from_serialized_dict"),
+                        "_convert_": "object",
+                        "d": configuration_space.to_serialized_dict(),
+                    },
+                    "fidelity_space": {
+                        "_target_": "carps.utils.task.FidelitySpace",
+                        "is_multifidelity": False,
+                        "fidelity_type": None,
+                        "min_fidelity": None,
+                        "max_fidelity": None,
+                    },
+                    "instance_space": None,
+                },
+                "output_space": {
+                    "_target_": "carps.utils.task.OutputSpace",
+                    "n_objectives": 1,
+                    "objectives": ["quality"],
+                },
+                "optimization_resources": {
+                    "_target_": "carps.utils.task.OptimizationResources",
+                    "n_trials": n_trials,
+                    "time_budget": None,
+                    "n_workers": 1,
+                },
+                "metadata": {
+                    "_target_": "carps.utils.task.TaskMetadata",
+                    "has_constraints": False,
+                    "domain": "synthetic",
+                    "objective_function_approximation": "real",
+                    "has_virtual_time": False,
+                    "deterministic": True,
+                    "dimensions": dimension,
+                    "search_space_n_categoricals": 0,
+                    "search_space_n_ordinals": 0,
+                    "search_space_n_integers": 0,
+                    "search_space_n_floats": dimension,
+                    "search_space_has_conditionals": False,
+                    "search_space_has_forbiddens": False,
+                    "search_space_has_priors": False,
+                },
+            },
+        }
+    )
+    if not isinstance(cfg, DictConfig):
+        raise TypeError("Expected the generated BBOB task to be a mapping.")
     return cfg
 
 
@@ -86,13 +281,17 @@ def get_task_config(task_id: str) -> DictConfig:
     DictConfig
         The config with the node task.
     """
-    task_index_fn = CARPS_ROOT / "configs/task/index.csv"
-    df = pd.read_csv(task_index_fn)  # noqa: PD901
+    if _BBOB_TASK_ID.fullmatch(task_id):
+        return _build_bbob_task_config(task_id)
+
+    df = get_carps_config_index("task")
     ids = [task_id]
     # TODO raise proper error if task_id not in index. Can happen when task comes from external module.
     # Find smart registering method.
     config_fn = df.set_index("task_id").loc[ids].reset_index().iloc[0]["config_fn"]
     cfg = OmegaConf.load(config_fn)
+    if not isinstance(cfg, DictConfig):
+        raise TypeError(f"Expected a mapping in task config {config_fn}.")
     return maybe_add_defaults(cfg, config_fn)
 
 

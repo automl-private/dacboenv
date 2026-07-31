@@ -27,6 +27,9 @@ Generation-time environment variables:
                             `lcb_quantile`, `ucb_quantile`,
                             `posterior_quantile` (LCB alias), or
                             `af_selection`.
+  DACBO_POLICY_REWARD       Reward used for PPO training. One of
+                            `reference_free_improvement` (default) or
+                            `true_regret_improvement` (BBOB only).
   DACBO_PYTHON              Python executable. Default: .env/bin/python when
                             present, otherwise python from PATH.
   DACBO_OVERWRITE_RUN_SCRIPT=1
@@ -61,7 +64,6 @@ mkdir -p "${eval_results_input}"
 eval_results="$(cd "${eval_results_input}" && pwd -P)"
 generated_config_root="${eval_results}/config"
 generated_policy_root="${generated_config_root}/policy/optimized"
-generated_task_root="${generated_config_root}/task/BBOB"
 mkdir -p "${generated_policy_root}"
 
 run_script="${3:-${eval_results}/run_carps_eval.sh}"
@@ -93,28 +95,43 @@ python_bin="$(cd "$(dirname "${python_bin}")" && pwd -P)/$(basename "${python_bi
 read -r -a policy_seeds <<< "${DACBO_POLICY_SEEDS:-0 1 2 3 4 5 6 7 8 9}"
 read -r -a policy_frequencies <<< "${DACBO_POLICY_FREQUENCIES:-1 5 10}"
 policy_family="${DACBO_POLICY_FAMILY:-wei}"
+policy_reward="${DACBO_POLICY_REWARD:-reference_free_improvement}"
 if (( ${#policy_seeds[@]} == 0 || ${#policy_frequencies[@]} == 0 )); then
     echo "At least one policy seed and interaction frequency are required." >&2
     exit 1
 fi
 
+case "${policy_reward}" in
+    reference_free_improvement)
+        policy_reward_id="reference-free-improvement"
+        ;;
+    true_regret_improvement)
+        policy_reward_id="true-regret-improvement"
+        ;;
+    *)
+        echo "Unknown DACBO_POLICY_REWARD=${policy_reward}." >&2
+        echo "Expected reference_free_improvement or true_regret_improvement." >&2
+        exit 2
+        ;;
+esac
+
 case "${policy_family}" in
     wei)
         task_prefix="dacbo_Ccost_inc_AWEI-discrete-f"
-        task_suffix="_Sstructured_Rreference-free-improvement_Ibbob-train-diverse"
+        task_suffix="_Sstructured_R${policy_reward_id}_Ibbob-train-diverse"
         ;;
     lcb_quantile|posterior_quantile)
         policy_family="lcb_quantile"
         task_prefix="dacbo_Ccost_inc_ALCB-quantile-discrete-f"
-        task_suffix="_Sstructured-quantile_Rreference-free-improvement_Ibbob-train-diverse"
+        task_suffix="_Sstructured-quantile_R${policy_reward_id}_Ibbob-train-diverse"
         ;;
     ucb_quantile)
         task_prefix="dacbo_Ccost_inc_AUCB-quantile-discrete-f"
-        task_suffix="_Sstructured-quantile_Rreference-free-improvement_Ibbob-train-diverse"
+        task_suffix="_Sstructured-quantile_R${policy_reward_id}_Ibbob-train-diverse"
         ;;
     af_selection)
         task_prefix="dacbo_Ccost_inc_AAF-select-f"
-        task_suffix="_Sstructured-af-selection_Rreference-free-improvement_Ibbob-train-diverse"
+        task_suffix="_Sstructured-af-selection_R${policy_reward_id}_Ibbob-train-diverse"
         ;;
     *)
         echo "Unknown DACBO_POLICY_FAMILY=${policy_family}." >&2
@@ -169,115 +186,6 @@ for frequency in "${policy_frequencies[@]}"; do
     done
 done
 
-# CARP-S 1.1.0 ships native BBOB task choices for dimensions 2, 4, 8, 16,
-# and 32. The PPO training set also contains dimension 5, so generate the six
-# missing choices into the evaluation bundle using the same standalone Task
-# schema as CARP-S's packaged cfg_<dimension>_<function>_<instance>.yaml files.
-mkdir -p "${generated_task_root}"
-write_bbob_5d_task_config() {
-    local function_id="$1"
-    local task_config="${generated_task_root}/cfg_5_${function_id}_0.yaml"
-
-    cat > "${task_config}" <<EOF
-# @package _global_
-benchmark_id: BBOB
-task_id: \${task.name}
-task:
-  _target_: carps.utils.task.Task
-  name: bbob/5/${function_id}/0
-  seed: \${seed}
-  objective_function:
-    _target_: carps.objective_functions.bbob.BBOBObjectiveFunction
-    dimension: 5
-    fid: ${function_id}
-    instance: 0
-    seed: \${seed}
-  input_space:
-    _target_: carps.utils.task.InputSpace
-    configuration_space:
-      _target_: ConfigSpace.configuration_space.ConfigurationSpace.from_serialized_dict
-      _convert_: object
-      d:
-        name: null
-        hyperparameters:
-        - type: uniform_float
-          name: x0
-          lower: -5.0
-          upper: 5.0
-          default_value: 0.0
-          log: false
-          meta: null
-        - type: uniform_float
-          name: x1
-          lower: -5.0
-          upper: 5.0
-          default_value: 0.0
-          log: false
-          meta: null
-        - type: uniform_float
-          name: x2
-          lower: -5.0
-          upper: 5.0
-          default_value: 0.0
-          log: false
-          meta: null
-        - type: uniform_float
-          name: x3
-          lower: -5.0
-          upper: 5.0
-          default_value: 0.0
-          log: false
-          meta: null
-        - type: uniform_float
-          name: x4
-          lower: -5.0
-          upper: 5.0
-          default_value: 0.0
-          log: false
-          meta: null
-        conditions: []
-        forbiddens: []
-        python_module_version: 1.2.0
-        format_version: 0.4
-    fidelity_space:
-      _target_: carps.utils.task.FidelitySpace
-      is_multifidelity: false
-      fidelity_type: null
-      min_fidelity: null
-      max_fidelity: null
-    instance_space: null
-  output_space:
-    _target_: carps.utils.task.OutputSpace
-    n_objectives: 1
-    objectives:
-    - quality
-  optimization_resources:
-    _target_: carps.utils.task.OptimizationResources
-    n_trials: 110
-    time_budget: null
-    n_workers: 1
-  metadata:
-    _target_: carps.utils.task.TaskMetadata
-    has_constraints: false
-    domain: synthetic
-    objective_function_approximation: real
-    has_virtual_time: false
-    deterministic: true
-    dimensions: 5
-    search_space_n_categoricals: 0
-    search_space_n_ordinals: 0
-    search_space_n_integers: 0
-    search_space_n_floats: 5
-    search_space_has_conditionals: false
-    search_space_has_forbiddens: false
-    search_space_has_priors: false
-EOF
-}
-
-for function_id in 3 6 8 13 17 21; do
-    write_bbob_5d_task_config "${function_id}"
-done
-
 # This creates the CARP-S policy bridge inside the evaluation bundle. It copies
 # each training MDP definition and stores an absolute selected-model path in
 # the generated policy YAML.
@@ -311,6 +219,7 @@ done
 # PPO results: ${ppo_results}
 # CARP-S results: ${eval_results}
 # Controller family: ${policy_family}
+# PPO training reward: ${policy_reward}
 #
 # Usage:
 #   bash ${run_script} [training|bbob_2d_8d|both] [METHODS]
@@ -339,12 +248,11 @@ done
 #   Slurm starts every selected method/suite Hydra launcher before waiting.
 #   Array parallelism is per launcher, not a global concurrency cap.
 #
-# The exact training TASKS are dimensions 2 and 5, functions
+# The exact training tasks are dimensions 2 and 4, functions
 # 3,6,8,13,17,21, BBOB instance 0. Ten default evaluation seeds include the
 # original four training seeds (0..3) plus 4..9. The broad suite is all
 # functions 1..24 at dimensions 2 and 8. All are selected through CARP-S's
-# native +task/BBOB=cfg_* config group. Because CARP-S does not package 5D
-# BBOB choices, this bundle contains six equivalent standalone cfg_5_*_0 files.
+# native +task/BBOB=cfg_* config group.
 
 set -euo pipefail
 set -f
@@ -359,6 +267,7 @@ repository_root=$(printf '%q' "${repository_root}")
 python_bin=$(printf '%q' "${python_bin}")
 eval_root=$(printf '%q' "${eval_results}")
 generated_config_root=$(printf '%q' "${generated_config_root}")
+evaluation_reward_config=$(printf '%q' "${policy_reward}")
 
 policy_entries=(
 EOF
@@ -675,7 +584,7 @@ run_random_configs() {
             "+env/action=wei_alpha_discrete" \
             "+env/interaction_freq=f${frequency}" \
             "+env/obs=structured" \
-            "+env/reward=reference_free_improvement" \
+            "+env/reward=${evaluation_reward_config}" \
             "+policy=random" \
             "optimizer_id=${optimizer_id}" \
             "policy_id=${optimizer_id}" \
@@ -704,7 +613,7 @@ run_static_configs() {
                 "+env/action=wei_alpha_discrete" \
                 "+env/interaction_freq=f${frequency}" \
                 "+env/obs=structured" \
-                "+env/reward=reference_free_improvement" \
+                "+env/reward=${evaluation_reward_config}" \
                 "+policy/static/wei_discrete=${static_choice}" \
                 "optimizer_id=${optimizer_id}" \
                 "policy_id=${optimizer_id}" \
@@ -728,7 +637,7 @@ run_smac_config() {
         "+env/action=wei_alpha_discrete" \
         "+env/interaction_freq=f1" \
         "+env/obs=structured" \
-        "+env/reward=reference_free_improvement" \
+        "+env/reward=${evaluation_reward_config}" \
         "+policy=defaultaction" \
         "dacboenv.evaluation_mode=false" \
         "dacboenv.terminate_after_reference_performance_reached=false"
@@ -751,7 +660,7 @@ run_suite() {
     fi
 }
 
-training_task_configs="cfg_2_3_0,cfg_2_6_0,cfg_2_8_0,cfg_2_13_0,cfg_2_17_0,cfg_2_21_0,cfg_5_3_0,cfg_5_6_0,cfg_5_8_0,cfg_5_13_0,cfg_5_17_0,cfg_5_21_0"
+training_task_configs="cfg_2_3_0,cfg_2_6_0,cfg_2_8_0,cfg_2_13_0,cfg_2_17_0,cfg_2_21_0,cfg_4_3_0,cfg_4_6_0,cfg_4_8_0,cfg_4_13_0,cfg_4_17_0,cfg_4_21_0"
 broad_task_config_values=()
 for dimension in 2 8; do
     for function_id in {1..24}; do

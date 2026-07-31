@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 from dacboenv.experiment.collect_ppo import (
     _uses_structured_reference_free_mdp,
+    _uses_structured_training_mdp,
     create_ppo_eval_configs,
     gather_trained_ppo,
 )
@@ -67,20 +68,23 @@ def _write_run_config(
     *,
     structured: bool = True,
     vecnormalize: bool = False,
+    true_regret: bool = False,
 ) -> DictConfig:
     """Create the minimal saved Hydra config consumed by the collector."""
+    structured_reward_id = "true-regret-improvement" if true_regret else "reference-free-improvement"
+    structured_reward_key = "true_regret_improvement" if true_regret else "reference_free_improvement"
     cfg = OmegaConf.create(
         {
             "optimizer_id": "PPO-Structured-MLP",
             "task_id": "structured-task",
             "seed": 7,
             "observation_space_id": "structured" if structured else "sawei",
-            "reward_id": ("reference-free-improvement" if structured else "symlogregret-reference"),
+            "reward_id": (structured_reward_id if structured or true_regret else "symlogregret-reference"),
             "experiment": {"vecnormalize": vecnormalize},
             "dacboenv": {
                 "task_ids": ["training-task"],
                 "inner_seeds": [0],
-                "reward_keys": (["reference_free_improvement"] if structured else ["symlogregret"]),
+                "reward_keys": ([structured_reward_key] if structured or true_regret else ["symlogregret"]),
             },
         }
     )
@@ -124,12 +128,23 @@ def test_gather_prefers_validation_model_with_legacy_fallbacks(
     }
 
 
+@pytest.mark.parametrize(
+    ("structured", "true_regret"),
+    [(True, False), (True, True), (False, True)],
+)
 def test_create_eval_config_uses_best_model_and_training_mdp_semantics(
     tmp_path: Path,
+    structured: bool,
+    true_regret: bool,
 ) -> None:
-    """Structured export loads the validation winner without changing its MDP."""
+    """Potential rewards export without changing training MDP timing."""
     run_directory = tmp_path / "runs" / "PPO" / "DACBO" / "task" / "7"
-    _write_run_config(run_directory, vecnormalize=True)
+    _write_run_config(
+        run_directory,
+        structured=structured,
+        vecnormalize=True,
+        true_regret=true_regret,
+    )
     best_model = run_directory / "validation" / "best_model.zip"
     best_model.parent.mkdir()
     best_model.touch()
@@ -196,11 +211,15 @@ def test_generated_policy_config_loads_through_carps_policy_factory(
         ("structured", ["reference_free_improvement"], True),
         ("structured-quantile", ["reference_free_improvement"], True),
         ("structured-af-selection", ["reference_free_improvement"], True),
+        ("structured", ["true_regret_improvement"], True),
+        ("structured-quantile", ["true_regret_improvement"], True),
+        ("structured-af-selection", ["true_regret_improvement"], True),
         ("structured", ["symlogregret"], False),
         ("sawei", ["reference_free_improvement"], False),
+        ("sawei", ["true_regret_improvement"], True),
     ],
 )
-def test_structured_reference_free_detection_is_narrow(
+def test_structured_training_mdp_detection_is_narrow(
     observation_space_id: str,
     reward_keys: list[str],
     expected: bool,
@@ -214,4 +233,5 @@ def test_structured_reference_free_detection_is_narrow(
         }
     )
 
+    assert _uses_structured_training_mdp(cfg) is expected
     assert _uses_structured_reference_free_mdp(cfg) is expected

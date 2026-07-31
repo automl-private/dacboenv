@@ -18,6 +18,10 @@ _STRUCTURED_OBSERVATION_IDS = {
     "structured-quantile",
     "structured-af-selection",
 }
+_REFERENCE_FREE_REWARD_IDS = {"reference-free-improvement"}
+_REFERENCE_FREE_REWARD_KEYS = {"reference_free_improvement"}
+_TRUE_REGRET_REWARD_IDS = {"true-regret-improvement"}
+_TRUE_REGRET_REWARD_KEYS = {"true_regret_improvement"}
 
 
 def _select_run_model(run_directory: Path) -> Path | None:
@@ -53,14 +57,21 @@ def _find_run_directory(model: Path) -> Path:
     raise FileNotFoundError(f"Could not find .hydra/config.yaml in any parent of model {model!s}.")
 
 
-def _uses_structured_reference_free_mdp(cfg: DictConfig) -> bool:
-    """Whether evaluation must retain the structured training MDP semantics."""
+def _uses_structured_training_mdp(cfg: DictConfig) -> bool:
+    """Whether evaluation must retain training-time reward and reset timing."""
     observation_space_id = str(cfg.get("observation_space_id", ""))
     reward_id = str(cfg.get("reward_id", ""))
     reward_keys = {str(key) for key in cfg.dacboenv.get("reward_keys", [])}
-    return observation_space_id in _STRUCTURED_OBSERVATION_IDS and (
-        reward_id == "reference-free-improvement" or "reference_free_improvement" in reward_keys
+    uses_true_regret = reward_id in _TRUE_REGRET_REWARD_IDS or bool(reward_keys.intersection(_TRUE_REGRET_REWARD_KEYS))
+    uses_structured_reference_free = observation_space_id in _STRUCTURED_OBSERVATION_IDS and (
+        reward_id in _REFERENCE_FREE_REWARD_IDS or bool(reward_keys.intersection(_REFERENCE_FREE_REWARD_KEYS))
     )
+    return uses_true_regret or uses_structured_reference_free
+
+
+def _uses_structured_reference_free_mdp(cfg: DictConfig) -> bool:
+    """Compatibility alias for the former reference-free-only detector."""
+    return _uses_structured_training_mdp(cfg)
 
 
 def _normalization_wrapper(model: Path, run_directory: Path) -> Path | None:
@@ -151,11 +162,12 @@ def create_ppo_eval_configs(
         eval_conf.dacboenv = cfg.dacboenv
         eval_conf.dacboenv.task_ids = ["${task.name}"]
         eval_conf.dacboenv.inner_seeds = ["${seed}"]
-        # Structured reference-free policies must see exactly the MDP used in
-        # training: consume the initial design before the first decision and
-        # keep the potential-difference reward active. Legacy reference-based
-        # evaluation retains its zero-reward compatibility mode.
-        eval_conf.dacboenv.evaluation_mode = not _uses_structured_reference_free_mdp(cfg)
+        # Structured potential-reward policies must see exactly the MDP used
+        # in training: consume the initial design before the first decision
+        # and keep the per-step potential difference active. Legacy
+        # reference-based evaluation retains its zero-reward compatibility
+        # mode.
+        eval_conf.dacboenv.evaluation_mode = not _uses_structured_training_mdp(cfg)
         eval_conf.dacboenv.terminate_after_reference_performance_reached = False
         yaml_str = OmegaConf.to_yaml(eval_conf)
         yaml_str = f"# @package _global_\n\n{yaml_str}"

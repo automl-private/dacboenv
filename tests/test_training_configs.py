@@ -17,7 +17,7 @@ from dacboenv.experiment import (
     ppo_norm_alphanet,
 )
 from dacboenv.experiment.ppo import resolve_training_schedule
-from dacboenv.utils.carps_optimizer import get_task_config
+from dacboenv.utils.carps_optimizer import get_task_config, is_bbob_task_id
 from gymnasium import Env
 from gymnasium.spaces import Box, Dict, Discrete
 from hydra import compose, initialize_config_module
@@ -223,6 +223,35 @@ def test_structured_controller_training_matrices_compose(
             assert acquisition_cfg.nu == pytest.approx(1.0)
 
 
+@pytest.mark.parametrize(
+    "training_prefix",
+    [
+        "structured_ppo",
+        "lcb_quantile_ppo",
+        "ucb_quantile_ppo",
+        "af_selection_ppo",
+    ],
+)
+@pytest.mark.parametrize("frequency", [1, 5, 10])
+def test_true_regret_training_override_composes_for_every_controller(
+    training_prefix: str,
+    frequency: int,
+) -> None:
+    """The BBOB-only reward is usable across the structured PPO matrix."""
+    cfg = compose_config(
+        f"+training={training_prefix}_f{frequency}",
+        "+env/reward=true_regret_improvement",
+    )
+
+    assert cfg.reward_id == "true-regret-improvement"
+    assert list(cfg.dacboenv.reward_keys) == ["true_regret_improvement"]
+    assert "_Rtrue-regret-improvement_" in cfg.task_id
+    assert all(is_bbob_task_id(str(task_id)) for task_id in cfg.dacboenv.task_ids)
+    assert all(is_bbob_task_id(str(task_id)) for task_id in cfg.experiment.validation.task_ids)
+    assert cfg.optimizer.gamma == pytest.approx(1.0)
+    assert cfg.experiment.vecnormalize is False
+
+
 def test_training_random_selector_does_not_inherit_round_robin_offset() -> None:
     """The composed worker selector is directly instantiable as configured."""
     cfg = compose_config("+training=structured_ppo_f1")
@@ -348,16 +377,8 @@ def test_new_controller_spaces_build_five_action_sb3_policies(
         share_features_extractor=False,
     )
 
-    actor_linears = [
-        module
-        for module in policy.mlp_extractor.policy_net
-        if isinstance(module, nn.Linear)
-    ]
-    critic_linears = [
-        module
-        for module in policy.mlp_extractor.value_net
-        if isinstance(module, nn.Linear)
-    ]
+    actor_linears = [module for module in policy.mlp_extractor.policy_net if isinstance(module, nn.Linear)]
+    critic_linears = [module for module in policy.mlp_extractor.value_net if isinstance(module, nn.Linear)]
     assert actor_linears[0].in_features == flat_width
     assert critic_linears[0].in_features == flat_width
     assert policy.action_net.out_features == 5
@@ -625,7 +646,7 @@ def test_baseline_test_override_covers_every_final_context() -> None:
     ("task_id", "dimension", "n_trials"),
     [
         ("bbob/3/2/1", 3, math.ceil(20 + 40 * math.sqrt(3))),
-        ("bbob/5/21/0", 5, math.ceil(20 + 40 * math.sqrt(5))),
+        ("bbob/7/21/0", 7, math.ceil(20 + 40 * math.sqrt(7))),
     ],
 )
 def test_chat_bbob_dimensions_are_built_without_generated_carps_configs(
@@ -633,7 +654,7 @@ def test_chat_bbob_dimensions_are_built_without_generated_carps_configs(
     dimension: int,
     n_trials: int,
 ) -> None:
-    """Dimensions 3 and 5 work even though CARPS pre-generates powers of two."""
+    """Dimensions 3 and 7 work even though CARPS pre-generates powers of two."""
     cfg = get_task_config(task_id)
 
     assert cfg.task.metadata.dimensions == dimension

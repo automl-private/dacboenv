@@ -46,9 +46,11 @@ from dacboenv.env.observation import (
 )
 from dacboenv.env.reward import (
     LEGACY_REWARDS,
+    TRUE_REGRET_EPSILON,
     DACBOReward,
     _initial_design_location_and_scale,
     calc_reference_free_improvement,
+    calc_true_regret_improvement,
 )
 from dacboenv.features.signal.ubr import model_fitted
 from dacboenv.optimizer import DACBOEnvOptimizer
@@ -104,6 +106,17 @@ def make_fake_smbo(
 def potential(incumbent: float, location: float, scale: float) -> float:
     """Evaluate the reference-free reward potential."""
     return float(-np.arcsinh((incumbent - location) / scale))
+
+
+def true_regret_potential(
+    incumbent: float,
+    initial_incumbent: float,
+    objective_minimum: float,
+) -> float:
+    """Evaluate the scaled true-regret potential used during BBOB training."""
+    regret_scale = max(initial_incumbent - objective_minimum, TRUE_REGRET_EPSILON)
+    normalized_regret = max(incumbent - objective_minimum, 0.0) / regret_scale
+    return float(-np.log(normalized_regret + TRUE_REGRET_EPSILON) / -np.log(TRUE_REGRET_EPSILON))
 
 
 def test_reference_free_reward_is_positive_affine_invariant() -> None:
@@ -175,6 +188,189 @@ def test_reference_free_reward_ignores_failed_finite_crash_costs() -> None:
     smbo.runhistory.finished = 4
 
     assert calc_reference_free_improvement(smbo) > 0.0
+
+
+def test_true_regret_reward_matches_bounded_log_ratio() -> None:
+    """The implementation follows the plan's scaled natural-log formula."""
+    objective_minimum = 2.0
+    initial_costs = [8.0, 12.0]
+    later_costs = [7.0, 5.0, 2.0]
+    costs = initial_costs.copy()
+    rewards = []
+    for cost in later_costs:
+        costs.append(cost)
+        rewards.append(
+            calc_true_regret_improvement(
+                make_fake_smbo(costs, n_initial=len(initial_costs)),
+                objective_minimum,
+            )
+        )
+
+    assert rewards == pytest.approx(
+        [0.0131968599, 0.0369747337, 0.9498284788],
+    )
+
+
+def test_true_regret_reward_telescopes_to_final_potential() -> None:
+    """Summed transition rewards equal final minus initial potential."""
+    objective_minimum = -3.0
+    initial_costs = [10.0, 8.0, 12.0]
+    later_costs = [9.0, 7.0, np.nan, 7.5, 4.0, -3.0, -4.0]
+    all_costs = initial_costs + later_costs
+    rewards = [
+        calc_true_regret_improvement(
+            make_fake_smbo(all_costs[:end], n_initial=len(initial_costs)),
+            objective_minimum,
+        )
+        for end in range(len(initial_costs) + 1, len(all_costs) + 1)
+    ]
+
+    initial_incumbent = min(initial_costs)
+    final_incumbent = min(cost for cost in all_costs if np.isfinite(cost))
+    expected_return = true_regret_potential(
+        final_incumbent,
+        initial_incumbent,
+        objective_minimum,
+    ) - true_regret_potential(
+        initial_incumbent,
+        initial_incumbent,
+        objective_minimum,
+    )
+
+    assert all(reward >= 0.0 for reward in rewards)
+    assert sum(rewards) == pytest.approx(expected_return)
+
+
+def test_true_regret_reward_is_positive_affine_invariant() -> None:
+    """Transforming costs and the optimum preserves non-floor rewards."""
+    costs = [10.0, 14.0, 8.0, 11.0, 6.0]
+    objective_minimum = -2.0
+    original = calc_true_regret_improvement(
+        make_fake_smbo(costs, n_initial=3),
+        objective_minimum,
+    )
+
+    slope = 7.5
+    intercept = -103.0
+    transformed = [slope * cost + intercept for cost in costs]
+    transformed_minimum = slope * objective_minimum + intercept
+    transformed_reward = calc_true_regret_improvement(
+        make_fake_smbo(transformed, n_initial=3),
+        transformed_minimum,
+    )
+
+    assert original > 0.0
+    assert transformed_reward == pytest.approx(original)
+
+
+def test_true_regret_reward_ignores_failures_and_non_improvements() -> None:
+    """Only a successful latest incumbent improvement can emit reward."""
+    assert calc_true_regret_improvement(
+        make_fake_smbo([10.0, 8.0, 12.0], n_initial=3),
+        0.0,
+    ) == pytest.approx(0.0)
+    assert calc_true_regret_improvement(
+        make_fake_smbo([10.0, 8.0, 12.0, 9.0], n_initial=3),
+        0.0,
+    ) == pytest.approx(0.0)
+    assert calc_true_regret_improvement(
+        make_fake_smbo([10.0, 8.0, 12.0, np.nan], n_initial=3),
+        0.0,
+    ) == pytest.approx(0.0)
+
+    smbo = make_fake_smbo([], n_initial=3)
+    smbo.runhistory._data = OrderedDict(
+        [
+            (0, SimpleNamespace(cost=-100.0, status=StatusType.CRASHED)),
+            (1, SimpleNamespace(cost=10.0, status=StatusType.SUCCESS)),
+            (2, SimpleNamespace(cost=12.0, status=StatusType.SUCCESS)),
+            (3, SimpleNamespace(cost=9.0, status=StatusType.SUCCESS)),
+        ],
+    )
+    smbo.runhistory.finished = 4
+    assert calc_true_regret_improvement(smbo, 0.0) > 0.0
+
+
+def test_true_regret_reward_clips_at_the_known_optimum() -> None:
+    """Exact and below-optimum costs share one finite zero-regret floor."""
+    at_optimum = calc_true_regret_improvement(
+        make_fake_smbo([8.0, 12.0, 2.0], n_initial=2),
+        2.0,
+    )
+    below_optimum = calc_true_regret_improvement(
+        make_fake_smbo([8.0, 12.0, 1.0], n_initial=2),
+        2.0,
+    )
+    repeated_floor = calc_true_regret_improvement(
+        make_fake_smbo([8.0, 12.0, 2.0, 1.0], n_initial=2),
+        2.0,
+    )
+
+    assert np.isfinite(at_optimum)
+    assert below_optimum == pytest.approx(at_optimum)
+    assert repeated_floor == pytest.approx(0.0)
+
+
+@pytest.mark.parametrize("objective_minimum", [None, np.nan, np.inf, -np.inf])
+def test_true_regret_reward_requires_finite_optimum(
+    objective_minimum: float | None,
+) -> None:
+    """Missing or non-finite privileged reward context fails explicitly."""
+    with pytest.raises(ValueError, match="finite objective minimum"):
+        calc_true_regret_improvement(
+            make_fake_smbo([10.0, 8.0, 7.0], n_initial=2),
+            objective_minimum,
+        )
+
+
+def test_true_regret_reward_requires_initial_design() -> None:
+    """The episode-fixed normalizer cannot be defined without an initial design."""
+    with pytest.raises(ValueError, match="non-empty initial design"):
+        calc_true_regret_improvement(
+            make_fake_smbo([10.0, 8.0], n_initial=0),
+            0.0,
+        )
+
+
+def test_reward_manager_routes_true_objective_minimum() -> None:
+    """Known optimum context is explicit and the new reward remains opt-in."""
+    smbo = make_fake_smbo([8.0, 12.0, 7.0], n_initial=2)
+    manager = DACBOReward(
+        smbo,
+        keys=["true_regret_improvement"],
+        objective_minimum=2.0,
+    )
+
+    assert manager.get_reward() == pytest.approx(
+        calc_true_regret_improvement(smbo, 2.0),
+    )
+    assert manager.get_reward() == manager.get_reward()
+    assert "true_regret_improvement" not in [reward.name for reward in LEGACY_REWARDS]
+
+
+@pytest.mark.parametrize(
+    "task_id",
+    ["Ackley-2", "bbob/0/3/0", "bbob/2/25/0", "bbob/2/3"],
+)
+def test_true_regret_environment_rejects_non_bbob_task_ids(task_id: str) -> None:
+    """Known-optimum training cannot silently fall back to another benchmark."""
+    with pytest.raises(ValueError, match="restricted to canonical BBOB"):
+        DACBOEnv(
+            task_ids=[task_id],
+            inner_seeds=[0],
+            reward_keys=["true_regret_improvement"],
+        )
+
+
+def test_other_rewards_do_not_impose_bbob_task_restriction() -> None:
+    """The new restriction is narrow and does not change legacy environments."""
+    env = DACBOEnv(
+        task_ids=["Ackley-2"],
+        inner_seeds=[0],
+        reward_keys=["reference_free_improvement"],
+    )
+
+    assert env.instance_set.task_ids == ["Ackley-2"]
 
 
 def test_structured_observation_shapes_and_feature_order(

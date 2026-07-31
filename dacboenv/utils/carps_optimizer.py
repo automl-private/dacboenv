@@ -21,6 +21,16 @@ _BBOB_TASK_ID = re.compile(r"^bbob/(?P<dimension>\d+)/(?P<function_id>\d+)/(?P<i
 _BBOB_MAX_FUNCTION_ID = 24
 
 
+def is_bbob_task_id(task_id: str) -> bool:
+    """Return whether ``task_id`` is a supported canonical BBOB task ID."""
+    match = _BBOB_TASK_ID.fullmatch(task_id)
+    if match is None:
+        return False
+    dimension = int(match.group("dimension"))
+    function_id = int(match.group("function_id"))
+    return dimension > 0 and 1 <= function_id <= _BBOB_MAX_FUNCTION_ID
+
+
 def make_bbob_configuration_space(dimension: int) -> ConfigurationSpace:
     """Create the continuous ``[-5, 5]^d`` BBOB configuration space."""
     if not isinstance(dimension, int) or isinstance(dimension, bool):

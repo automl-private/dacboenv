@@ -8,26 +8,35 @@ from pathlib import Path
 import numpy as np
 import pytest
 from carps.utils.running import make_task
+from dacboenv.experiment.collect_ppo import create_ppo_eval_configs
 from dacboenv.experiment.ppo import make_env_factory
 from dacboenv.optimizer import DACBOEnvOptimizer
-from dacboenv.policy.sb3_model import ModelPolicy
 from dacboenv.utils.carps_optimizer import get_bbob_n_trials, get_task_config
 from hydra import compose, initialize_config_module
-from omegaconf import DictConfig
+from hydra.utils import instantiate
+from omegaconf import DictConfig, OmegaConf
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.vec_env import DummyVecEnv
 
 
-def _real_bbob_config() -> DictConfig:
+def _real_bbob_config(
+    training_config: str = "structured_ppo_f1",
+    *,
+    true_regret: bool = False,
+) -> DictConfig:
     """Compose a small but otherwise real structured BBOB environment."""
+    overrides = [f"+training={training_config}"]
+    if true_regret:
+        overrides.append("+env/reward=true_regret_improvement")
+
     with initialize_config_module(
         config_module="dacboenv.configs",
         version_base=None,
     ):
         cfg = compose(
             config_name=None,
-            overrides=["+training=structured_ppo_f1"],
+            overrides=overrides,
         )
 
     cfg.seed = 0
@@ -81,14 +90,55 @@ def test_new_controller_configs_build_real_bbob_environments(
         assert env.observation_space.contains(next_observation)
         assert np.isfinite(next_observation[feature_key]).all()
         if feature_key == "action_features":
-            acquisition_function = (
-                env._smac_instance.intensifier.config_selector._acquisition_function
-            )
+            acquisition_function = env._smac_instance.intensifier.config_selector._acquisition_function
             assert acquisition_function._posterior_quantile == pytest.approx(
                 cfg.dacboenv.action_space_kwargs.quantile_levels[4],
             )
         else:
             assert env._action_space.selected_mode == "maximum_variance"
+    finally:
+        env.close()
+
+
+def test_true_regret_reward_uses_live_bbob_optimum_on_every_reset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The privileged optimum is reward-only state from the active objective."""
+    monkeypatch.chdir(tmp_path)
+    cfg = _real_bbob_config("af_selection_ppo_f1", true_regret=True)
+    cfg.dacboenv.task_ids = ["bbob/2/3/0", "bbob/2/4/1"]
+    cfg.dacboenv.instance_selector_class = {
+        "_target_": "dacboenv.env.instance.RoundRobinInstanceSelector",
+        "_partial_": True,
+        "offset": 0,
+    }
+    env = make_env_factory(
+        cfg,
+        worker_id=0,
+        output_directory=tmp_path / "true-regret-smac",
+    )()
+
+    try:
+        observed_minima = []
+        for expected_task_id in cfg.dacboenv.task_ids:
+            observation, _info = env.reset()
+            live_minimum = float(env._carps_solver.task.objective_function.f_min)
+
+            assert env.current_task_id == expected_task_id
+            assert env._objective_minimum == pytest.approx(live_minimum)
+            assert env._reward._objective_minimum == pytest.approx(live_minimum)
+            assert "objective_minimum" not in observation
+            assert "true_regret" not in observation
+
+            _next_observation, reward, terminated, truncated, _info = env.step(4)
+            assert np.isfinite(float(reward))
+            assert float(reward) >= 0.0
+            assert not terminated
+            assert not truncated
+            observed_minima.append(live_minimum)
+
+        assert observed_minima[0] != observed_minima[1]
     finally:
         env.close()
 
@@ -100,7 +150,7 @@ def test_mixed_dimension_instance_set_rebuilds_each_bbob_budget(
     """Each selected task dimension gets its own CARP-S/SMAC trial horizon."""
     monkeypatch.chdir(tmp_path)
     cfg = _real_bbob_config()
-    cfg.dacboenv.task_ids = ["bbob/2/3/0", "bbob/5/3/0"]
+    cfg.dacboenv.task_ids = ["bbob/2/3/0", "bbob/4/3/0"]
     cfg.dacboenv.instance_selector_class = {
         "_target_": "dacboenv.env.instance.RoundRobinInstanceSelector",
         "_partial_": True,
@@ -115,7 +165,7 @@ def test_mixed_dimension_instance_set_rebuilds_each_bbob_budget(
     try:
         expected_episodes = [
             ("bbob/2/3/0", 2),
-            ("bbob/5/3/0", 5),
+            ("bbob/4/3/0", 4),
             ("bbob/2/3/0", 2),
         ]
         for task_id, dimension in expected_episodes:
@@ -129,13 +179,13 @@ def test_mixed_dimension_instance_set_rebuilds_each_bbob_budget(
         env.close()
 
 
-def test_real_bbob_environment_trains_and_runs_as_carps_optimizer(
+def test_real_bbob_environment_trains_and_runs_as_carps_optimizer(  # noqa: PLR0915
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Exercise BBOB -> PPO artifact -> CARP-S optimizer deployment."""
+    """Exercise true-regret BBOB -> PPO export -> CARP-S deployment."""
     monkeypatch.chdir(tmp_path)
-    cfg = _real_bbob_config()
+    cfg = _real_bbob_config("af_selection_ppo_f1", true_regret=True)
     env = make_env_factory(
         cfg,
         worker_id=0,
@@ -147,7 +197,7 @@ def test_real_bbob_environment_trains_and_runs_as_carps_optimizer(
     with warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore",
-            message=r"Your observation action_features has an unconventional shape.*",
+            message=r"Your observation .*action_features has an unconventional shape.*",
         )
         check_env(env, skip_render_check=True)
 
@@ -165,14 +215,19 @@ def test_real_bbob_environment_trains_and_runs_as_carps_optimizer(
         )
         model.learn(total_timesteps=2)
 
-        model_path = tmp_path / "model"
+        run_directory = tmp_path / "runs" / "PPO-Structured-MLP" / "DACBO" / "training-task" / "0"
+        config_path = run_directory / ".hydra" / "config.yaml"
+        config_path.parent.mkdir(parents=True)
+        OmegaConf.save(cfg, config_path)
+
+        model_path = run_directory / "model"
         model.save(model_path)
         loaded = PPO.load(model_path, env=vec_env)
 
         observation = vec_env.reset()
         action, _state = loaded.predict(observation, deterministic=True)
 
-        assert (tmp_path / "model.zip").is_file()
+        assert (run_directory / "model.zip").is_file()
         assert action.dtype == np.int64
         assert action.shape == (1,)
         assert 0 <= int(action[0]) < 5
@@ -182,25 +237,45 @@ def test_real_bbob_environment_trains_and_runs_as_carps_optimizer(
     finally:
         vec_env.close()
 
-    deployment_env = make_env_factory(
-        cfg,
-        worker_id=0,
-        output_directory=tmp_path / "carps-smac",
-    )()
+    exported_config_root = tmp_path / "exported-policy"
+    create_ppo_eval_configs(tmp_path / "runs", configs_path=exported_config_root)
+    exported_config_path = next(exported_config_root.rglob("seed0.yaml"))
+    exported = OmegaConf.load(exported_config_path)
+
     task_cfg = get_task_config("bbob/2/3/0")
     task_cfg.seed = 0
     # Two initial-design evaluations plus two policy-controlled evaluations.
     task_cfg.task.optimization_resources.n_trials = 4
     task = make_task(task_cfg)
+
+    runtime = OmegaConf.merge(
+        {
+            "task": {
+                "name": task.name,
+                "optimization_resources": {"n_trials": 4},
+            },
+            "seed": 0,
+            "outdir": str(tmp_path / "carps-smac"),
+        },
+        exported,
+    )
+    deployment_env = instantiate(runtime.dacboenv)
+    policy_class = instantiate(runtime.optimizer.policy_class)
+    policy_kwargs = OmegaConf.to_container(
+        runtime.optimizer.policy_kwargs,
+        resolve=True,
+    )
+    assert isinstance(policy_kwargs, dict)
+    assert list(runtime.dacboenv.reward_keys) == ["true_regret_improvement"]
+    assert runtime.dacboenv.evaluation_mode is False
+    assert policy_kwargs["model"] == str((run_directory / "model.zip").resolve())
+
     optimizer = DACBOEnvOptimizer(
         task=task,
         dacboenv=deployment_env,
         seed=0,
-        policy_class=ModelPolicy,
-        policy_kwargs={
-            "model": str(tmp_path / "model.zip"),
-            "model_class": "stable_baselines3.PPO",
-        },
+        policy_class=policy_class,
+        policy_kwargs=policy_kwargs,
     )
 
     try:

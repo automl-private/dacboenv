@@ -12,6 +12,7 @@ from typing import (
 
 import gymnasium as gym
 import numpy as np
+from carps.objective_functions.bbob import BBOBObjectiveFunction
 from dataclasses_json import dataclass_json
 from gymnasium.spaces import Box
 
@@ -25,8 +26,8 @@ from dacboenv.env.action import (
 )
 from dacboenv.env.instance import InstanceSelector, RoundRobinInstanceSelector
 from dacboenv.env.observation import WEI_ALPHA_LEVELS, ObservationSpace
-from dacboenv.env.reward import DACBOReward
-from dacboenv.utils.carps_optimizer import build_carps_optimizer
+from dacboenv.env.reward import TRUE_REGRET_REWARD_KEY, DACBOReward
+from dacboenv.utils.carps_optimizer import build_carps_optimizer, is_bbob_task_id
 from dacboenv.utils.loggingutils import get_logger
 from dacboenv.utils.math import safe_log10
 from dacboenv.utils.reference_performance import ReferencePerformance
@@ -227,6 +228,7 @@ class DACBOEnv(gym.Env):
         self.current_task_id = ""
         self.current_seed = -1
         self.current_threshold: float | None = None
+        self._objective_minimum: float | None = None
         self.last_action: ActType | None = None
 
     @property
@@ -237,11 +239,58 @@ class DACBOEnv(gym.Env):
     @instance_set.setter
     def instance_set(self, seeds_taskids: tuple[list[int], list[str]]) -> None:
         seeds, task_ids = seeds_taskids
+        self._validate_true_regret_task_ids(task_ids)
         self._instance_set = InstanceSet(task_ids=task_ids, seeds=seeds)
         self._build_instance_selector()
         self._instance = None
         # A prepared episode belongs to the old selector/context set.
         self._prepared_reset_result = None
+
+    def _validate_true_regret_task_ids(self, task_ids: list[str]) -> None:
+        """Reject non-BBOB contexts for the known-optimum reward."""
+        if not self._uses_true_regret_reward:
+            return
+        unsupported_task_ids = [task_id for task_id in task_ids if not is_bbob_task_id(task_id)]
+        if unsupported_task_ids:
+            raise ValueError(
+                f"{TRUE_REGRET_REWARD_KEY!r} is restricted to canonical BBOB task IDs "
+                f"('bbob/<dimension>/<function>/<instance>'); got {unsupported_task_ids!r}."
+            )
+
+    @property
+    def _uses_true_regret_reward(self) -> bool:
+        """Whether the selected reward requires a known BBOB optimum."""
+        return TRUE_REGRET_REWARD_KEY in self._reward_keys
+
+    def _get_bbob_objective_minimum(self, task_id: str) -> float:
+        """Return the active CARP-S BBOB objective's finite true minimum."""
+        objective_function = self._carps_solver.task.objective_function
+        if not is_bbob_task_id(task_id) or not isinstance(objective_function, BBOBObjectiveFunction):
+            raise ValueError(
+                f"{TRUE_REGRET_REWARD_KEY!r} requires a CARP-S BBOB objective for task {task_id!r}; "
+                f"got {type(objective_function).__name__}."
+            )
+        objective_minimum = objective_function.f_min
+        if objective_minimum is None or not np.isfinite(objective_minimum):
+            raise ValueError(
+                f"BBOB task {task_id!r} did not expose a finite true objective minimum: {objective_minimum!r}."
+            )
+        return float(objective_minimum)
+
+    def _setup_reward(self, task_id: str) -> None:
+        """Build the reward manager and its optional BBOB-only context."""
+        # The known BBOB optimum is privileged reward-only information. Read
+        # it from the live CARP-S objective rather than reconstructing a
+        # second IOH problem, and never add it to the policy observation.
+        if self._uses_true_regret_reward:
+            self._objective_minimum = self._get_bbob_objective_minimum(task_id)
+
+        self._reward = DACBOReward(
+            self._smac_instance,
+            self._reward_keys,
+            self._rho,
+            objective_minimum=self._objective_minimum,
+        )
 
     @property
     def instance(self) -> tuple[int, str]:
@@ -354,13 +403,9 @@ class DACBOEnv(gym.Env):
 
         if "af_action_features" in observation_keys:
             if not isinstance(self._action_space, PosteriorModeActionSpace):
-                raise ValueError(
-                    "The af_action_features observation requires PosteriorModeActionSpace."
-                )
+                raise ValueError("The af_action_features observation requires PosteriorModeActionSpace.")
             if self._action_space.space.n != 5:  # noqa: PLR2004
-                raise ValueError(
-                    "The af_action_features table requires exactly five posterior modes."
-                )
+                raise ValueError("The af_action_features table requires exactly five posterior modes.")
 
     def modify_obs(self, obs: ObsType) -> ObsType:
         """Modify observations.
@@ -658,6 +703,7 @@ class DACBOEnv(gym.Env):
         self._episode_reward = 0.0
         self._episode_length = 0
         self.current_threshold = None
+        self._objective_minimum = None
 
         # Reset SMAC instance
         if hasattr(self, "_carps_solver"):
@@ -718,7 +764,7 @@ class DACBOEnv(gym.Env):
                 self._dacbo_observation_space._observation_space["previous_param"] = Box(low=0, high=1)
 
         # Setup reward
-        self._reward = DACBOReward(self._smac_instance, self._reward_keys, self._rho)
+        self._setup_reward(task_id)
 
         self.current_seed = inner_seed
         self.current_task_id = task_id

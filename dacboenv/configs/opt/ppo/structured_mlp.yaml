@@ -19,7 +19,7 @@ optimizer:
   # 2,048-transition rollout batch from the training design.
   batch_size: 256
   n_epochs: 5
-  # The reference-free potential reward telescopes for undiscounted returns.
+  # Both structured potential rewards telescope for undiscounted returns.
   gamma: 1.0
   gae_lambda: 0.95
   clip_range: 0.15

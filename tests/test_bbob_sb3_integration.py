@@ -19,9 +19,7 @@ from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.vec_env import DummyVecEnv
 
 
-def _real_bbob_config(
-    training_config: str = "structured_ppo_f1",
-) -> DictConfig:
+def _real_bbob_config() -> DictConfig:
     """Compose a small but otherwise real structured BBOB environment."""
     with initialize_config_module(
         config_module="dacboenv.configs",
@@ -29,7 +27,7 @@ def _real_bbob_config(
     ):
         cfg = compose(
             config_name=None,
-            overrides=[f"+training={training_config}"],
+            overrides=["+training=structured_ppo_f1"],
         )
 
     cfg.seed = 0

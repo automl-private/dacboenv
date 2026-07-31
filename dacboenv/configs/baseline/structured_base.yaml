@@ -1,0 +1,27 @@
+# @package _global_
+defaults:
+  - /task: dacboenv_structured_reference_free
+  - /instance_sets@evaluation_instances: bbob_validation_holdout
+  - _self_
+
+instance_set_id: ${evaluation_instances.id}
+dacboenv:
+  task_ids: ${evaluation_instances.task_ids}
+  inner_seeds: ${evaluation_instances.inner_seeds}
+  instance_selector_class:
+    _target_: dacboenv.env.instance.RoundRobinInstanceSelector
+    _partial_: true
+    offset: 0
+
+experiment:
+  n_episodes: ${multiply:${len:${evaluation_instances.task_ids}},${len:${evaluation_instances.inner_seeds}}}
+
+seed: 0
+baserundir: runs_structured_baselines
+outdir: ${baserundir}/${optimizer_id}/${task_id}/${seed}
+hydra:
+  run:
+    dir: ${outdir}
+  sweep:
+    dir: ${baserundir}
+    subdir: ${optimizer_id}/${task_id}/${seed}

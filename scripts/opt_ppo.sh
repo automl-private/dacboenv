@@ -2,13 +2,15 @@
 #SBATCH -t 48:00:00
 #SBATCH -J "ppo4dacbo"
 #SBATCH --cpus-per-task=33
-#SBATCH --mem=64G
+#SBATCH --mem=128G
 #SBATCH -p normal
-#SBATCH --array=0-9
+#SBATCH --array=0-4
 #SBATCH --output=slurmlogs/ppo/slurm-%A_%a.out
 #SBATCH --error=slurmlogs/ppo/slurm-%A_%a.err
 
-set -euo pipefail
+source ~/.bashrc
+cd /scratch/hpc-prf-intexml/tklenke/repos/dacboenv_new
+source .venv/bin/activate
 
 N_WORKERS="${DACBO_N_WORKERS:-32}"
 BASERUNDIR="${DACBO_RUN_DIR:-runs_structured}"

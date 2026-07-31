@@ -1,0 +1,4 @@
+# @package _global_
+defaults:
+  - structured_base
+  - /policy: random

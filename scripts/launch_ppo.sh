@@ -49,11 +49,14 @@ case "${mode}" in
     wei)
         training_families=("structured_ppo|runs_structured")
         ;;
-    lcb_quantile|posterior_quantile)
+    lcb_quantile)
         training_families=("lcb_quantile_ppo|runs_lcb_quantile")
         ;;
     ucb_quantile)
         training_families=("ucb_quantile_ppo|runs_ucb_quantile")
+        ;;
+    posterior_quantile)
+        training_families=("ucb_quantile_ppo|runs_post_quantile")
         ;;
     af_selection)
         training_families=("af_selection_ppo|runs_af_selection")

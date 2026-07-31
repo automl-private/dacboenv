@@ -1,0 +1,13 @@
+id: bbob-validation-holdout
+task_ids:
+  - bbob/2/2/1
+  - bbob/2/7/1
+  - bbob/2/11/1
+  - bbob/2/16/1
+  - bbob/2/20/1
+  - bbob/8/2/1
+  - bbob/8/7/1
+  - bbob/8/11/1
+  - bbob/8/16/1
+  - bbob/8/20/1
+inner_seeds: [100, 101, 102, 103]

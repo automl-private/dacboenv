@@ -1,0 +1,42 @@
+id: bbob-test-holdout
+task_ids:
+  - bbob/2/1/2
+  - bbob/2/4/2
+  - bbob/2/5/2
+  - bbob/2/9/2
+  - bbob/2/10/2
+  - bbob/2/12/2
+  - bbob/2/14/2
+  - bbob/2/15/2
+  - bbob/2/18/2
+  - bbob/2/19/2
+  - bbob/2/22/2
+  - bbob/2/23/2
+  - bbob/2/24/2
+  - bbob/8/1/2
+  - bbob/8/4/2
+  - bbob/8/5/2
+  - bbob/8/9/2
+  - bbob/8/10/2
+  - bbob/8/12/2
+  - bbob/8/14/2
+  - bbob/8/15/2
+  - bbob/8/18/2
+  - bbob/8/19/2
+  - bbob/8/22/2
+  - bbob/8/23/2
+  - bbob/8/24/2
+  - bbob/16/1/2
+  - bbob/16/4/2
+  - bbob/16/5/2
+  - bbob/16/9/2
+  - bbob/16/10/2
+  - bbob/16/12/2
+  - bbob/16/14/2
+  - bbob/16/15/2
+  - bbob/16/18/2
+  - bbob/16/19/2
+  - bbob/16/22/2
+  - bbob/16/23/2
+  - bbob/16/24/2
+inner_seeds: [200, 201, 202, 203, 204]

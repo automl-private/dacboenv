@@ -51,7 +51,7 @@ class InstanceSet:
     """Instance Set."""
 
     task_ids: list[str]
-    seeds: list[int]
+    seeds: list[int | None]
 
 
 class DACBOEnv(gym.Env):
@@ -110,7 +110,7 @@ class DACBOEnv(gym.Env):
         seed: int | None = None,
         reference_performance_fn: str = "reference_performance/reference_performance.parquet",
         reference_performance_optimizer_id: str = "SMAC3-BlackBoxFacade",
-        inner_seeds: list[int] | None = None,
+        inner_seeds: list[int | None] | None = None,
         terminate_after_reference_performance_reached: bool = False,  # noqa: FBT001, FBT002
         instance_selector_class: type[InstanceSelector] | None = None,
         evaluation_mode: bool = False,  # noqa: FBT001, FBT002
@@ -140,8 +140,10 @@ class DACBOEnv(gym.Env):
         seed : int, optional
             Seed for the outer Gym environment and instance selector. This
             does not replace explicitly configured inner BO seeds.
-        inner_seeds : list[int], optional
-            The seeds that the inner BO will run on.
+        inner_seeds : list[int | None], optional
+            The seeds that the inner BO will run on. A singleton ``[None]``
+            generates a fresh deterministic inner seed on every episode from
+            a stream derived from the outer seed.
         terminate_after_reference_performance_reached : bool, optional
             Terminate episode after a certain reference performance on a task/seed has been reached. Defaults to False.
         evaluation_mode : bool, optional
@@ -162,9 +164,10 @@ class DACBOEnv(gym.Env):
             }
         super().__init__()
 
-        # ``seed`` controls the outer environment: context selection and any
-        # generated fallback seeds. The selected inner BO seed is kept
-        # separate in ``current_seed`` and is passed to CARPS/SMAC.
+        # ``seed`` controls the outer environment. Independent child streams
+        # drive context selection, compatibility fallback seeds, and fresh
+        # per-episode BO seeds. The selected inner BO seed is kept separate in
+        # ``current_seed`` and is passed to CARPS/SMAC.
         self._initialize_outer_seed(seed)
 
         self._optimizer_cfg = optimizer_cfg
@@ -187,7 +190,6 @@ class DACBOEnv(gym.Env):
             instance_selector_class if instance_selector_class else RoundRobinInstanceSelector
         )
         self.instance_selector: InstanceSelector  # Set whenever task_id or inner_seeds are updated
-        self.is_in_random_mode = inner_seeds is None or all(seed is None for seed in inner_seeds)
         self._uses_fallback_seeds = not inner_seeds
         inner_seeds = inner_seeds or self._fallback_seeds
         self.instance_set = (inner_seeds, task_ids)  # type: ignore[assignment]
@@ -237,14 +239,29 @@ class DACBOEnv(gym.Env):
         return self._instance_set
 
     @instance_set.setter
-    def instance_set(self, seeds_taskids: tuple[list[int], list[str]]) -> None:
+    def instance_set(self, seeds_taskids: tuple[list[int | None], list[str]]) -> None:
         seeds, task_ids = seeds_taskids
+        self._validate_inner_seeds(seeds)
         self._validate_true_regret_task_ids(task_ids)
         self._instance_set = InstanceSet(task_ids=task_ids, seeds=seeds)
+        self.is_in_random_mode = seeds == [None] or (self._uses_fallback_seeds and seeds == self._fallback_seeds)
         self._build_instance_selector()
         self._instance = None
         # A prepared episode belongs to the old selector/context set.
         self._prepared_reset_result = None
+
+    @staticmethod
+    def _validate_inner_seeds(seeds: list[int | None]) -> None:
+        """Validate a fixed seed pool or the singleton streaming marker."""
+        if any(seed is None for seed in seeds):
+            if seeds != [None]:
+                raise ValueError("Use exactly [None] for dynamic inner seeds; mixed seed specifications are invalid.")
+            return
+
+        max_seed = int(np.iinfo(np.uint32).max)
+        for seed in seeds:
+            if isinstance(seed, bool) or not isinstance(seed, int | np.integer) or not 0 <= int(seed) <= max_seed:
+                raise ValueError(f"Inner seeds must be integers in [0, {max_seed}], got {seed!r}.")
 
     def _validate_true_regret_task_ids(self, task_ids: list[str]) -> None:
         """Reject non-BBOB contexts for the known-optimum reward."""
@@ -318,16 +335,17 @@ class DACBOEnv(gym.Env):
         self.instance_selector = self._instance_selector_class(  # type: ignore[operator]
             task_ids=self._instance_set.task_ids,
             seeds=self._instance_set.seeds,
-            selector_seed=self._seed,
+            selector_seed=self._selector_seed,
         )
 
     def _initialize_outer_seed(self, seed: int | None) -> None:
-        """Initialize outer RNG state and its candidate fallback BO seeds."""
+        """Initialize independent deterministic streams from one outer seed."""
         self._seed = seed
-        self._seeder = np.random.default_rng(seed)
-        self._fallback_seeds = list(
-            self._seeder.integers(low=344, high=46483, size=3),
-        )
+        selector_sequence, fallback_sequence, inner_sequence = np.random.SeedSequence(seed).spawn(3)
+        self._selector_seed = int(selector_sequence.generate_state(1, dtype=np.uint32)[0])
+        fallback_generator = np.random.default_rng(fallback_sequence)
+        self._fallback_seeds = [int(value) for value in fallback_generator.integers(low=344, high=46483, size=3)]
+        self._inner_seed_generator = np.random.default_rng(inner_sequence)
 
     def _reseed_episode_selection(self, seed: int) -> None:
         """Restart outer context selection without changing fixed BO seeds."""
@@ -484,7 +502,7 @@ class DACBOEnv(gym.Env):
             return self._reward.get_reward(self.current_threshold)
         return 0
 
-    def get_next_instance(self) -> tuple[int, str]:
+    def get_next_instance(self) -> tuple[int | None, str]:
         """Get the next instance.
 
         Returns
@@ -711,12 +729,14 @@ class DACBOEnv(gym.Env):
         if hasattr(self, "_smac_instance"):
             del self._smac_instance
 
-        # Get next instance which is a combo of task id and seed
-        self.instance = self.get_next_instance()
-        inner_seed, task_id = self.instance
+        # Select the next task and either a configured BO seed or the marker
+        # requesting a fresh seed from the independent per-episode stream.
+        selected_seed, task_id = self.get_next_instance()
+        inner_seed = selected_seed
         if inner_seed is None:
-            inner_seed = self._seeder.integers(low=0, high=2**32 - 1)
+            inner_seed = self._inner_seed_generator.integers(low=0, high=2**32, dtype=np.uint32)
         inner_seed = int(inner_seed)
+        self.instance = (inner_seed, task_id)
 
         # Build carps optimizer (wrapper around smac) with appropriate objective function
         optimizer_id = "SMAC3-BlackBoxFacade" if self._optimizer_cfg is None else None

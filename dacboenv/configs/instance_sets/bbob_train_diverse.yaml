@@ -12,4 +12,6 @@ task_ids:
   - bbob/4/13/0
   - bbob/4/17/0
   - bbob/4/21/0
-inner_seeds: [0, 1, 2, 3]
+# A null marker asks DACBOEnv to draw a fresh deterministic BO seed for every
+# episode from the worker's inner-seed stream.
+inner_seeds: [null]

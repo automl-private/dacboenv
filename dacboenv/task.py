@@ -236,7 +236,9 @@ class DACBOObjectiveFunction(ObjectiveFunction):
         endtime = time.time()
         duration = endtime - starttime
 
-        internal_seed = self._get_internal_seed(trial_info.seed)
+        internal_seed = (
+            self._env.current_seed if self._internal_seeds == [None] else self._get_internal_seed(trial_info.seed)
+        )
         additional_info = {"internal_seed": internal_seed, "cutoff": trial_info.cutoff}
         additional_info.update(info)
         logger.info(f"Info: {info}. trial_info.instance,seed: {trial_info.instance, trial_info.seed}")
@@ -282,6 +284,10 @@ class DACBOObjectiveFunction(ObjectiveFunction):
         """
         if seed is None:
             return seed
+        if self._internal_seeds == [None]:
+            # Preserve the streaming marker. The environment resolves it from
+            # its outer-seeded per-episode generator during reset.
+            return None
         external_seed = seed
         internal_seeds_used = set(self._seed_map.values())
         seeds_left = set(self._internal_seeds) - internal_seeds_used
@@ -344,7 +350,7 @@ class DACBOObjectiveFunction(ObjectiveFunction):
             cost = result["cost_inc"]
         elif self._cost == "symlogregret":
             assert self._env._reward._keys == ["symlogregret"], (
-                "Only works when `symlogreget` reward " f"is selected, but got {self._env._reward._keys}."
+                f"Only works when `symlogreget` reward is selected, but got {self._env._reward._keys}."
             )
             cost = -result["reward_mean"]
         else:

@@ -156,9 +156,12 @@ def test_create_eval_config_uses_best_model_and_training_mdp_semantics(
 
     generated_path = configs_path / "PPO-Structured-MLP" / "structured-task" / "seed7.yaml"
     generated = OmegaConf.load(generated_path)
+    unresolved = OmegaConf.to_container(generated, resolve=False)
+    assert isinstance(unresolved, dict)
 
     assert generated.optimizer.policy_kwargs.model == str(best_model.resolve())
     assert generated.optimizer.policy_kwargs.normalization_wrapper == str(normalization_wrapper)
+    assert unresolved["dacboenv"]["inner_seeds"] == ["${seed}"]
     assert generated.dacboenv.evaluation_mode is False
     assert generated.dacboenv.terminate_after_reference_performance_reached is False
 

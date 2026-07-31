@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import hydra
+import numpy as np
 from carps.loggers.file_logger import get_run_directory
 from carps.utils.loggingutils import get_logger
 from carps.utils.running import make_task
@@ -45,6 +46,41 @@ if TYPE_CHECKING:
     from dacboenv.dacboenv import DACBOEnv
 
 logger = get_logger("PPO")
+
+
+def derive_worker_seed(run_seed: int, worker_id: int) -> int:
+    """Derive a stable independent child seed for one vector worker."""
+    if isinstance(run_seed, bool) or run_seed < 0:
+        raise ValueError(f"run_seed must be a non-negative integer, got {run_seed!r}.")
+    if isinstance(worker_id, bool) or worker_id < 0:
+        raise ValueError(f"worker_id must be a non-negative integer, got {worker_id!r}.")
+    sequence = np.random.SeedSequence([int(run_seed), int(worker_id)])
+    return int(sequence.generate_state(1, dtype=np.uint32)[0])
+
+
+def _vector_worker_seeds(run_seed: int | None, n_workers: int) -> list[int]:
+    """Return the same child seeds used when constructing vector workers."""
+    if run_seed is None:
+        run_seed = int(np.random.SeedSequence().generate_state(1, dtype=np.uint32)[0])
+    return [derive_worker_seed(run_seed, worker_id) for worker_id in range(n_workers)]
+
+
+class HierarchicalSeedDummyVecEnv(DummyVecEnv):
+    """DummyVecEnv whose reset seeds match the worker seed hierarchy."""
+
+    def seed(self, seed: int | None = None) -> list[int]:
+        """Stage independently derived worker seeds for the next reset."""
+        self._seeds = _vector_worker_seeds(seed, self.num_envs)
+        return self._seeds
+
+
+class HierarchicalSeedSubprocVecEnv(SubprocVecEnv):
+    """SubprocVecEnv whose reset seeds match the worker seed hierarchy."""
+
+    def seed(self, seed: int | None = None) -> list[int]:
+        """Stage independently derived worker seeds for the next reset."""
+        self._seeds = _vector_worker_seeds(seed, self.num_envs)
+        return self._seeds
 
 
 @dataclass(frozen=True)
@@ -169,7 +205,7 @@ def make_env_factory(
     worker_id: int,
     output_directory: Path,
     task_ids: list[str] | None = None,
-    inner_seeds: list[int] | None = None,
+    inner_seeds: list[int | None] | None = None,
     instance_set_id: str | None = None,
     instance_selector_cfg: DictConfig | None = None,
 ) -> Callable[[], DACBOEnv]:
@@ -177,7 +213,7 @@ def make_env_factory(
 
     def _init() -> DACBOEnv:
         config = _copy_config(cfg)
-        config.seed = int(cfg.seed) + worker_id
+        config.seed = derive_worker_seed(int(cfg.seed), worker_id)
 
         if task_ids is not None:
             config.dacboenv.task_ids = list(task_ids)
@@ -211,8 +247,8 @@ def _make_vec_env(
 ) -> VecEnv:
     """Use subprocess workers when useful and a local vector env otherwise."""
     if len(factories) == 1:
-        return DummyVecEnv(factories)
-    return SubprocVecEnv(factories, start_method=start_method)
+        return HierarchicalSeedDummyVecEnv(factories)
+    return HierarchicalSeedSubprocVecEnv(factories, start_method=start_method)
 
 
 def _policy_kwargs_and_optimizer_cfg(cfg: DictConfig) -> tuple[dict[str, Any], DictConfig]:

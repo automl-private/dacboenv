@@ -122,7 +122,8 @@ def test_structured_training_configs(
     assert list(cfg.optimizer.policy_kwargs.net_arch.vf) == [64, 64, 64]
     assert not cfg.optimizer.policy_kwargs.share_features_extractor
     assert cfg.dacboenv.optimizer_cfg.smac_cfg.smac_kwargs.intensifier.max_config_calls == 1
-    assert len(cfg.dacboenv.task_ids) * len(cfg.dacboenv.inner_seeds) == 48
+    assert len(cfg.dacboenv.task_ids) == 12
+    assert list(cfg.dacboenv.inner_seeds) == [None]
     assert len(cfg.experiment.validation.task_ids) * len(cfg.experiment.validation.inner_seeds) == 40
     assert (
         cfg.experiment.validation.instance_selector_class._target_ == "dacboenv.env.instance.RoundRobinInstanceSelector"
@@ -203,7 +204,8 @@ def test_structured_controller_training_matrices_compose(
         assert cfg.dacboenv.interaction_frequency == frequency
         assert cfg.baserundir == run_directory
         assert cfg.optimizer_id == "PPO-Structured-MLP"
-        assert len(cfg.dacboenv.task_ids) * len(cfg.dacboenv.inner_seeds) == 48
+        assert len(cfg.dacboenv.task_ids) == 12
+        assert list(cfg.dacboenv.inner_seeds) == [None]
         assert len(cfg.experiment.validation.task_ids) * len(cfg.experiment.validation.inner_seeds) == 40
         assert schedule.rollout_size == 2048
         assert schedule.collected_timesteps * frequency == 409600
@@ -267,11 +269,11 @@ def test_training_random_selector_does_not_inherit_round_robin_offset() -> None:
     assert isinstance(selector, RandomInstanceSelector)
 
 
-def test_training_workers_get_distinct_outer_seeds_but_share_inner_context_pool(
+def test_training_workers_get_independent_outer_seeds_and_stream_inner_seeds(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Worker IDs split selector RNG streams without rewriting BO seeds."""
+    """Run/worker pairs derive stable streams without additive collisions."""
     cfg = compose_config("+training=structured_ppo_f1")
     cfg.seed = 7
     captured_configs: list[DictConfig] = []
@@ -290,11 +292,32 @@ def test_training_workers_get_distinct_outer_seeds_but_share_inner_context_pool(
             output_directory=tmp_path / f"worker_{worker_id}",
         )()
 
-    assert [int(worker_cfg.seed) for worker_cfg in captured_configs] == [7, 8, 38]
+    worker_ids = [0, 1, 31]
+    expected_seeds = [ppo_module.derive_worker_seed(7, worker_id) for worker_id in worker_ids]
+    assert [int(worker_cfg.seed) for worker_cfg in captured_configs] == expected_seeds
+    assert len(set(expected_seeds)) == len(expected_seeds)
+    assert ppo_module.derive_worker_seed(0, 1) != ppo_module.derive_worker_seed(1, 0)
+    five_run_seeds = {
+        ppo_module.derive_worker_seed(run_seed, worker_id) for run_seed in range(5) for worker_id in range(32)
+    }
+    assert len(five_run_seeds) == 5 * 32
     assert all(
         list(worker_cfg.dacboenv.inner_seeds) == list(cfg.dacboenv.inner_seeds) for worker_cfg in captured_configs
     )
+    assert list(cfg.dacboenv.inner_seeds) == [None]
     assert all(list(worker_cfg.dacboenv.task_ids) == list(cfg.dacboenv.task_ids) for worker_cfg in captured_configs)
+
+
+def test_vector_env_stages_the_same_hierarchical_worker_seeds() -> None:
+    """SB3's first reset must not replace the factory's worker seeds."""
+    vec_env = ppo_module.HierarchicalSeedDummyVecEnv([TinyStructuredEnv, TinyStructuredEnv])
+    try:
+        assert vec_env.seed(7) == [
+            ppo_module.derive_worker_seed(7, 0),
+            ppo_module.derive_worker_seed(7, 1),
+        ]
+    finally:
+        vec_env.close()
 
 
 def test_actor_and_critic_architectures_are_independently_overridable() -> None:

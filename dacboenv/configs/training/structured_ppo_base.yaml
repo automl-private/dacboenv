@@ -6,14 +6,15 @@ defaults:
   - /opt/ppo: structured_mlp
   - _self_
 
-# Train on the 48 contexts from the chat's diverse BBOB curriculum.
+# Train on twelve fixed BBOB landscapes with a fresh deterministic inner BO
+# seed, and therefore a fresh optimizer trajectory, on every episode.
 instance_set_id: ${training_instances.id}
 dacboenv:
   task_ids: ${training_instances.task_ids}
   inner_seeds: ${training_instances.inner_seeds}
-  # Worker i uses outer selector seed `${seed} + i` and samples independently
-  # with replacement from the same 48 (inner seed, task) contexts. The inner
-  # seed selected for an episode is passed unchanged to CARP-S/SMAC.
+  # Worker i receives an independent child stream derived from the run seed.
+  # Task selection and inner-seed generation use separate child streams, so
+  # every episode gets a new BO seed without coupling it to selector draws.
   instance_selector_class:
     _target_: dacboenv.env.instance.RandomInstanceSelector
     _partial_: true

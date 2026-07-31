@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
+import copy
 import math
 import re
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pandas as pd
 from carps.utils.env_vars import CARPS_ROOT
 from carps.utils.running import make_optimizer, make_task
 from ConfigSpace import ConfigurationSpace, Float
 from omegaconf import DictConfig, OmegaConf
+from smac.acquisition.function.abstract_acquisition_function import AbstractAcquisitionFunction
+from smac.random_design.abstract_random_design import AbstractRandomDesign
 
 if TYPE_CHECKING:
     from carps.optimizers.optimizer import Optimizer
@@ -305,6 +309,31 @@ def get_task_config(task_id: str) -> DictConfig:
     return maybe_add_defaults(cfg, config_fn)
 
 
+def _prepare_episode_smac_config(cfg: DictConfig, seed: int) -> None:
+    """Make the selected inner seed and fresh mutable objects episode-local."""
+    if OmegaConf.select(cfg, "optimizer.smac_cfg.scenario") is not None:
+        cfg.optimizer.smac_cfg.scenario.seed = int(seed)
+
+    acquisition_function = OmegaConf.select(cfg, "optimizer.smac_cfg.smac_kwargs.acquisition_function")
+    if isinstance(acquisition_function, AbstractAcquisitionFunction):
+        # OmegaConf preserves allow_objects values by identity even when its
+        # containing DictConfig is deep-copied.
+        cfg.optimizer.smac_cfg.smac_kwargs.acquisition_function = copy.deepcopy(acquisition_function)
+
+    random_design_path = "optimizer.smac_cfg.smac_kwargs.random_design"
+    random_design = OmegaConf.select(cfg, random_design_path)
+    if isinstance(random_design, AbstractRandomDesign):
+        # Hydra may already have materialized this nested object with the outer
+        # worker seed. SMAC exposes no public reseed method, so copy it before
+        # resetting its two seed-owned fields for this episode.
+        random_design = copy.deepcopy(random_design)
+        random_design._seed = int(seed)
+        random_design._rng = np.random.RandomState(seed=int(seed))
+        cfg.optimizer.smac_cfg.smac_kwargs.random_design = random_design
+    elif OmegaConf.select(cfg, f"{random_design_path}.scenario") is not None:
+        cfg.optimizer.smac_cfg.smac_kwargs.random_design.scenario.seed = int(seed)
+
+
 def build_carps_optimizer(
     task_id: str, seed: int, optimizer_id: str | None = None, optimizer_cfg: DictConfig | None = None
 ) -> Optimizer:
@@ -332,7 +361,10 @@ def build_carps_optimizer(
     if optimizer_id is None and optimizer_cfg is None:
         raise ValueError("Specify either optimizer_id or optimizer_cfg!")
 
-    cfg_opt = optimizer_cfg or None
+    # Copy the config container for this episode. Hydra-materialized mutable
+    # values preserve identity through OmegaConf deepcopy and are cloned
+    # explicitly in _prepare_episode_smac_config below.
+    cfg_opt = copy.deepcopy(optimizer_cfg) if optimizer_cfg is not None else None
     if cfg_opt is None:
         cfg_opt = load_optimizer_config(optimizer_id=optimizer_id)  # type: ignore[arg-type]
 
@@ -343,6 +375,10 @@ def build_carps_optimizer(
         cfg = OmegaConf.merge(cfg, cfg_opt)
     else:
         cfg.optimizer = cfg_opt
+
+    # Reassert the selected inner BO seed after merging because Hydra may have
+    # materialized nested components with the outer worker seed already.
+    _prepare_episode_smac_config(cfg, seed)
 
     if not hasattr(cfg.optimizer, "_target_"):
         cfg.optimizer._target_ = "carps.optimizers.smac20.SMAC3Optimizer"

@@ -18,7 +18,7 @@ class InstanceSelector(ABC):
     ----------
     task_ids : list[str]
         List of carps task ids.
-    seeds : list[int]
+    seeds : list[int | None]
         List of seeds.
     idx : int
         Current instance index. Default is 0.
@@ -26,14 +26,14 @@ class InstanceSelector(ABC):
         Random generator.
     """
 
-    def __init__(self, task_ids: list[str], seeds: list[int], selector_seed: int | None = None) -> None:
+    def __init__(self, task_ids: list[str], seeds: list[int | None], selector_seed: int | None = None) -> None:
         """Initialize instance selector.
 
         Parameters
         ----------
         task_ids : list[str]
             List of carps task ids.
-        seeds : list[int]
+        seeds : list[int | None]
             List of seeds.
         selector_seed : int | None, optional
             Selector seed, e.g., needed in random selection, by default None
@@ -46,7 +46,7 @@ class InstanceSelector(ABC):
         self.rng = np.random.default_rng(seed=selector_seed)
 
     @abstractmethod
-    def select_instance(self, size: int = 1) -> tuple[int, str] | list[tuple[int, str]]:
+    def select_instance(self, size: int = 1) -> tuple[int | None, str] | list[tuple[int | None, str]]:
         """Select next instance.
 
         Parameters
@@ -56,7 +56,7 @@ class InstanceSelector(ABC):
 
         Returns
         -------
-        tuple[int, str] | list[tuple[int, str]]
+        tuple[int | None, str] | list[tuple[int | None, str]]
             (seed, task_id)
         """
 
@@ -68,7 +68,7 @@ class RoundRobinInstanceSelector(InstanceSelector):
     """
 
     def __init__(
-        self, task_ids: list[str], seeds: list[int], offset: int = 0, selector_seed: int | None = None
+        self, task_ids: list[str], seeds: list[int | None], offset: int = 0, selector_seed: int | None = None
     ) -> None:
         """Initialize instance selector.
 
@@ -76,7 +76,7 @@ class RoundRobinInstanceSelector(InstanceSelector):
         ----------
         task_ids : list[str]
             List of carps task ids.
-        seeds : list[int]
+        seeds : list[int | None]
             List of seeds.
         offset : int, 0
             An optional offset to add to the index.
@@ -87,7 +87,7 @@ class RoundRobinInstanceSelector(InstanceSelector):
         self._offset = offset
         self.idx = (self.idx + self._offset) % len(self.instances)
 
-    def select_instance(self, size: int = 1) -> tuple[int, str] | list[tuple[int, str]]:
+    def select_instance(self, size: int = 1) -> tuple[int | None, str] | list[tuple[int | None, str]]:
         """Select next instance.
 
         Parameters
@@ -97,7 +97,7 @@ class RoundRobinInstanceSelector(InstanceSelector):
 
         Returns
         -------
-        tuple[int, str] | list[tuple[int, str]]
+        tuple[int | None, str] | list[tuple[int | None, str]]
             (seed, task_id)
         """
         n_instances = len(self.instances)
@@ -113,7 +113,7 @@ class RoundRobinInstanceSelector(InstanceSelector):
 class RandomInstanceSelector(InstanceSelector):
     """Random instance selector."""
 
-    def select_instance(self, size: int = 1) -> tuple[int, str] | list[tuple[int, str]]:
+    def select_instance(self, size: int = 1) -> tuple[int | None, str] | list[tuple[int | None, str]]:
         """Select next instance.
 
         Parameters
@@ -123,7 +123,7 @@ class RandomInstanceSelector(InstanceSelector):
 
         Returns
         -------
-        tuple[int, str] | list[tuple[int, str]]
+        tuple[int | None, str] | list[tuple[int | None, str]]
             (seed, task_id)
         """
         indices = np.arange(0, len(self.instances))

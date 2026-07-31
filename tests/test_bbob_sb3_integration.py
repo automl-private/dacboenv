@@ -179,6 +179,98 @@ def test_mixed_dimension_instance_set_rebuilds_each_bbob_budget(
         env.close()
 
 
+def test_selected_inner_seed_controls_real_smac_initial_design(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The same inner seed replays Sobol independently of the worker seed."""
+    monkeypatch.chdir(tmp_path)
+
+    def build_seeded_episode(outer_seed: int, inner_seed: int, label: str) -> tuple[list[dict[str, float]], int]:
+        cfg = _real_bbob_config("af_selection_ppo_f1", true_regret=True)
+        cfg.seed = outer_seed
+        cfg.dacboenv.inner_seeds = [inner_seed]
+        env = make_env_factory(
+            cfg,
+            worker_id=0,
+            output_directory=tmp_path / label,
+        )()
+        try:
+            env.reset()
+            scenario_seed = int(env._smac_instance._scenario.seed)
+            assert env.current_seed == inner_seed
+            assert env.instance == (inner_seed, "bbob/2/3/0")
+            assert scenario_seed == inner_seed
+            assert int(env._carps_solver.task.seed) == inner_seed
+            assert env._smac_instance.intensifier.config_selector._random_design._seed == inner_seed
+            initial_design = [
+                dict(configuration)
+                for configuration in env._smac_instance.intensifier.config_selector._initial_design_configs
+            ]
+            return initial_design, scenario_seed
+        finally:
+            env.close()
+
+    first_design, first_seed = build_seeded_episode(outer_seed=17, inner_seed=123, label="first")
+    replayed_design, replayed_seed = build_seeded_episode(outer_seed=91, inner_seed=123, label="replayed")
+    different_design, different_seed = build_seeded_episode(outer_seed=17, inner_seed=124, label="different")
+
+    assert first_seed == replayed_seed == 123
+    assert different_seed == 124
+    assert replayed_design == first_design
+    assert different_design != first_design
+
+
+def test_streamed_inner_seed_replays_real_bbob_and_resets_control_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One outer seed replays fresh episodes without mutable SMAC leakage."""
+    monkeypatch.chdir(tmp_path)
+
+    def collect_stream(outer_seed: int, label: str) -> list[tuple[int, list[dict[str, float]]]]:
+        cfg = _real_bbob_config("af_selection_ppo_f1", true_regret=True)
+        cfg.seed = outer_seed
+        cfg.dacboenv.inner_seeds = [None]
+        env = make_env_factory(
+            cfg,
+            worker_id=0,
+            output_directory=tmp_path / label,
+        )()
+        episodes: list[tuple[int, list[dict[str, float]]]] = []
+        try:
+            for episode in range(2):
+                env.reset()
+                inner_seed = env.current_seed
+                acquisition_function = env._smac_instance.intensifier.config_selector._acquisition_function
+                assert env.instance == (inner_seed, "bbob/2/3/0")
+                assert int(env._smac_instance._scenario.seed) == inner_seed
+                assert int(env._carps_solver.task.seed) == inner_seed
+                assert env._smac_instance.intensifier.config_selector._random_design._seed == inner_seed
+                assert acquisition_function.mode == "expected_improvement"
+
+                initial_design = [
+                    dict(configuration)
+                    for configuration in env._smac_instance.intensifier.config_selector._initial_design_configs
+                ]
+                episodes.append((inner_seed, initial_design))
+
+                if episode == 0:
+                    env.step(0)
+                    assert acquisition_function.mode == "posterior_mean"
+        finally:
+            env.close()
+        return episodes
+
+    first_stream = collect_stream(outer_seed=17, label="stream-first")
+    replayed_stream = collect_stream(outer_seed=17, label="stream-replayed")
+    different_stream = collect_stream(outer_seed=18, label="stream-different")
+
+    assert replayed_stream == first_stream
+    assert first_stream[0][0] != first_stream[1][0]
+    assert different_stream != first_stream
+
+
 def test_real_bbob_environment_trains_and_runs_as_carps_optimizer(  # noqa: PLR0915
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

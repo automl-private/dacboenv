@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Create a concrete CARP-S evaluation launcher from completed structured PPO
-# runs.  The generated launcher contains the validation-selected model paths,
+# runs. The generated launcher contains the selected best- or last-model paths,
 # so it can be reviewed before it submits any Slurm jobs.
 
 set -euo pipefail
@@ -30,6 +30,9 @@ Generation-time environment variables:
   DACBO_POLICY_REWARD       Reward used for PPO training. One of
                             `reference_free_improvement` (default) or
                             `true_regret_improvement` (BBOB only).
+  DACBO_POLICY_MODEL        PPO model to evaluate. One of `best` (default),
+                            for `validation/best_model.zip`, or `last`, for
+                            the final SB3 state in `model.zip`.
   DACBO_PYTHON              Python executable. Default: .env/bin/python when
                             present, otherwise python from PATH.
   DACBO_OVERWRITE_RUN_SCRIPT=1
@@ -96,10 +99,25 @@ read -r -a policy_seeds <<< "${DACBO_POLICY_SEEDS:-0 1 2 3 4 5 6 7 8 9}"
 read -r -a policy_frequencies <<< "${DACBO_POLICY_FREQUENCIES:-1 5 10}"
 policy_family="${DACBO_POLICY_FAMILY:-wei}"
 policy_reward="${DACBO_POLICY_REWARD:-reference_free_improvement}"
+policy_model="${DACBO_POLICY_MODEL:-best}"
 if (( ${#policy_seeds[@]} == 0 || ${#policy_frequencies[@]} == 0 )); then
     echo "At least one policy seed and interaction frequency are required." >&2
     exit 1
 fi
+
+case "${policy_model}" in
+    best)
+        model_relative_path="validation/best_model.zip"
+        ;;
+    last)
+        model_relative_path="model.zip"
+        ;;
+    *)
+        echo "Unknown DACBO_POLICY_MODEL=${policy_model}." >&2
+        echo "Expected best or last." >&2
+        exit 2
+        ;;
+esac
 
 case "${policy_reward}" in
     reference_free_improvement)
@@ -166,14 +184,16 @@ for frequency in "${policy_frequencies[@]}"; do
         selected_entry_keys["${entry_key}"]=1
 
         run_directory="${ppo_results}/${optimizer_group}/DACBO/${task_id}/${policy_seed}"
-        model_path="${run_directory}/validation/best_model.zip"
+        model_path="${run_directory}/${model_relative_path}"
         required_artifacts=(
             "${run_directory}/.hydra/config.yaml"
             "${run_directory}/model.zip"
             "${model_path}"
-            "${run_directory}/validation/evaluations.npz"
             "${run_directory}/modeleval.txt"
         )
+        if [[ "${policy_model}" == "best" ]]; then
+            required_artifacts+=("${run_directory}/validation/evaluations.npz")
+        fi
         for artifact in "${required_artifacts[@]}"; do
             if [[ ! -s "${artifact}" ]]; then
                 echo "Selected PPO run is incomplete; missing or empty: ${artifact}" >&2
@@ -189,7 +209,8 @@ done
 # This creates the CARP-S policy bridge inside the evaluation bundle. It copies
 # each training MDP definition and stores an absolute selected-model path in
 # the generated policy YAML.
-"${python_bin}" -m dacboenv.experiment.collect_ppo "${ppo_results}" "${generated_policy_root}"
+"${python_bin}" -m dacboenv.experiment.collect_ppo \
+    "${ppo_results}" "${generated_policy_root}" "${policy_model}"
 
 for entry in "${selected_entries[@]}"; do
     IFS="|" read -r frequency policy_seed task_id model_path <<< "${entry}"
@@ -220,6 +241,7 @@ done
 # CARP-S results: ${eval_results}
 # Controller family: ${policy_family}
 # PPO training reward: ${policy_reward}
+# PPO model selection: ${policy_model} (${model_relative_path})
 #
 # Usage:
 #   bash ${run_script} [training|bbob_2d_8d|both] [METHODS]
@@ -702,7 +724,7 @@ echo
 echo "Created CARP-S evaluation launcher:"
 echo "  ${run_script}"
 echo
-echo "It contains ${#selected_entries[@]} learned policies and their absolute validation/best_model.zip paths."
+echo "It contains ${#selected_entries[@]} learned policies and their absolute ${model_relative_path} paths."
 echo "Review learned policies plus all baselines without submitting:"
 echo "  DACBO_DRY_RUN=1 bash ${run_script} both all"
 echo "Submit learned policies plus all baselines to Otus Slurm:"

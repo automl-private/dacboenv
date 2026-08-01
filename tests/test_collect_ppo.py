@@ -128,6 +128,34 @@ def test_gather_prefers_validation_model_with_legacy_fallbacks(
     }
 
 
+def test_gather_can_select_last_model_instead_of_validation_best(
+    tmp_path: Path,
+) -> None:
+    """Last-model selection exports the final state saved after learning."""
+    run_directory = tmp_path / "PPO" / "DACBO" / "task" / "1"
+    _write_run_config(run_directory)
+    best_model = run_directory / "validation" / "best_model.zip"
+    best_model.parent.mkdir()
+    best_model.touch()
+    final_model = run_directory / "model.zip"
+    final_model.touch()
+
+    assert gather_trained_ppo(tmp_path, model_selection="last") == [final_model.resolve()]
+
+    configs_path = tmp_path / "policy-configs"
+    create_ppo_eval_configs(tmp_path, configs_path=configs_path, model_selection="last")
+    generated = OmegaConf.load(
+        configs_path / "PPO-Structured-MLP" / "structured-task" / "seed7.yaml"
+    )
+    assert generated.optimizer.policy_kwargs.model == str(final_model.resolve())
+
+
+def test_gather_rejects_unknown_model_selection(tmp_path: Path) -> None:
+    """Invalid selection modes fail before silently choosing an artifact."""
+    with pytest.raises(ValueError, match="expected 'best' or 'last'"):
+        gather_trained_ppo(tmp_path, model_selection="newest")
+
+
 @pytest.mark.parametrize(
     ("structured", "true_regret"),
     [(True, False), (True, True), (False, True)],

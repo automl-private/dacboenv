@@ -24,16 +24,20 @@ _TRUE_REGRET_REWARD_IDS = {"true-regret-improvement"}
 _TRUE_REGRET_REWARD_KEYS = {"true_regret_improvement"}
 
 
-def _select_run_model(run_directory: Path) -> Path | None:
+def _select_run_model(run_directory: Path, model_selection: str = "best") -> Path | None:
     """Select the model artifact that should represent one training run.
 
-    Validation-selected models are preferred over the final training state.
-    Runs created before validation was added retain the historical final-model
-    and latest-checkpoint fallbacks.
+    ``best`` prefers the validation-selected model, while ``last`` prefers the
+    final state saved after learning. Runs created before final-model saving
+    retain the latest-checkpoint fallback.
     """
-    best_model = run_directory / "validation" / "best_model.zip"
-    if best_model.is_file():
-        return best_model
+    if model_selection not in {"best", "last"}:
+        raise ValueError(f"Unknown model selection {model_selection!r}; expected 'best' or 'last'.")
+
+    if model_selection == "best":
+        best_model = run_directory / "validation" / "best_model.zip"
+        if best_model.is_file():
+            return best_model
 
     final_model = run_directory / "model.zip"
     if final_model.is_file():
@@ -88,14 +92,18 @@ def _normalization_wrapper(model: Path, run_directory: Path) -> Path | None:
     return next((candidate for candidate in candidates if candidate.is_file()), None)
 
 
-def gather_trained_ppo(rundir: Path | str) -> list[Path]:
+def gather_trained_ppo(rundir: Path | str, model_selection: str = "best") -> list[Path]:
     """Gather one selected PPO model per Hydra training run.
 
-    Selection prefers ``validation/best_model.zip``, then ``model.zip``, then
-    the highest-numbered ``rl_model_*_steps.zip`` compatibility checkpoint.
+    With ``model_selection="best"``, selection prefers
+    ``validation/best_model.zip``. With ``model_selection="last"``, that
+    artifact is skipped. Both modes then fall back to ``model.zip`` and the
+    highest-numbered ``rl_model_*_steps.zip`` compatibility checkpoint.
     """
     if isinstance(rundir, str):
         rundir = Path(rundir)
+    if model_selection not in {"best", "last"}:
+        raise ValueError(f"Unknown model selection {model_selection!r}; expected 'best' or 'last'.")
 
     model_paths: list[Path] = []
     run_directories = sorted(config.parent.parent for config in rundir.rglob(".hydra/config.yaml"))
@@ -106,7 +114,7 @@ def gather_trained_ppo(rundir: Path | str) -> list[Path]:
         total=len(run_directories),
         description="Finding models...",
     ):
-        model = _select_run_model(directory)
+        model = _select_run_model(directory, model_selection=model_selection)
         if model is not None:
             logger.info(f"Found {model}")
             model_paths.append(model.resolve())
@@ -124,11 +132,12 @@ def _config_output_path(configs_path: Path, cfg: DictConfig) -> Path:
 def create_ppo_eval_configs(
     rundir: Path | str,
     configs_path: Path | str | None = None,
+    model_selection: str = "best",
 ) -> None:
     """Creates PPO configs. To be called on the targeted runs directory from the DACBOENV repo root."""
     if isinstance(rundir, str):
         rundir = Path(rundir)
-    models = gather_trained_ppo(rundir)
+    models = gather_trained_ppo(rundir, model_selection=model_selection)
     if configs_path is None:
         configs_path = Path(__file__).parent.parent / "configs/policy/optimized/"
     elif isinstance(configs_path, str):

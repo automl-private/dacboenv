@@ -69,6 +69,7 @@ def _write_run_config(
     structured: bool = True,
     vecnormalize: bool = False,
     true_regret: bool = False,
+    legacy_logging_interpolation: bool = False,
 ) -> DictConfig:
     """Create the minimal saved Hydra config consumed by the collector."""
     structured_reward_id = "true-regret-improvement" if true_regret else "reference-free-improvement"
@@ -89,6 +90,17 @@ def _write_run_config(
         }
     )
     config_path = run_directory / ".hydra" / "config.yaml"
+    if legacy_logging_interpolation:
+        cfg.dacboenv.optimizer_cfg = {
+            "smac_cfg": {
+                "smac_kwargs": {
+                    "logging_level": {
+                        "_target_": "pathlib.Path",
+                        "_args_": ["${dacboenv_config:logging/smac_internal.yaml}"],
+                    }
+                }
+            }
+        }
     config_path.parent.mkdir(parents=True)
     OmegaConf.save(cfg, config_path)
     return cfg
@@ -133,7 +145,7 @@ def test_gather_can_select_last_model_instead_of_validation_best(
 ) -> None:
     """Last-model selection exports the final state saved after learning."""
     run_directory = tmp_path / "PPO" / "DACBO" / "task" / "1"
-    _write_run_config(run_directory)
+    _write_run_config(run_directory, legacy_logging_interpolation=True)
     best_model = run_directory / "validation" / "best_model.zip"
     best_model.parent.mkdir()
     best_model.touch()
@@ -148,6 +160,12 @@ def test_gather_can_select_last_model_instead_of_validation_best(
         configs_path / "PPO-Structured-MLP" / "structured-task" / "seed7.yaml"
     )
     assert generated.optimizer.policy_kwargs.model == str(final_model.resolve())
+    unresolved = OmegaConf.to_container(generated, resolve=False)
+    assert isinstance(unresolved, dict)
+    assert (
+        unresolved["dacboenv"]["optimizer_cfg"]["smac_cfg"]["smac_kwargs"]["logging_level"]["_args_"]
+        == ["dacboenv/configs/logging/smac_internal.yaml"]
+    )
 
 
 def test_gather_rejects_unknown_model_selection(tmp_path: Path) -> None:

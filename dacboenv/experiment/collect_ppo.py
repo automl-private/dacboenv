@@ -22,6 +22,8 @@ _REFERENCE_FREE_REWARD_IDS = {"reference-free-improvement"}
 _REFERENCE_FREE_REWARD_KEYS = {"reference_free_improvement"}
 _TRUE_REGRET_REWARD_IDS = {"true-regret-improvement"}
 _TRUE_REGRET_REWARD_KEYS = {"true_regret_improvement"}
+_SMAC_LOGGING_CONFIG = "dacboenv/configs/logging/smac_internal.yaml"
+_LEGACY_SMAC_LOGGING_INTERPOLATION = "${dacboenv_config:logging/smac_internal.yaml}"
 
 
 def _select_run_model(run_directory: Path, model_selection: str = "best") -> Path | None:
@@ -90,6 +92,21 @@ def _normalization_wrapper(model: Path, run_directory: Path) -> Path | None:
     if model.parent != run_directory:
         candidates.append(run_directory / "vecnormalize.pkl")
     return next((candidate for candidate in candidates if candidate.is_file()), None)
+
+
+def _normalize_smac_logging_path(dacboenv_cfg: DictConfig) -> None:
+    """Replace the legacy unresolved logging-path interpolation in exported configs."""
+    logging_level = OmegaConf.select(
+        dacboenv_cfg,
+        "optimizer_cfg.smac_cfg.smac_kwargs.logging_level",
+    )
+    if not isinstance(logging_level, DictConfig):
+        return
+    unresolved = OmegaConf.to_container(logging_level, resolve=False)
+    if not isinstance(unresolved, dict):
+        return
+    if unresolved.get("_args_") == [_LEGACY_SMAC_LOGGING_INTERPOLATION]:
+        logging_level._args_[0] = _SMAC_LOGGING_CONFIG
 
 
 def gather_trained_ppo(rundir: Path | str, model_selection: str = "best") -> list[Path]:
@@ -169,6 +186,7 @@ def create_ppo_eval_configs(
         elif bool(cfg.experiment.get("vecnormalize", False)):
             raise ValueError(f"No normalization wrapper found for model {model!s}.")
         eval_conf.dacboenv = cfg.dacboenv
+        _normalize_smac_logging_path(eval_conf.dacboenv)
         eval_conf.dacboenv.task_ids = ["${task.name}"]
         eval_conf.dacboenv.inner_seeds = ["${seed}"]
         # Structured potential-reward policies must see exactly the MDP used

@@ -22,7 +22,7 @@ from gymnasium import Env
 from gymnasium.spaces import Box, Dict, Discrete
 from hydra import compose, initialize_config_module
 from hydra.utils import instantiate
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from smac.acquisition.function.expected_improvement import EI
 from smac.facade.blackbox_facade import BlackBoxFacade
 from stable_baselines3.common.policies import MultiInputActorCriticPolicy
@@ -78,6 +78,15 @@ def compose_config(*overrides: str) -> DictConfig:
         version_base=None,
     ):
         return compose(config_name=None, overrides=list(overrides))
+
+
+def test_smac_logging_path_is_concrete_in_saved_hydra_config() -> None:
+    """Hydra serialization retains a usable repository-relative logging path."""
+    cfg = compose_config("+env=base", "+env/opt=base")
+    logging_path = cfg.dacboenv.optimizer_cfg.smac_cfg.smac_kwargs.logging_level._args_[0]
+
+    assert logging_path == "dacboenv/configs/logging/smac_internal.yaml"
+    assert "${dacboenv_config:" not in OmegaConf.to_yaml(cfg, resolve=False)
 
 
 @pytest.mark.parametrize(

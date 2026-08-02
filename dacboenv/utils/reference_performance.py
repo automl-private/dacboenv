@@ -96,11 +96,7 @@ class ReferencePerformance:
         if seed is None:
             ids = [(optimizer_id, task_id)]
             index_columns = ["optimizer_id", "task_id"]
-            return float(
-                self.perf_df.set_index(index_columns)
-                .loc[ids]["trial_value__cost_inc"]
-                .mean()
-            )
+            return float(self.perf_df.set_index(index_columns).loc[ids]["trial_value__cost_inc"].mean())
 
         ids = [(optimizer_id, task_id, seed)]
         index_columns = ["optimizer_id", "task_id", "seed"]
@@ -137,11 +133,7 @@ def get_config_overrides(ids: list[str], index_csv: Path, group_name: str, id_co
     -------
         List of Hydra overrides like '+task/some/path=id1,id2'
     """
-    df = (
-        pd.read_csv(index_csv)
-        if index_csv.is_file()
-        else get_carps_config_index(group_name)
-    )
+    df = pd.read_csv(index_csv) if index_csv.is_file() else get_carps_config_index(group_name)
     try:
         filtered = df.set_index(id_col).loc[ids].reset_index()
     except KeyError as e:

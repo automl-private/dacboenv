@@ -2,6 +2,7 @@
 
 instance_set_id: ackley2d_3seeds
 dacboenv:
+  deprecated_legacy_instance_config: ackley2d_3seeds
   task_ids:
     - Ackley-2
   inner_seeds:

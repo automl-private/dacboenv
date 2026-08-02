@@ -12,7 +12,9 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
 import json
 import math
-from dataclasses import dataclass
+import shutil
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -36,7 +38,16 @@ from stable_baselines3.common.vec_env import (
 
 # Register OmegaConf resolvers.
 import dacboenv  # noqa: F401
-from dacboenv.experiment.ppo_utils import ActionLoggingCallback, structured_policy_sensitivity
+from dacboenv.experiment.paired_evaluator import (
+    DistinctStateSubstitutionError,
+    PolicyStateSample,
+    policy_state_substitution_sensitivity,
+)
+from dacboenv.experiment.ppo_utils import (
+    ActionLoggingCallback,
+    categorical_policy_statistics,
+    structured_policy_sensitivity,
+)
 from dacboenv.experiment.protocol import (
     require_runnable_manifest,
     validate_manifest_structure,
@@ -47,8 +58,6 @@ from dacboenv.utils.loggingutils import maybe_remove_logs
 from dacboenv.utils.seeding import derive_named_seed, run_seed_metadata
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from stable_baselines3.common.base_class import BaseAlgorithm
 
     from dacboenv.dacboenv import DACBOEnv
@@ -107,6 +116,7 @@ class WorkerContextAssignment:
     task_ids: list[str]
     selector_target: str
     bbob_dimension: int | None = None
+    yahpo_scenario: str | None = None
 
 
 @dataclass(frozen=True)
@@ -119,9 +129,21 @@ class ValidationScores:
     worst_domain_score: float
     per_task: dict[str, float]
     per_scenario: dict[str, float]
+    per_dimension: dict[int, float] = field(default_factory=dict)
 
 
-def aggregate_validation_scores(  # noqa: C901, PLR0912
+@dataclass(frozen=True)
+class FullValidationCandidate:
+    """One trained checkpoint nominated for the expensive full panel."""
+
+    candidate_id: str
+    training_step: int
+    model_path: Path
+    normalization_path: Path | None
+    nomination_reasons: tuple[str, ...]
+
+
+def aggregate_validation_scores(
     task_ids: list[str],
     inner_seeds: list[int],
     episode_rewards: list[float],
@@ -153,26 +175,13 @@ def aggregate_validation_scores(  # noqa: C901, PLR0912
             raise ValueError(f"Cannot aggregate unsupported validation task ID {task_id!r}.")
 
     bbob_score: float | None = None
+    per_dimension: dict[int, float] = {}
     if bbob_by_function:
-        scores_by_dimension_group: dict[tuple[int, int], list[float]] = {}
-        for (dimension, function_id), instance_scores in bbob_by_function.items():
-            if function_id <= 5:  # noqa: PLR2004
-                function_group = 0
-            elif function_id <= 9:  # noqa: PLR2004
-                function_group = 1
-            elif function_id <= 14:  # noqa: PLR2004
-                function_group = 2
-            elif function_id <= 19:  # noqa: PLR2004
-                function_group = 3
-            else:
-                function_group = 4
-            scores_by_dimension_group.setdefault((dimension, function_group), []).append(
-                float(np.mean(instance_scores))
-            )
         scores_by_dimension: dict[int, list[float]] = {}
-        for (dimension, _function_group), function_scores in scores_by_dimension_group.items():
-            scores_by_dimension.setdefault(dimension, []).append(float(np.mean(function_scores)))
-        bbob_score = float(np.mean([np.mean(scores) for scores in scores_by_dimension.values()]))
+        for (dimension, _function_id), instance_scores in bbob_by_function.items():
+            scores_by_dimension.setdefault(dimension, []).append(float(np.mean(instance_scores)))
+        per_dimension = {dimension: float(np.mean(scores)) for dimension, scores in sorted(scores_by_dimension.items())}
+        bbob_score = float(np.mean(list(per_dimension.values())))
 
     per_scenario = {
         scenario: float(np.mean(instance_scores)) for scenario, instance_scores in yahpo_by_scenario.items()
@@ -187,11 +196,128 @@ def aggregate_validation_scores(  # noqa: C901, PLR0912
         worst_domain_score=float(min(domain_scores)),
         per_task=per_task,
         per_scenario=per_scenario,
+        per_dimension=per_dimension,
     )
 
 
+def evaluate_protocol_manifest(
+    model: BaseAlgorithm,
+    eval_env: VecEnv,
+    *,
+    task_ids: list[str],
+    inner_seeds: list[int],
+) -> tuple[ValidationScores, list[float], list[int]]:
+    """Evaluate a fixed manifest from context zero and aggregate hierarchically."""
+    eval_env.env_method("restart_fixed_instance_sequence")
+    episode_rewards, episode_lengths = evaluate_policy(
+        model,
+        eval_env,
+        n_eval_episodes=len(task_ids) * len(inner_seeds),
+        deterministic=True,
+        return_episode_rewards=True,
+        warn=False,
+    )
+    rewards = [float(value) for value in episode_rewards]
+    lengths = [int(value) for value in episode_lengths]
+    return aggregate_validation_scores(task_ids, inner_seeds, rewards), rewards, lengths
+
+
+def run_step_zero_validation(
+    model: BaseAlgorithm,
+    training_env: VecEnv,
+    eval_env: VecEnv,
+    *,
+    task_ids: list[str],
+    inner_seeds: list[int],
+    save_path: Path,
+    panel_id: str,
+    panel_hash: str,
+) -> ValidationScores:
+    """Evaluate and persist the untrained policy outside model selection."""
+    if isinstance(training_env, VecNormalize):
+        sync_envs_normalization(training_env, eval_env)
+    if isinstance(eval_env, VecNormalize):
+        eval_env.training = False
+        eval_env.norm_reward = False
+
+    scores, episode_rewards, episode_lengths = evaluate_protocol_manifest(
+        model,
+        eval_env,
+        task_ids=task_ids,
+        inner_seeds=inner_seeds,
+    )
+    save_path.mkdir(parents=True, exist_ok=True)
+    model.save(save_path / "untrained_model")
+    if isinstance(eval_env, VecNormalize):
+        eval_env.save(str(save_path / "vecnormalize.pkl"))
+    payload = {
+        "selection_eligible": False,
+        "panel_tier": "frequent",
+        "panel_id": panel_id,
+        "panel_hash": panel_hash,
+        "num_timesteps": 0,
+        "scores": {
+            "balanced": scores.balanced_score,
+            "bbob": scores.bbob_score,
+            "yahpo": scores.yahpo_score,
+            "worst_domain": scores.worst_domain_score,
+            "per_task": scores.per_task,
+            "per_scenario": scores.per_scenario,
+            "per_dimension": scores.per_dimension,
+        },
+        "episode_rewards": episode_rewards,
+        "episode_lengths": episode_lengths,
+    }
+    (save_path / "metrics.json").write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return scores
+
+
+def build_trained_vs_step_zero_comparison(
+    *,
+    step_zero_scores: ValidationScores,
+    final_scores: ValidationScores,
+    selected_full: dict[str, Any] | None,
+    frequent_history: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Compare trained checkpoints with step zero on the frequent panel.
+
+    A final checkpoint need not coincide with a periodic frequent-validation
+    callback.  Its score is nevertheless available from the mandatory final
+    frequent-panel evaluation.  Treating that case as missing used to report a
+    false negative for ``best_trained_improves_over_step_zero``.
+    """
+    selected_frequent_score: float | None = None
+    selected_score_source: str | None = None
+    if selected_full is not None:
+        selected_step = int(selected_full["training_step"])
+        selected_frequent = next(
+            (entry for entry in frequent_history if int(entry["training_step"]) == selected_step),
+            None,
+        )
+        if selected_frequent is not None:
+            selected_frequent_score = float(selected_frequent["scores"]["balanced"])
+            selected_score_source = "periodic_frequent_checkpoint"
+        elif str(selected_full.get("candidate_id", "")) == "final":
+            selected_frequent_score = final_scores.balanced_score
+            selected_score_source = "final_frequent_evaluation"
+
+    return {
+        "step_zero_is_selection_eligible": False,
+        "comparison_panel_tier": "frequent",
+        "step_zero_balanced_score": step_zero_scores.balanced_score,
+        "final_balanced_score": final_scores.balanced_score,
+        "final_improves_over_step_zero": final_scores.balanced_score > step_zero_scores.balanced_score,
+        "full_selected_balanced_score": None if selected_full is None else selected_full["score"],
+        "full_selected_checkpoint_frequent_score": selected_frequent_score,
+        "full_selected_checkpoint_frequent_score_source": selected_score_source,
+        "best_trained_improves_over_step_zero": (
+            None if selected_frequent_score is None else selected_frequent_score > step_zero_scores.balanced_score
+        ),
+    }
+
+
 class ProtocolEvalCallback(EvalCallback):
-    """Fixed-manifest evaluation with hierarchical scores and checkpoints."""
+    """Frequent-panel screening with replayable trained checkpoints."""
 
     def __init__(
         self,
@@ -199,6 +325,8 @@ class ProtocolEvalCallback(EvalCallback):
         manifest_task_ids: list[str],
         manifest_inner_seeds: list[int],
         protocol_save_path: Path,
+        panel_id: str,
+        panel_hash: str,
         **kwargs: Any,
     ) -> None:
         # Disable EvalCallback's raw-episode-mean checkpoint. Protocol scores
@@ -208,17 +336,44 @@ class ProtocolEvalCallback(EvalCallback):
         self._manifest_task_ids = manifest_task_ids
         self._manifest_inner_seeds = manifest_inner_seeds
         self._protocol_save_path = protocol_save_path
+        self._panel_id = panel_id
+        self._panel_hash = panel_hash
         self._best_scores = {"balanced": -np.inf, "bbob": -np.inf, "yahpo": -np.inf}
+        self.frequent_history: list[dict[str, Any]] = []
 
-    def _save_protocol_checkpoint(self, label: str) -> None:
-        self._protocol_save_path.mkdir(parents=True, exist_ok=True)
-        self.model.save(self._protocol_save_path / f"best_{label}_model")
+    def _save_frequent_checkpoint(self, scores: ValidationScores) -> None:
+        checkpoint_directory = self._protocol_save_path / "frequent" / "checkpoints"
+        checkpoint_directory.mkdir(parents=True, exist_ok=True)
+        checkpoint_stem = checkpoint_directory / f"step_{self.num_timesteps}_model"
+        self.model.save(checkpoint_stem)
         vecnormalize = self.model.get_vec_normalize_env()
+        normalization_path: Path | None = None
         if vecnormalize is not None:
-            vecnormalize.save(str(self._protocol_save_path / f"best_{label}_vecnormalize.pkl"))
-        if label == "balanced":
-            # Compatibility alias consumed by the existing evaluation tools.
-            self.model.save(self._protocol_save_path / "best_model")
+            normalization_path = checkpoint_directory / f"step_{self.num_timesteps}_vecnormalize.pkl"
+            vecnormalize.save(str(normalization_path))
+        entry = {
+            "panel_id": self._panel_id,
+            "panel_hash": self._panel_hash,
+            "training_step": int(self.num_timesteps),
+            "model_path": str(checkpoint_stem.with_suffix(".zip")),
+            "normalization_path": None if normalization_path is None else str(normalization_path),
+            "scores": {
+                "balanced": scores.balanced_score,
+                "bbob": scores.bbob_score,
+                "yahpo": scores.yahpo_score,
+                "worst_domain": scores.worst_domain_score,
+                "per_task": scores.per_task,
+                "per_scenario": scores.per_scenario,
+                "per_dimension": scores.per_dimension,
+            },
+        }
+        self.frequent_history.append(entry)
+        history_path = self._protocol_save_path / "frequent" / "history.json"
+        history_path.write_text(
+            json.dumps({"panel_tier": "frequent", "checkpoints": self.frequent_history}, indent=2, sort_keys=True)
+            + "\n",
+            encoding="utf-8",
+        )
 
     @staticmethod
     def _metric_tag(value: str) -> str:
@@ -261,12 +416,223 @@ class ProtocolEvalCallback(EvalCallback):
         for label, score in checkpoint_scores.items():
             if score is not None and score > self._best_scores[label]:
                 self._best_scores[label] = score
-                self._save_protocol_checkpoint(label)
+        self._save_frequent_checkpoint(scores)
         self.logger.dump(self.num_timesteps)
         return continue_training
 
 
-def assign_training_worker_context(
+def nominate_full_validation_candidates(  # noqa: C901, PLR0912
+    frequent_history: list[dict[str, Any]],
+    *,
+    final_model_path: Path,
+    final_normalization_path: Path | None,
+    final_training_step: int,
+    top_k: int = 3,
+    include_halfway: bool = True,
+    include_final: bool = True,
+    manual_steps: list[int] | None = None,
+) -> tuple[FullValidationCandidate, ...]:
+    """Nominate top frequent, halfway, final, and explicit trained checkpoints."""
+    if top_k < 0:
+        raise ValueError("full validation top_k must be non-negative.")
+    if final_training_step <= 0:
+        raise ValueError("Full validation requires a positive trained final step.")
+    by_step: dict[int, dict[str, Any]] = {}
+    for entry in frequent_history:
+        step = int(entry["training_step"])
+        if step <= 0 or step in by_step:
+            raise ValueError("Frequent validation history must contain unique positive training steps.")
+        by_step[step] = entry
+
+    reasons: dict[int, set[str]] = {}
+    ranked = sorted(
+        frequent_history,
+        key=lambda entry: (-float(entry["scores"]["balanced"]), int(entry["training_step"])),
+    )
+    for entry in ranked[:top_k]:
+        reasons.setdefault(int(entry["training_step"]), set()).add("top_frequent")
+    if include_halfway and by_step:
+        halfway = final_training_step / 2.0
+        halfway_step = min(by_step, key=lambda step: (abs(step - halfway), step))
+        reasons.setdefault(halfway_step, set()).add("approximately_halfway")
+    for step in manual_steps or []:
+        if step not in by_step:
+            raise ValueError(f"Manual full-validation step {step} has no saved frequent checkpoint.")
+        reasons.setdefault(step, set()).add("manual")
+    if include_final:
+        reasons.setdefault(final_training_step, set()).add("final")
+
+    candidates: list[FullValidationCandidate] = []
+    for step in sorted(reasons):
+        if step == final_training_step and include_final:
+            model_path = final_model_path
+            normalization_path = final_normalization_path
+            candidate_id = "final"
+        else:
+            entry = by_step[step]
+            model_path = Path(str(entry["model_path"]))
+            raw_normalization = entry.get("normalization_path")
+            normalization_path = None if raw_normalization is None else Path(str(raw_normalization))
+            candidate_id = f"step_{step}"
+        if not model_path.is_file():
+            raise FileNotFoundError(f"Nominated full-validation model is missing: {model_path}")
+        if final_normalization_path is not None and normalization_path is None:
+            raise FileNotFoundError(f"Checkpoint-specific normalization is missing for {candidate_id}.")
+        if normalization_path is not None and not normalization_path.is_file():
+            raise FileNotFoundError(f"Nominated normalization state is missing: {normalization_path}")
+        candidates.append(
+            FullValidationCandidate(
+                candidate_id=candidate_id,
+                training_step=step,
+                model_path=model_path,
+                normalization_path=normalization_path,
+                nomination_reasons=tuple(sorted(reasons[step])),
+            )
+        )
+    if not candidates:
+        raise ValueError("No trained checkpoint was nominated for full validation.")
+    return tuple(candidates)
+
+
+def _score_payload(scores: ValidationScores) -> dict[str, Any]:
+    return {
+        "balanced": scores.balanced_score,
+        "bbob": scores.bbob_score,
+        "yahpo": scores.yahpo_score,
+        "worst_domain": scores.worst_domain_score,
+        "per_task": scores.per_task,
+        "per_scenario": scores.per_scenario,
+        "per_dimension": scores.per_dimension,
+    }
+
+
+def _select_full_result(results: list[dict[str, Any]], label: str) -> dict[str, Any] | None:
+    eligible = [result for result in results if result["scores"].get(label) is not None]
+    if not eligible:
+        return None
+    return sorted(
+        eligible,
+        key=lambda result: (-float(result["scores"][label]), int(result["training_step"]), result["candidate_id"]),
+    )[0]
+
+
+def run_full_panel_validation(
+    model: BaseAlgorithm,
+    cfg: DictConfig,
+    *,
+    validation_cfg: DictConfig,
+    frequent_history: list[dict[str, Any]],
+    rundir: Path,
+    protocol_metadata: dict[str, Any],
+    start_method: str | None,
+) -> dict[str, Any]:
+    """Evaluate only nominated trained checkpoints and export full-panel bests."""
+    full_task_ids = list(validation_cfg.full_task_ids)
+    full_inner_seeds = [int(seed) for seed in validation_cfg.full_inner_seeds if seed is not None]
+    if len(full_inner_seeds) != len(validation_cfg.full_inner_seeds):
+        raise ValueError("Full validation manifests must contain only frozen integer inner seeds.")
+    expected_episodes = len(full_task_ids) * len(full_inner_seeds)
+    if expected_episodes != int(validation_cfg.full_n_eval_episodes):
+        raise ValueError("Full validation episode count does not match its frozen task/seed product.")
+
+    final_model_path = rundir / "model.zip"
+    final_normalization_path = rundir / "vecnormalize.pkl" if isinstance(model.get_env(), VecNormalize) else None
+    candidates = nominate_full_validation_candidates(
+        frequent_history,
+        final_model_path=final_model_path,
+        final_normalization_path=final_normalization_path,
+        final_training_step=int(model.num_timesteps),
+        top_k=int(validation_cfg.get("full_top_k", 3)),
+        include_halfway=bool(validation_cfg.get("full_include_halfway", True)),
+        include_final=bool(validation_cfg.get("full_include_final", True)),
+        manual_steps=[int(step) for step in validation_cfg.get("full_manual_steps", [])],
+    )
+
+    results: list[dict[str, Any]] = []
+    for candidate in candidates:
+        full_factories = [
+            make_env_factory(
+                cfg,
+                worker_id=0,
+                output_directory=rundir / "smac3_output" / "validation_full" / candidate.candidate_id,
+                task_ids=full_task_ids,
+                inner_seeds=full_inner_seeds,
+                instance_set_id=str(validation_cfg.full_instance_set_id),
+                instance_selector_cfg=validation_cfg.instance_selector_class,
+                protocol_metadata=protocol_metadata,
+                context_split="validation",
+            )
+        ]
+        candidate_env: VecEnv = _make_vec_env(full_factories, start_method=start_method)
+        try:
+            if candidate.normalization_path is not None:
+                candidate_env = VecNormalize.load(str(candidate.normalization_path), candidate_env)
+                candidate_env.training = False
+                candidate_env.norm_reward = False
+            candidate_model = type(model).load(str(candidate.model_path))
+            scores, rewards, lengths = evaluate_protocol_manifest(
+                candidate_model,
+                candidate_env,
+                task_ids=full_task_ids,
+                inner_seeds=full_inner_seeds,
+            )
+        finally:
+            candidate_env.close()
+        result = {
+            "candidate_id": candidate.candidate_id,
+            "training_step": candidate.training_step,
+            "model_path": str(candidate.model_path),
+            "normalization_path": (None if candidate.normalization_path is None else str(candidate.normalization_path)),
+            "nomination_reasons": list(candidate.nomination_reasons),
+            "scores": _score_payload(scores),
+            "episode_rewards": rewards,
+            "episode_lengths": lengths,
+        }
+        results.append(result)
+        candidate_directory = rundir / "validation" / "full" / candidate.candidate_id
+        candidate_directory.mkdir(parents=True, exist_ok=True)
+        (candidate_directory / "metrics.json").write_text(
+            json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+
+    selections: dict[str, Any] = {}
+    for label in ("balanced", "bbob", "yahpo"):
+        selected = _select_full_result(results, label)
+        if selected is None:
+            continue
+        selections[label] = {
+            "candidate_id": selected["candidate_id"],
+            "training_step": selected["training_step"],
+            "score": selected["scores"][label],
+        }
+        destination = rundir / "validation" / f"best_{label}_model.zip"
+        shutil.copy2(selected["model_path"], destination)
+        if selected["normalization_path"] is not None:
+            shutil.copy2(
+                selected["normalization_path"],
+                rundir / "validation" / f"best_{label}_vecnormalize.pkl",
+            )
+        if label == "balanced":
+            shutil.copy2(selected["model_path"], rundir / "validation" / "best_model.zip")
+
+    payload = {
+        "panel_tier": "full",
+        "manifest_id": str(validation_cfg.full_instance_set_id),
+        "manifest_hash": str(validation_cfg.full_manifest_hash),
+        "episode_count": expected_episodes,
+        "trained_checkpoints_only": True,
+        "results": results,
+        "selections": selections,
+    }
+    full_directory = rundir / "validation" / "full"
+    full_directory.mkdir(parents=True, exist_ok=True)
+    (full_directory / "selection.json").write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return payload
+
+
+def assign_training_worker_context(  # noqa: C901
     task_ids: list[str],
     *,
     worker_id: int,
@@ -293,16 +659,34 @@ def assign_training_worker_context(
             raise ValueError("Mixed BBOB/YAHPO training requires at least two persistent workers.")
         n_bbob_workers = min(max(math.ceil(n_workers * bbob_fraction), 1), n_workers - 1)
         if worker_id >= n_bbob_workers:
+            local_worker_id = worker_id - n_bbob_workers
+            scenarios = sorted({task_id.split("/")[2] for task_id in yahpo_tasks})
+            n_yahpo_workers = n_workers - n_bbob_workers
+            if n_yahpo_workers < len(scenarios):
+                raise ValueError(
+                    "Persistent mixed YAHPO sampling requires at least one worker per scenario; "
+                    f"got {n_yahpo_workers} workers for {len(scenarios)} scenarios."
+                )
+            scenario = scenarios[local_worker_id % len(scenarios)]
             return WorkerContextAssignment(
                 domain="yahpo",
-                task_ids=yahpo_tasks,
+                task_ids=[task_id for task_id in yahpo_tasks if task_id.split("/")[2] == scenario],
                 selector_target="dacboenv.env.instance.HierarchicalYAHPOInstanceSelector",
+                yahpo_scenario=scenario,
             )
     elif yahpo_tasks:
+        scenarios = sorted({task_id.split("/")[2] for task_id in yahpo_tasks})
+        if n_workers < len(scenarios):
+            raise ValueError(
+                "Persistent YAHPO sampling requires at least one worker per scenario; "
+                f"got {n_workers} workers for {len(scenarios)} scenarios."
+            )
+        scenario = scenarios[worker_id % len(scenarios)]
         return WorkerContextAssignment(
             domain="yahpo",
-            task_ids=yahpo_tasks,
+            task_ids=[task_id for task_id in yahpo_tasks if task_id.split("/")[2] == scenario],
             selector_target="dacboenv.env.instance.HierarchicalYAHPOInstanceSelector",
+            yahpo_scenario=scenario,
         )
 
     dimensions = sorted({int(task_id.split("/")[1]) for task_id in bbob_tasks})
@@ -429,6 +813,7 @@ def make_env_factory(
     instance_set_id: str | None = None,
     instance_selector_cfg: DictConfig | None = None,
     protocol_metadata: dict[str, Any] | None = None,
+    context_split: str = "train",
 ) -> Callable[[], DACBOEnv]:
     """Build an isolated DACBO environment factory for a vector worker."""
 
@@ -450,6 +835,10 @@ def make_env_factory(
         if protocol_metadata is not None:
             with open_dict(config.dacboenv):
                 config.dacboenv.protocol_metadata = dict(protocol_metadata)
+        with open_dict(config.dacboenv):
+            config.dacboenv.context_split = context_split
+            if context_split != "train":
+                config.dacboenv.yahpo_training_budget_multiplier = 1.0
 
         selector_cfg = config.dacboenv.instance_selector_class
         selector_target = str(selector_cfg.get("_target_", "")) if isinstance(selector_cfg, DictConfig) else ""
@@ -471,6 +860,8 @@ def _protocol_metadata_from_config(cfg: DictConfig) -> dict[str, Any]:
         ("training_instances", "train"),
         ("validation_instances", "validation"),
         ("test_instances", "test"),
+        ("frequent_validation_panel", "frequent_validation"),
+        ("full_validation_panel", "full_validation"),
     ):
         manifest = cfg.get(config_key, None)
         if manifest is None:
@@ -480,7 +871,11 @@ def _protocol_metadata_from_config(cfg: DictConfig) -> dict[str, Any]:
             raise TypeError(f"{config_key} must be a manifest mapping.")
         if plain_manifest.get("schema_version", None) is not None:
             validate_manifest_structure(plain_manifest)
-            require_runnable_manifest(plain_manifest)
+            # Test manifests are loaded only to pin their identity in training
+            # metadata. A sealed/non-runnable test inventory must not be
+            # evaluated or prevent an otherwise valid non-test pilot.
+            if config_key != "test_instances":
+                require_runnable_manifest(plain_manifest)
             if plain_manifest.get("domain") == "bbob":
                 validate_native_bbob_manifest(plain_manifest)
         if manifest.get("schema_version", None) is not None:
@@ -541,8 +936,173 @@ def _callback_frequency(transition_frequency: int, n_envs: int) -> int:
     return max(transition_frequency // n_envs, 1)
 
 
-def _write_policy_sensitivity(model: BaseAlgorithm, rundir: Path) -> None:
-    """Evaluate structured-policy interventions on the final real rollout state."""
+_POLICY_SENSITIVITY_INTERVENTIONS = (
+    "zero_global_state",
+    "permute_global_features",
+    "mean_action_features",
+    "permute_action_rows",
+    "state_from_another_task",
+    "state_from_another_budget_phase",
+)
+_MATRIX_NDIM = 2
+
+
+def build_policy_sensitivity_report(  # noqa: C901
+    fallback_observation: Mapping[str, np.ndarray],
+    probability_function: Callable[[dict[str, np.ndarray]], np.ndarray],
+    *,
+    state_samples: Sequence[Mapping[str, Any]] = (),
+    deterministic_constant_episode_fraction: float | None = None,
+) -> dict[str, Any]:
+    """Build a complete, fail-closed state-sensitivity artifact.
+
+    Cross-state substitutions are selected through explicit task and budget
+    provenance. If the rollout reservoir has no provably distinct source, the
+    corresponding intervention is recorded as unavailable rather than being
+    synthesized from an arbitrary worker shift.
+    """
+    fallback = {name: np.asarray(value).copy() for name, value in fallback_observation.items()}
+    if set(fallback) != {"global_state", "action_features"}:
+        raise ValueError("Policy sensitivity requires global_state and action_features.")
+    if fallback["global_state"].ndim < 2 or fallback["action_features"].ndim < 3:  # noqa: PLR2004
+        raise ValueError("Fallback policy observations must include a leading batch dimension.")
+
+    samples = [
+        PolicyStateSample(
+            task_id=str(sample["task_id"]),
+            budget_fraction=float(sample["budget_fraction"]),
+            observation={name: np.asarray(value).copy() for name, value in sample["observation"].items()},
+        )
+        for sample in state_samples
+    ]
+
+    def single_probability(observation: Mapping[str, np.ndarray]) -> np.ndarray:
+        probabilities = np.asarray(
+            probability_function({name: np.asarray(value).copy() for name, value in observation.items()}),
+            dtype=float,
+        )
+        if probabilities.ndim == _MATRIX_NDIM and probabilities.shape[0] == 1:
+            probabilities = probabilities[0]
+        return probabilities
+
+    substitution_results = None
+    reference_index: int | None = None
+    substitution_error = "No provenance-bearing rollout states were captured."
+    for candidate_index in range(len(samples)):
+        try:
+            substitution_results = policy_state_substitution_sensitivity(
+                samples,
+                single_probability,
+                reference_index=candidate_index,
+            )
+        except DistinctStateSubstitutionError as error:
+            substitution_error = str(error)
+            continue
+        reference_index = candidate_index
+        break
+
+    if reference_index is None:
+        reference_observation = {name: value[:1].copy() for name, value in fallback.items()}
+        another_task = None
+        another_phase = None
+        provenance: dict[str, Any] = {
+            "status": "incomplete",
+            "reason": substitution_error,
+        }
+    else:
+        assert substitution_results is not None
+        reference_sample = samples[reference_index]
+
+        def batched_sample(source_index: int) -> dict[str, np.ndarray]:
+            return {
+                name: np.asarray(value)[None, ...].copy() for name, value in samples[source_index].observation.items()
+            }
+
+        task_result = substitution_results["state_from_another_task"]
+        phase_result = substitution_results["state_from_another_budget_phase"]
+        reference_observation = {
+            name: np.asarray(value)[None, ...].copy() for name, value in reference_sample.observation.items()
+        }
+        another_task = batched_sample(task_result.source_index)
+        another_phase = batched_sample(phase_result.source_index)
+        provenance = {
+            "status": "complete",
+            "reference_index": reference_index,
+            "reference_task_id": reference_sample.task_id,
+            "reference_budget_fraction": reference_sample.budget_fraction,
+            "reference_budget_phase": reference_sample.budget_phase,
+            "state_from_another_task": {
+                "source_index": task_result.source_index,
+                "source_task_id": task_result.source_task_id,
+                "source_budget_fraction": task_result.source_budget_fraction,
+                "source_budget_phase": task_result.source_budget_phase,
+                "task_changed": task_result.task_changed,
+                "budget_phase_changed": task_result.budget_phase_changed,
+            },
+            "state_from_another_budget_phase": {
+                "source_index": phase_result.source_index,
+                "source_task_id": phase_result.source_task_id,
+                "source_budget_fraction": phase_result.source_budget_fraction,
+                "source_budget_phase": phase_result.source_budget_phase,
+                "task_changed": phase_result.task_changed,
+                "budget_phase_changed": phase_result.budget_phase_changed,
+            },
+        }
+
+    interventions: dict[str, Any] = structured_policy_sensitivity(
+        reference_observation,
+        probability_function,
+        state_from_another_task=another_task,
+        state_from_another_budget_phase=another_phase,
+    )
+    for name in _POLICY_SENSITIVITY_INTERVENTIONS:
+        interventions.setdefault(
+            name,
+            {
+                "status": "unavailable",
+                "reason": substitution_error,
+            },
+        )
+
+    if samples:
+        compatible = [
+            sample
+            for sample in samples
+            if all(
+                np.asarray(sample.observation[name]).shape == reference_observation[name].shape[1:]
+                for name in reference_observation
+            )
+        ]
+        state_batch = (
+            {
+                name: np.stack([np.asarray(sample.observation[name]) for sample in compatible])
+                for name in reference_observation
+            }
+            if compatible
+            else reference_observation
+        )
+    else:
+        state_batch = reference_observation
+    probabilities = probability_function(state_batch)
+    logit_std = categorical_policy_statistics(probabilities).logit_std_across_states
+    return {
+        "schema_version": 1,
+        "state_sample_count": len(samples),
+        "substitution_provenance": provenance,
+        "interventions": interventions,
+        "summary": {
+            "logit_std_across_states": logit_std,
+            "deterministic_constant_episode_fraction": deterministic_constant_episode_fraction,
+        },
+    }
+
+
+def _write_policy_sensitivity(
+    model: BaseAlgorithm,
+    rundir: Path,
+    diagnostics_callback: ActionLoggingCallback,
+) -> None:
+    """Evaluate structured-policy interventions on captured real rollout states."""
     observation = getattr(model, "_last_obs", None)
     if not isinstance(observation, dict) or set(observation) != {"global_state", "action_features"}:
         return
@@ -557,14 +1117,23 @@ def _write_policy_sensitivity(model: BaseAlgorithm, rundir: Path) -> None:
             raise TypeError("Structured PPO diagnostics require a categorical policy distribution.")
         return probabilities.detach().cpu().numpy()
 
-    sensitivity = structured_policy_sensitivity(numpy_observation, probability_function)
+    sensitivity = build_policy_sensitivity_report(
+        numpy_observation,
+        probability_function,
+        state_samples=diagnostics_callback.sensitivity_state_samples,
+        deterministic_constant_episode_fraction=(diagnostics_callback.deterministic_constant_episode_fraction),
+    )
     (rundir / "policy_sensitivity.json").write_text(
         json.dumps(sensitivity, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    for intervention, metrics in sensitivity.items():
+    for intervention, metrics in sensitivity["interventions"].items():
         for metric, value in metrics.items():
-            model.logger.record(f"policy_sensitivity/{intervention}/{metric}", value)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                model.logger.record(f"policy_sensitivity/{intervention}/{metric}", value)
+    for metric, value in sensitivity["summary"].items():
+        if value is not None:
+            model.logger.record(f"policy_sensitivity/summary/{metric}", value)
     model.logger.dump(model.num_timesteps)
 
 
@@ -635,6 +1204,21 @@ def run(cfg: DictConfig) -> None:  # noqa: C901, PLR0912, PLR0915
         )
     if worker_assignments:
         logger.info(f"Persistent training worker assignments: {worker_assignments}")
+        assignment_payload = [
+            {
+                "worker_id": worker_id,
+                "domain": assignment.domain,
+                "bbob_dimension": assignment.bbob_dimension,
+                "yahpo_scenario": assignment.yahpo_scenario,
+                "task_ids": assignment.task_ids,
+                "selector_target": assignment.selector_target,
+            }
+            for worker_id, assignment in enumerate(worker_assignments)
+        ]
+        (rundir / "training_worker_assignments.json").write_text(
+            json.dumps(assignment_payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
     vec_env: VecEnv = _make_vec_env(training_factories, start_method=start_method)
     eval_env: VecEnv | None = None
 
@@ -655,6 +1239,10 @@ def run(cfg: DictConfig) -> None:  # noqa: C901, PLR0912, PLR0915
         logger.info(f"Staged training worker seeds: {staged_worker_seeds}")
         logger.info(f"Model: {model.policy}")
 
+        action_logging_callback = ActionLoggingCallback(
+            n_envs=schedule.n_envs,
+            csv_path=str(rundir / "tensorboard" / "actions.csv"),
+        )
         callbacks: list[BaseCallback] = [
             CheckpointCallback(
                 save_freq=_callback_frequency(
@@ -664,14 +1252,13 @@ def run(cfg: DictConfig) -> None:  # noqa: C901, PLR0912, PLR0915
                 save_path=str(rundir),
                 save_vecnormalize=bool(cfg.experiment.vecnormalize),
             ),
-            ActionLoggingCallback(
-                n_envs=schedule.n_envs,
-                csv_path=str(rundir / "tensorboard" / "actions.csv"),
-            ),
+            action_logging_callback,
         ]
 
         validation_cfg = cfg.experiment.get("validation", None)
         eval_callback: EvalCallback | None = None
+        step_zero_scores: ValidationScores | None = None
+        manifest_inner_seeds: list[int] = []
         if validation_cfg is not None and bool(validation_cfg.get("enabled", True)):
             validation_workers = int(validation_cfg.get("n_workers", 1))
             if validation_workers != 1:
@@ -689,6 +1276,7 @@ def run(cfg: DictConfig) -> None:  # noqa: C901, PLR0912, PLR0915
                     instance_set_id=str(validation_cfg.instance_set_id),
                     instance_selector_cfg=validation_cfg.instance_selector_class,
                     protocol_metadata=protocol_metadata,
+                    context_split="validation",
                 )
                 for worker_id in range(validation_workers)
             ]
@@ -711,13 +1299,31 @@ def run(cfg: DictConfig) -> None:  # noqa: C901, PLR0912, PLR0915
                     schedule.n_envs,
                 ),
                 deterministic=True,
-                log_path=str(rundir / "validation"),
+                log_path=str(rundir / "validation" / "frequent"),
                 warn=False,
                 manifest_task_ids=list(validation_cfg.task_ids),
                 manifest_inner_seeds=manifest_inner_seeds,
                 protocol_save_path=rundir / "validation",
+                panel_id=str(validation_cfg.instance_set_id),
+                panel_hash=str(validation_cfg.manifest_hash),
             )
             callbacks.append(eval_callback)
+
+            if bool(validation_cfg.get("step_zero", True)):
+                step_zero_scores = run_step_zero_validation(
+                    model,
+                    vec_env,
+                    eval_env,
+                    task_ids=list(validation_cfg.task_ids),
+                    inner_seeds=manifest_inner_seeds,
+                    save_path=rundir / "validation" / "step_zero",
+                    panel_id=str(validation_cfg.instance_set_id),
+                    panel_hash=str(validation_cfg.manifest_hash),
+                )
+                logger.info(
+                    "Step-zero validation (diagnostic, selection-ineligible): "
+                    f"balanced={step_zero_scores.balanced_score:.6g}."
+                )
 
         logger.info("⚔ Start training...")
         model.learn(
@@ -726,11 +1332,33 @@ def run(cfg: DictConfig) -> None:  # noqa: C901, PLR0912, PLR0915
             tb_log_name="tb_log",
             callback=callbacks,
         )
-        _write_policy_sensitivity(model, rundir)
+        _write_policy_sensitivity(model, rundir, action_logging_callback)
         model.save(rundir / "model")
         if isinstance(vec_env, VecNormalize):
             vec_env.save(str(rundir / "vecnormalize.pkl"))
         logger.info("✅ Finished training.")
+
+        full_validation_payload: dict[str, Any] | None = None
+        if (
+            validation_cfg is not None
+            and bool(validation_cfg.get("enabled", True))
+            and bool(validation_cfg.get("full_enabled", True))
+        ):
+            if not isinstance(eval_callback, ProtocolEvalCallback):
+                raise RuntimeError("Full validation requires the frequent protocol callback history.")
+            full_validation_payload = run_full_panel_validation(
+                model,
+                cfg,
+                validation_cfg=validation_cfg,
+                frequent_history=eval_callback.frequent_history,
+                rundir=rundir,
+                protocol_metadata=protocol_metadata,
+                start_method=start_method,
+            )
+            logger.info(
+                "Completed full-panel validation for "
+                f"{len(full_validation_payload['results'])} nominated trained checkpoints."
+            )
 
         final_evaluation_cfg = cfg.experiment.get("final_evaluation", {})
         if not bool(final_evaluation_cfg.get("enabled", True)):
@@ -752,13 +1380,40 @@ def run(cfg: DictConfig) -> None:  # noqa: C901, PLR0912, PLR0915
             n_eval_episodes = len(cfg.dacboenv.task_ids) * len(cfg.dacboenv.inner_seeds)
             evaluation_label = "training"
 
-        mean_reward, std_reward = evaluate_policy(
-            model,
-            final_eval_env,
-            n_eval_episodes=n_eval_episodes,
-            deterministic=True,
-            warn=False,
-        )
+        if validation_cfg is not None and bool(validation_cfg.get("enabled", True)):
+            final_scores, final_rewards, _final_lengths = evaluate_protocol_manifest(
+                model,
+                final_eval_env,
+                task_ids=list(validation_cfg.task_ids),
+                inner_seeds=manifest_inner_seeds,
+            )
+            mean_reward = float(np.mean(final_rewards))
+            std_reward = float(np.std(final_rewards))
+            if step_zero_scores is not None:
+                selected_full = (
+                    None if full_validation_payload is None else full_validation_payload["selections"].get("balanced")
+                )
+                frequent_history = (
+                    eval_callback.frequent_history if isinstance(eval_callback, ProtocolEvalCallback) else []
+                )
+                comparison = build_trained_vs_step_zero_comparison(
+                    step_zero_scores=step_zero_scores,
+                    final_scores=final_scores,
+                    selected_full=selected_full,
+                    frequent_history=frequent_history,
+                )
+                (rundir / "validation" / "trained_vs_step_zero.json").write_text(
+                    json.dumps(comparison, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+        else:
+            mean_reward, std_reward = evaluate_policy(
+                model,
+                final_eval_env,
+                n_eval_episodes=n_eval_episodes,
+                deterministic=True,
+                warn=False,
+            )
         logger.info(f"Learned policy {evaluation_label} reward: {mean_reward:.2f} +/- {std_reward:.2f}")
 
         with (rundir / "modeleval.txt").open("a", encoding="utf-8") as out:

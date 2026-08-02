@@ -2,6 +2,7 @@
 
 instance_set_id: bbob2d_fid19_3seeds
 dacboenv:
+  deprecated_legacy_instance_config: bbob2d_fid19_3seeds
   task_ids:
     - bbob/2/19/0
   inner_seeds:

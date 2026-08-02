@@ -22,6 +22,7 @@ MIN_TRANSITION_POINTS = 2
 TRUE_REGRET_EPSILON = 1e-6
 TRUE_REGRET_REFERENCE_TOLERANCE = 1e-8
 TRUE_REGRET_REWARD_KEY = "true_regret_improvement"
+REFERENCE_REGRET_REWARD_KEY = "reference_regret_improvement"
 
 logger = logging.getLogger(__name__)
 
@@ -282,8 +283,39 @@ def calc_true_regret_improvement(
     return float(reward) if np.isfinite(reward) else 0.0
 
 
+def normalized_reference_regret_potential(
+    incumbent: float,
+    reference_value: float,
+    initial_incumbent: float,
+    *,
+    epsilon: float = TRUE_REGRET_EPSILON,
+) -> float:
+    """Return the policy reward's normalized log-regret potential.
+
+    This public scalar helper is used by offline snapshot branching so its
+    potential differences have the same units as the online telescoping
+    reward.  The reference can be exact or empirical best-known; regret is
+    clipped at zero in both cases.
+    """
+    values = np.asarray([incumbent, reference_value, initial_incumbent, epsilon], dtype=float)
+    if not np.isfinite(values).all() or epsilon <= 0.0 or epsilon >= 1.0:
+        raise ValueError("Incumbent/reference values must be finite and epsilon must lie in (0, 1).")
+    initial_regret = max(float(initial_incumbent) - float(reference_value), 0.0)
+    regret_scale = max(initial_regret, float(epsilon))
+    normalized_regret = max(float(incumbent) - float(reference_value), 0.0) / regret_scale
+    return float(-np.log(normalized_regret + epsilon) / -np.log(epsilon))
+
+
 true_regret_improvement_reward = RewardType(
     TRUE_REGRET_REWARD_KEY,
+    calc_true_regret_improvement,
+    uses_objective_minimum=True,
+)
+
+# General spelling for exact or empirical best-known references.  The legacy
+# BBOB name remains byte-for-byte routed through the same computation.
+reference_regret_improvement_reward = RewardType(
+    REFERENCE_REGRET_REWARD_KEY,
     calc_true_regret_improvement,
     uses_objective_minimum=True,
 )
@@ -365,6 +397,7 @@ ALL_REWARDS = [
     *LEGACY_REWARDS,
     reference_free_improvement_reward,
     true_regret_improvement_reward,
+    reference_regret_improvement_reward,
 ]
 
 

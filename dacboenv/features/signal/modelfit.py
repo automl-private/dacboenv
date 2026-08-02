@@ -160,7 +160,7 @@ def calculate_model_fit(  # noqa: C901, PLR0912, PLR0915
 
             if score_function == gp_nll:
                 score = score_function(y_pred, var, y_test)
-            elif score_function != r2_score or score_function == r2_score and len(y_test) > 1:
+            elif score_function != r2_score or (score_function == r2_score and len(y_test) > 1):
                 score = score_function(y_pred, y_test)
             else:
                 score = np.nan  # R2 is ill-defined with less than 2 samples. Oh well

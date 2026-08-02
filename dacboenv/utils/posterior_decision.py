@@ -63,10 +63,7 @@ class PosteriorModeAcquisition(AbstractAcquisitionFunction):
         if not np.isfinite(xi):
             raise ValueError(f"xi must be finite, got {xi}.")
         if not 0.0 < lower_quantile < MEDIAN_QUANTILE:
-            raise ValueError(
-                "lower_quantile must be strictly between 0 and 0.5, "
-                f"got {lower_quantile}."
-            )
+            raise ValueError(f"lower_quantile must be strictly between 0 and 0.5, got {lower_quantile}.")
 
         self._mode = self._validate_mode(mode)
         self._mode_names = POSTERIOR_MODE_NAMES
@@ -77,10 +74,7 @@ class PosteriorModeAcquisition(AbstractAcquisitionFunction):
     @staticmethod
     def _validate_mode(mode: str) -> str:
         if mode not in POSTERIOR_MODE_NAMES:
-            raise ValueError(
-                f"Unknown posterior decision mode {mode!r}; "
-                f"expected one of {POSTERIOR_MODE_NAMES}."
-            )
+            raise ValueError(f"Unknown posterior decision mode {mode!r}; expected one of {POSTERIOR_MODE_NAMES}.")
         return mode
 
     @property
@@ -160,16 +154,13 @@ class PosteriorModeAcquisition(AbstractAcquisitionFunction):
         the consequence of each action is needed.
         """
         if self._eta is None:
-            raise ValueError(
-                "No current best specified. Call update(eta=<float>) before scoring."
-            )
+            raise ValueError("No current best specified. Call update(eta=<float>) before scoring.")
 
         mean_array = np.asarray(mean, dtype=float)
         variance_array = np.asarray(variance, dtype=float)
         if mean_array.shape != variance_array.shape:
             raise ValueError(
-                "mean and variance must have the same shape, "
-                f"got {mean_array.shape} and {variance_array.shape}."
+                f"mean and variance must have the same shape, got {mean_array.shape} and {variance_array.shape}."
             )
 
         variance_array = np.maximum(variance_array, 0.0)
@@ -182,15 +173,12 @@ class PosteriorModeAcquisition(AbstractAcquisitionFunction):
 
         probability_improvement = np.empty_like(improvement)
         probability_improvement[nonzero_std] = norm.cdf(z[nonzero_std])
-        probability_improvement[~nonzero_std] = (
-            improvement[~nonzero_std] > 0.0
-        ).astype(float)
+        probability_improvement[~nonzero_std] = (improvement[~nonzero_std] > 0.0).astype(float)
 
         expected_improvement = np.maximum(improvement, 0.0)
-        expected_improvement[nonzero_std] = (
-            improvement[nonzero_std] * norm.cdf(z[nonzero_std])
-            + std[nonzero_std] * norm.pdf(z[nonzero_std])
-        )
+        expected_improvement[nonzero_std] = improvement[nonzero_std] * norm.cdf(z[nonzero_std]) + std[
+            nonzero_std
+        ] * norm.pdf(z[nonzero_std])
 
         quantile_z = float(norm.ppf(self._lower_quantile))
         return {

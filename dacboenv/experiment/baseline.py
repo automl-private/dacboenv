@@ -59,9 +59,15 @@ def main(cfg: DictConfig) -> None:
         raise TypeError("evaluation_instances must be a manifest mapping.")
     validate_manifest_structure(manifest)
     require_runnable_manifest(manifest)
+    if manifest["split"] == "test" and not bool(cfg.experiment.get("allow_sealed_test", False)):
+        raise PermissionError(
+            f"Manifest {manifest['id']!r} is sealed test data; set "
+            "experiment.allow_sealed_test=true only for an authorized final report."
+        )
     if manifest["domain"] == "bbob":
         validate_native_bbob_manifest(manifest)
     with open_dict(cfg.dacboenv):
+        cfg.dacboenv.context_split = str(manifest["split"])
         cfg.dacboenv.protocol_metadata = {
             "evaluation_manifest/version": int(manifest["schema_version"]),
             "evaluation_manifest_id": str(manifest["id"]),

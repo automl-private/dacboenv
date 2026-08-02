@@ -3,6 +3,8 @@ defaults:
   - /task: dacboenv_structured_reference_free
   - /instance_sets@training_instances: bbob_train
   - /instance_sets@validation_instances: bbob_validation
+  - /validation_panels@frequent_validation_panel: bbob_frequent
+  - /validation_panels@full_validation_panel: bbob_full
   # Loaded only for provenance/hash logging; the runner never evaluates it.
   - /instance_sets@test_instances: bbob_test_strict
   - /opt/ppo: structured_mlp
@@ -34,8 +36,8 @@ experiment:
 
   # Keep inner-BO training compute comparable across interaction frequencies.
   # SB3 counts policy decisions, so f5/f10 use 1/5 and 1/10 as many calls.
-  # 409,600 is divisible by the 2,048-transition PPO rollout and by all
-  # interaction frequencies, yielding exactly 200/40/20 nominal rollouts.
+  # At 32 workers, f1 consumes 2,048 BO evaluations per rollout and f5/f10
+  # consume 2,560, yielding exactly 200/160/160 nominal rollouts.
   bo_evaluation_budget: 409600
   total_timesteps: ${divideint:${experiment.bo_evaluation_budget},${dacboenv.interaction_frequency}}
 
@@ -45,15 +47,28 @@ experiment:
   checkpoint_freq: ${divideint:${experiment.checkpoint_bo_evaluations},${dacboenv.interaction_frequency}}
   validation:
     enabled: true
-    instance_set_id: ${validation_instances.id}
-    task_ids: ${validation_instances.task_ids}
-    inner_seeds: ${validation_instances.inner_seeds}
+    instance_set_id: ${frequent_validation_panel.id}
+    task_ids: ${frequent_validation_panel.task_ids}
+    inner_seeds: ${frequent_validation_panel.inner_seeds}
+    manifest_hash: ${frequent_validation_panel.manifest_hash}
+    panel_tier: frequent
+    full_instance_set_id: ${full_validation_panel.id}
+    full_task_ids: ${full_validation_panel.task_ids}
+    full_inner_seeds: ${full_validation_panel.inner_seeds}
+    full_manifest_hash: ${full_validation_panel.manifest_hash}
+    full_n_eval_episodes: ${multiply:${len:${full_validation_panel.task_ids}},${len:${full_validation_panel.inner_seeds}}}
+    full_top_k: 3
+    full_enabled: true
+    full_include_halfway: true
+    full_include_final: true
+    full_manual_steps: []
+    step_zero: true
     n_workers: 1
     instance_selector_class:
       _target_: dacboenv.env.instance.RoundRobinInstanceSelector
       _partial_: true
       offset: 0
-    n_eval_episodes: ${multiply:${len:${validation_instances.task_ids}},${len:${validation_instances.inner_seeds}}}
+    n_eval_episodes: ${multiply:${len:${frequent_validation_panel.task_ids}},${len:${frequent_validation_panel.inner_seeds}}}
     eval_bo_evaluations: 20480
     eval_freq: ${divideint:${experiment.validation.eval_bo_evaluations},${dacboenv.interaction_frequency}}
 

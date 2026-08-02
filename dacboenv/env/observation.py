@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import copy
 import inspect
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Collection, Iterator, Sequence
 from contextlib import suppress
 from itertools import islice, takewhile
 from typing import (
@@ -564,6 +564,16 @@ def _configuration_distance(config_a: Any, config_b: Any, hyperparameters: list[
     return float(np.mean(distances))
 
 
+def configuration_distance(config_a: Any, config_b: Any, hyperparameters: Sequence[Any]) -> float:
+    """Return the mixed-space distance used by structured action diagnostics.
+
+    This public wrapper keeps offline fidelity tooling on exactly the same
+    Gower-style distance as the Stage-A proxy diagnostics without changing the
+    policy-visible observation calculation.
+    """
+    return _configuration_distance(config_a, config_b, list(hyperparameters))
+
+
 def _candidate_novelty(smbo: SMBO, candidate: Any) -> float:
     evaluated = smbo.runhistory.get_configs()
     if len(evaluated) == 0:
@@ -571,6 +581,78 @@ def _candidate_novelty(smbo: SMBO, candidate: Any) -> float:
 
     hyperparameters = list(smbo._scenario.configspace.values())
     return float(min(_configuration_distance(candidate, config, hyperparameters) for config in evaluated))
+
+
+def calculate_candidate_semantic_descriptors(
+    smbo: SMBO,
+    candidate: Any,
+    *,
+    include_xi: bool = False,
+    evaluated_configs: Collection[Any] | None = None,
+) -> dict[str, float]:
+    """Describe one candidate with the Stage-A consequence semantics.
+
+    The helper is intended for offline inspection of the configuration returned
+    by SMAC's real ``ask()`` path.  Callers inspecting a returned ``TrialInfo``
+    should pass the configurations completed *before* ``ask()`` through
+    ``evaluated_configs`` because SMAC immediately registers the proposed trial
+    as running.  Otherwise that running configuration would make its own
+    novelty spuriously zero.
+
+    ``include_xi`` reproduces the WEI row definition.  Quantile and posterior-
+    mode rows use the same calculation with ``include_xi=False``.
+    """
+    selector = smbo.intensifier.config_selector
+    model = selector._model
+    try:
+        values = np.asarray(candidate.get_array(), dtype=float)[None, :]
+        mean, variance = model.predict_marginalized(values)
+        predicted_mean = float(np.asarray(mean, dtype=float).reshape(-1)[0])
+        predicted_variance = max(float(np.asarray(variance, dtype=float).reshape(-1)[0]), 0.0)
+    except (AttributeError, RuntimeError, TypeError, ValueError, IndexError) as error:
+        raise RuntimeError("Could not evaluate the synchronized surrogate on the inspected candidate.") from error
+
+    std = float(np.sqrt(predicted_variance))
+    eta = _current_model_incumbent(smbo)
+    xi = 0.0
+    if include_xi:
+        try:
+            xi = float(getattr(selector._acquisition_function, "_xi", 0.0))
+        except (TypeError, ValueError) as error:
+            raise RuntimeError("The inspected WEI acquisition has a non-numeric xi value.") from error
+    standardized_improvement = _standardized_improvement(
+        None if eta is None else eta - xi,
+        predicted_mean,
+        std,
+    )
+    normalized_uncertainty = float(np.log1p(std / _model_target_scale(smbo)))
+
+    completed = list(smbo.runhistory.get_configs() if evaluated_configs is None else evaluated_configs)
+    if len(completed) == 0:
+        novelty = 1.0
+    else:
+        hyperparameters = list(smbo._scenario.configspace.values())
+        novelty = float(
+            min(_configuration_distance(candidate, configuration, hyperparameters) for configuration in completed)
+        )
+
+    descriptors = {
+        "standardized_improvement": standardized_improvement,
+        "normalized_uncertainty": normalized_uncertainty,
+        "novelty": novelty,
+    }
+    if not np.isfinite(list(descriptors.values())).all():
+        raise RuntimeError(f"Candidate descriptors must be finite, got {descriptors!r}.")
+    return descriptors
+
+
+def selected_action_feature_candidates(smbo: SMBO) -> tuple[Any | None, ...]:
+    """Return the proxy candidates selected by the latest structured observation.
+
+    The tuple is diagnostic-only and is never consumed by the environment's
+    action or SMAC execution path.
+    """
+    return tuple(getattr(smbo, _SELECTED_ACTION_CANDIDATES_ATTRIBUTE, ()))
 
 
 def calculate_action_features(smbo: SMBO, memory: Memory | None = None) -> np.ndarray:

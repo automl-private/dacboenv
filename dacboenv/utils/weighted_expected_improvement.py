@@ -107,7 +107,7 @@ class WEI(AbstractAcquisitionFunction):
 
         if "xi" in kwargs and kwargs["xi"] is not None:
             self._xi = kwargs["xi"]
-        alpha = kwargs.get("alpha", None)
+        alpha = kwargs.get("alpha")
         if alpha is not None:
             self._alpha = alpha
 
@@ -137,9 +137,9 @@ class WEI(AbstractAcquisitionFunction):
         assert self._model is not None
         assert self._xi is not None
         if self._use_pure_PI:
-            assert (
-                self._alpha == 1.0
-            ), f"{self._alpha} != 1.0 with pure PI. Any other combination leads to wrong behavior."
+            assert self._alpha == 1.0, (
+                f"{self._alpha} != 1.0 with pure PI. Any other combination leads to wrong behavior."
+            )
 
         if self._eta is None:
             raise ValueError(

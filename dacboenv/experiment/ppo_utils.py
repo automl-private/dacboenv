@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
 from io import TextIOWrapper
@@ -27,6 +28,7 @@ class CategoricalPolicyStatistics:
     normalized_entropy: float
     max_probability: float
     top1_top2_logit_gap: float
+    logit_std_across_states: float
     deterministic_actions: np.ndarray
 
 
@@ -81,6 +83,7 @@ def categorical_policy_statistics(
         normalized_entropy=float(np.mean(normalized_entropy)),
         max_probability=float(np.mean(np.max(probability_matrix, axis=1))),
         top1_top2_logit_gap=float(np.mean(top1_top2_gap)),
+        logit_std_across_states=float(np.mean(np.std(logit_matrix, axis=0))),
         deterministic_actions=np.argmax(probability_matrix, axis=1),
     )
 
@@ -118,14 +121,24 @@ def policy_sensitivity_metrics(
     return {
         "mean_kl": float(np.mean(np.sum(kl_terms, axis=1))),
         "mean_total_variation": float(np.mean(total_variation)),
+        "top_action_change_rate": float(np.mean(np.argmax(reference, axis=1) != np.argmax(perturbed, axis=1))),
     }
 
 
-def structured_policy_sensitivity(
+def structured_policy_sensitivity(  # noqa: C901
     observation: dict[str, np.ndarray],
     probability_function: Callable[[dict[str, np.ndarray]], np.ndarray],
+    *,
+    state_from_another_task: dict[str, np.ndarray] | None = None,
+    state_from_another_budget_phase: dict[str, np.ndarray] | None = None,
 ) -> dict[str, dict[str, float]]:
-    """Evaluate the requested structured-state interventions on real states."""
+    """Evaluate structured-state interventions on fixed policy states.
+
+    Cross-task and cross-budget substitutions are accepted only as explicit
+    inputs. The caller must select them from provenance proving that the task
+    ID or budget phase differs; circular worker shifts are intentionally not
+    treated as evidence of either distinction.
+    """
     if set(observation) != {"global_state", "action_features"}:
         raise ValueError("Structured sensitivity requires exactly global_state and action_features.")
     global_state = np.asarray(observation["global_state"])
@@ -153,11 +166,23 @@ def structured_policy_sensitivity(
     permuted_rows["action_features"] = action_features[..., permutation, :].copy()
     interventions["permute_action_rows"] = (permuted_rows, np.argsort(permutation))
 
-    if global_state.shape[0] > 1:
-        other_task = {key: value.copy() for key, value in observation.items()}
-        other_task["global_state"] = np.roll(global_state, shift=1, axis=0)
-        other_task["action_features"] = np.roll(action_features, shift=1, axis=0)
-        interventions["state_from_another_worker"] = (other_task, None)
+    explicit_substitutions = {
+        "state_from_another_task": state_from_another_task,
+        "state_from_another_budget_phase": state_from_another_budget_phase,
+    }
+    for name, substitution in explicit_substitutions.items():
+        if substitution is None:
+            continue
+        if set(substitution) != {"global_state", "action_features"}:
+            raise ValueError(f"{name} must contain exactly global_state and action_features.")
+        copied = {key: np.asarray(value).copy() for key, value in substitution.items()}
+        for key, original_value in observation.items():
+            expected_shape = np.asarray(original_value).shape
+            if copied[key].shape != expected_shape:
+                raise ValueError(f"{name}[{key!r}] has shape {copied[key].shape}, expected {expected_shape}.")
+            if not np.isfinite(copied[key]).all():
+                raise ValueError(f"{name}[{key!r}] must be finite.")
+        interventions[name] = (copied, None)
 
     results: dict[str, dict[str, float]] = {}
     for name, (perturbed_observation, output_permutation) in interventions.items():
@@ -183,7 +208,13 @@ class ActionLoggingCallback(BaseCallback):
     Intended for quick inspection.
     """
 
-    def __init__(self, n_envs: int, csv_path: str | None = None, verbose: int = 0) -> None:
+    def __init__(
+        self,
+        n_envs: int,
+        csv_path: str | None = None,
+        mixture_json_path: str | None = None,
+        verbose: int = 0,
+    ) -> None:
         """Init.
 
         Parameters
@@ -200,6 +231,7 @@ class ActionLoggingCallback(BaseCallback):
         if csv_path is None:
             csv_path = str(get_run_directory() / "tensorboard/actions.csv")
         self.csv_path = csv_path
+        self.mixture_json_path = mixture_json_path or str(Path(csv_path).parent / "realized_transition_mixture.json")
         self.file: TextIOWrapper | None = None
         self.writer = None
         self.step = 0
@@ -212,6 +244,11 @@ class ActionLoggingCallback(BaseCallback):
         self._episode_deterministic_constant = [True] * n_envs
         self._episode_diagnostics_complete = [True] * n_envs
         self._raw_budget_fractions: np.ndarray | None = None
+        self._transition_domains: Counter[str] = Counter()
+        self._transition_strata: Counter[str] = Counter()
+        self._sensitivity_state_samples: dict[tuple[str, int], dict[str, Any]] = {}
+        self._completed_deterministic_episodes = 0
+        self._constant_deterministic_episodes = 0
 
     def _open_csv(self) -> None:
         """Open a fresh append-only action log for this training run."""
@@ -236,6 +273,11 @@ class ActionLoggingCallback(BaseCallback):
         self.step = 0
         self._episode_ids = [0] * self._n_envs
         self._reset_policy_diagnostics()
+        self._transition_domains.clear()
+        self._transition_strata.clear()
+        self._sensitivity_state_samples.clear()
+        self._completed_deterministic_episodes = 0
+        self._constant_deterministic_episodes = 0
 
     def _reset_policy_diagnostics(self) -> None:
         """Reset per-environment state used by switch and episode metrics."""
@@ -335,6 +377,48 @@ class ActionLoggingCallback(BaseCallback):
         self.logger.record_mean("policy/normalized_entropy", statistics.normalized_entropy)
         self.logger.record_mean("policy/max_probability", statistics.max_probability)
         self.logger.record_mean("policy/top1_top2_logit_gap", statistics.top1_top2_logit_gap)
+        self.logger.record_mean("policy/logit_std_across_states", statistics.logit_std_across_states)
+
+    @property
+    def sensitivity_state_samples(self) -> tuple[dict[str, Any], ...]:
+        """Return one bounded policy-visible state per task/budget stratum."""
+        return tuple(self._sensitivity_state_samples.values())
+
+    @property
+    def deterministic_constant_episode_fraction(self) -> float | None:
+        """Return the empirical constant-policy episode fraction, if observed."""
+        if self._completed_deterministic_episodes == 0:
+            return None
+        return self._constant_deterministic_episodes / self._completed_deterministic_episodes
+
+    def _capture_sensitivity_states(
+        self,
+        observation: Any,
+        infos: list[dict[str, Any]],
+        budget_fractions: np.ndarray,
+    ) -> None:
+        """Retain actor inputs with non-policy-visible task/phase provenance."""
+        if not isinstance(observation, dict) or set(observation) != {"global_state", "action_features"}:
+            return
+        arrays = {name: self._as_numpy(value) for name, value in observation.items()}
+        if any(value.shape[0] != self._n_envs for value in arrays.values()):
+            return
+        for env_id, (info, budget_fraction) in enumerate(zip(infos, budget_fractions, strict=True)):
+            task_id = str(info.get("task_id", ""))
+            quartile = budget_quartile(float(budget_fraction))
+            if not task_id or quartile is None:
+                continue
+            observation_row = {name: value[env_id].copy() for name, value in arrays.items()}
+            if not all(np.isfinite(value).all() for value in observation_row.values()):
+                continue
+            self._sensitivity_state_samples.setdefault(
+                (task_id, quartile),
+                {
+                    "task_id": task_id,
+                    "budget_fraction": float(budget_fraction),
+                    "observation": observation_row,
+                },
+            )
 
     @staticmethod
     def _discrete_actions(actions: Any, n_envs: int, n_actions: int) -> np.ndarray | None:
@@ -383,6 +467,8 @@ class ActionLoggingCallback(BaseCallback):
             self._last_stochastic_actions[env_id] = int(stochastic)
             if done:
                 if self._episode_diagnostics_complete[env_id]:
+                    self._completed_deterministic_episodes += 1
+                    self._constant_deterministic_episodes += int(self._episode_deterministic_constant[env_id])
                     self.logger.record_mean(
                         "policy/constant_episode_fraction",
                         float(self._episode_deterministic_constant[env_id]),
@@ -478,6 +564,8 @@ class ActionLoggingCallback(BaseCallback):
             return
 
         self._record_policy_statistics(statistics)
+        budget_fractions = self._budget_fractions(infos)
+        self._capture_sensitivity_states(self.locals.get("obs_tensor"), infos, budget_fractions)
         stochastic_actions = self._discrete_actions(
             actions,
             self._n_envs,
@@ -488,7 +576,7 @@ class ActionLoggingCallback(BaseCallback):
         self._record_action_sequences(statistics.deterministic_actions, stochastic_actions, dones)
         self._record_budget_histograms(
             stochastic_actions,
-            self._budget_fractions(infos),
+            budget_fractions,
             statistics.mean_probabilities.size,
         )
         self._record_domain_histograms(stochastic_actions, infos, statistics.mean_probabilities.size)
@@ -498,6 +586,19 @@ class ActionLoggingCallback(BaseCallback):
         actions = self.locals["actions"]
         dones = np.asarray(self.locals["dones"], dtype=bool)
         infos = self.locals["infos"]
+
+        for info in infos:
+            task_id = str(info.get("task_id", ""))
+            domain = str(info.get("domain", task_id.split("/", maxsplit=1)[0])).lower()
+            if domain in {"bbob", "yahpo"}:
+                self._transition_domains[domain] += 1
+            parts = task_id.split("/")
+            if domain == "bbob" and len(parts) >= 2:  # noqa: PLR2004
+                self._transition_strata[f"bbob/dimension/{parts[1]}"] += 1
+            elif domain == "yahpo" and len(parts) >= 3:  # noqa: PLR2004
+                scenario_index = 2 if parts[1].lower() in {"so", "mo", "momf"} else 1
+                if len(parts) > scenario_index:
+                    self._transition_strata[f"yahpo/scenario/{parts[scenario_index]}"] += 1
 
         self._record_policy_diagnostics(actions, dones, infos)
 
@@ -533,3 +634,15 @@ class ActionLoggingCallback(BaseCallback):
     def _on_training_end(self) -> None:
         if self.file is not None:
             self.file.close()
+        total = sum(self._transition_domains.values())
+        payload = {
+            "total_external_transitions": total,
+            "counts_by_domain": dict(sorted(self._transition_domains.items())),
+            "fractions_by_domain": {domain: count / total for domain, count in sorted(self._transition_domains.items())}
+            if total
+            else {},
+            "counts_by_persistent_stratum": dict(sorted(self._transition_strata.items())),
+        }
+        path = Path(self.mixture_json_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")

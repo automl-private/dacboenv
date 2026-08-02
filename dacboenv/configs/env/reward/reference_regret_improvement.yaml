@@ -1,0 +1,6 @@
+# @package _global_
+reward_id: reference-regret-improvement
+dacboenv:
+  # Exact BBOB or provenance-complete best-known YAHPO references are supplied
+  # by a task-aware provider. The provider value is reward-private.
+  reward_keys: [reference_regret_improvement]

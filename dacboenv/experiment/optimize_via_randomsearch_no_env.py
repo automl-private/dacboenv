@@ -24,7 +24,7 @@ logger = get_logger("opt_via_ea")
 
 def worker(x: list[float], config: dict[str, Any]) -> dict[str, Any]:
     """Worker function without instances."""
-    import dacboenv  # noqa: F401, F811
+    import dacboenv  # noqa: F401, F811, PLC0415
 
     cfg: DictConfig = OmegaConf.create(config["cfg"])
     task = make_task(cfg)

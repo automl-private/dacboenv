@@ -6,6 +6,7 @@ defaults:
 
 instance_set_id: ${evaluation_instances.id}
 dacboenv:
+  context_split: ${evaluation_instances.split}
   task_ids: ${evaluation_instances.task_ids}
   inner_seeds: ${evaluation_instances.inner_seeds}
   instance_selector_class:
@@ -15,6 +16,7 @@ dacboenv:
 
 experiment:
   n_episodes: ${multiply:${len:${evaluation_instances.task_ids}},${len:${evaluation_instances.inner_seeds}}}
+  allow_sealed_test: false
 
 seed: 0
 baserundir: runs_structured_baselines

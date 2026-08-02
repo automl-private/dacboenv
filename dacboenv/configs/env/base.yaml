@@ -10,6 +10,10 @@ dacboenv:
   reward_keys: ???
   seed: ${seed}
   interaction_frequency: 1
+  # YAHPO-only future training may explicitly override this with 0.6 or 0.8.
+  # Validation and test factories force the native 1.0 budget.
+  yahpo_training_budget_multiplier: 1.0
+  context_split: train
   reference_performance_fn: reference_performance/reference_performance.parquet
   reference_performance_optimizer_id: SMAC3-BlackBoxFacade
   terminate_after_reference_performance_reached: False

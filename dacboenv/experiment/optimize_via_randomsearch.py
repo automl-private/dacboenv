@@ -31,7 +31,7 @@ def worker(x: tuple[list[float], tuple[int, str]], config: dict[str, Any]) -> di
     Replace with your actual computation.
     """
     # Import dacboenv again for custom resolvers
-    import dacboenv  # noqa: F401, F811
+    import dacboenv  # noqa: F401, F811, PLC0415
 
     x, (seed, task_id) = x  # type: ignore[assignment]
 

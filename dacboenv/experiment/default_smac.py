@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,13 @@ from dacboenv.experiment.protocol import (
     validate_manifest_structure,
     validate_native_bbob_manifest,
 )
+from dacboenv.reference import (
+    BBOBExactReferenceProvider,
+    JSONLReferenceBreachRecorder,
+    ObjectiveReference,
+    ReferenceBreachContext,
+    reference_regret,
+)
 from dacboenv.utils.carps_optimizer import build_carps_optimizer
 
 logger = get_logger("DefaultSMAC")
@@ -33,12 +41,15 @@ class DefaultSMACResult:
     inner_seed: int
     initial_incumbent: float
     final_incumbent: float
-    reference_optimum: float
+    reference_value: float
     initial_regret: float
     final_regret: float
     normalized_final_regret: float
+    normalized_anytime_auc: float
     telescoping_return: float
     bo_evaluations: int
+    runtime_seconds: float
+    incumbent_trajectory: tuple[float, ...]
 
 
 def _scalar_cost(cost: Any) -> float:
@@ -64,53 +75,92 @@ def run_default_smac_episode(
     inner_seed: int,
     *,
     output_directory: Path,
+    objective_reference: ObjectiveReference | None = None,
+    context_split: str = "validation",
 ) -> DefaultSMACResult:
-    """Run BlackBoxFacade's algorithmic defaults for one native BBOB context.
+    """Run BlackBoxFacade defaults for one exact/best-known context.
 
     The scenario is keyed by ``inner_seed`` while ConfigSpace, initial design,
     random design, and acquisition maximization use independent named child
     streams, as they do in every other protocol cell.
     """
+    started = time.perf_counter()
     optimizer = build_carps_optimizer(
         task_id,
         inner_seed,
         optimizer_id="SMAC3-BlackBoxFacade",
         output_directory=output_directory,
+        context_split=context_split,
     )
     solver = optimizer.solver
     objective = optimizer.task.objective_function
-    if not isinstance(objective, BBOBObjectiveFunction) or objective.f_min is None:
-        raise ValueError(f"Default-SMAC true-regret evaluation has no exact BBOB reference for {task_id!r}.")
+    if isinstance(objective, BBOBObjectiveFunction):
+        objective_reference = BBOBExactReferenceProvider().get_reference(
+            task_id,
+            objective,
+            {
+                "runtime_objective_transform": "identity",
+                "reporting_objective_transform": "identity",
+                "fidelity": "not_applicable",
+            },
+        )
+    elif objective_reference is None:
+        raise ValueError(f"Default-SMAC evaluation requires a best-known reference for {task_id!r}.")
+    if objective_reference.task_id != task_id:
+        raise ValueError("Default-SMAC objective reference belongs to a different task.")
+    reference_value = float(objective_reference.value)
+    breach_recorder = JSONLReferenceBreachRecorder(output_directory / "reference_breaches.jsonl")
+    parts = task_id.split("/")
+    scenario = parts[2] if len(parts) >= 4 else parts[0]  # noqa: PLR2004
+    instance = parts[3] if len(parts) >= 4 else parts[-1]  # noqa: PLR2004
 
     initial_design_size = len(solver.optimizer.intensifier.config_selector._initial_design_configs)
     initial_incumbent: float | None = None
+    incumbent_trajectory: list[float] = []
     while solver.runhistory.finished < solver.scenario.n_trials:
         trial_info = solver.ask()
         _, trial_value = solver.optimizer._runner.run_wrapper(trial_info)
         solver.tell(trial_info, trial_value)
+        reference_regret(
+            objective_reference,
+            _scalar_cost(trial_value.cost),
+            recorder=breach_recorder,
+            context=ReferenceBreachContext(
+                run_id=f"native-default-smac:{task_id}:seed-{inner_seed}",
+                trial=int(solver.runhistory.finished - 1),
+                outer_seed=None,
+                inner_seed=int(inner_seed),
+                scenario=scenario,
+                instance=instance,
+            ),
+        )
+        incumbent_trajectory.append(_scalar_cost(solver.runhistory.get_min_cost(solver.intensifier.get_incumbent())))
         if initial_incumbent is None and len(solver.runhistory.get_configs()) >= initial_design_size:
             initial_incumbent = _scalar_cost(solver.runhistory.get_min_cost(solver.intensifier.get_incumbent()))
 
     if initial_incumbent is None:
         raise RuntimeError(f"Default SMAC did not finish its initial design for {task_id!r}.")
     final_incumbent = _scalar_cost(solver.runhistory.get_min_cost(solver.intensifier.get_incumbent()))
-    reference_optimum = float(objective.f_min)
-    initial_regret = max(initial_incumbent - reference_optimum, 0.0)
-    final_regret = max(final_incumbent - reference_optimum, 0.0)
+    initial_regret = max(initial_incumbent - reference_value, 0.0)
+    final_regret = max(final_incumbent - reference_value, 0.0)
     regret_scale = max(initial_regret, TRUE_REGRET_EPSILON)
     normalized_final_regret = final_regret / regret_scale
+    normalized_trajectory = np.maximum(np.asarray(incumbent_trajectory) - reference_value, 0.0) / regret_scale
     telescoping_return = normalized_telescoping_return(initial_regret, final_regret)
     return DefaultSMACResult(
         task_id=task_id,
         inner_seed=inner_seed,
         initial_incumbent=initial_incumbent,
         final_incumbent=final_incumbent,
-        reference_optimum=reference_optimum,
+        reference_value=reference_value,
         initial_regret=initial_regret,
         final_regret=final_regret,
         normalized_final_regret=normalized_final_regret,
+        normalized_anytime_auc=float(np.mean(normalized_trajectory)),
         telescoping_return=telescoping_return,
         bo_evaluations=int(solver.runhistory.finished),
+        runtime_seconds=float(time.perf_counter() - started),
+        incumbent_trajectory=tuple(incumbent_trajectory),
     )
 
 
@@ -123,6 +173,11 @@ def main(cfg: DictConfig) -> None:
         raise TypeError("evaluation_instances must be a manifest mapping.")
     validate_manifest_structure(manifest)
     require_runnable_manifest(manifest)
+    if manifest["split"] == "test" and not bool(cfg.experiment.get("allow_sealed_test", False)):
+        raise PermissionError(
+            f"Manifest {manifest['id']!r} is sealed test data; set "
+            "experiment.allow_sealed_test=true only for an authorized final report."
+        )
     validate_native_bbob_manifest(manifest)
     if any(seed is None for seed in manifest["inner_seeds"]):
         raise ValueError("Default-SMAC evaluation requires frozen integer inner seeds.")

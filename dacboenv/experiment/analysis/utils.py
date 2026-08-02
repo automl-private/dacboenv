@@ -118,7 +118,7 @@ def filter_by_sawei(task_id: str) -> bool:
     """
     if "tabular/ml" in task_id:
         model = task_id.split("/")[-2]
-        open_ml_id = int(task_id.split("/")[-1])
+        open_ml_id = int(task_id.rsplit("/", maxsplit=1)[-1])
         if model in models_reduced and open_ml_id in open_ml_ids:
             return True
     return False
@@ -146,7 +146,7 @@ def determine_hpobench_tasktype(x: str) -> str:
         return "surrogate"
     if "tabular/ml" in x:
         model = x.split("/")[-2]
-        open_ml_id = int(x.split("/")[-1])
+        open_ml_id = int(x.rsplit("/", maxsplit=1)[-1])
         if model in models and open_ml_id in open_ml_ids:
             return "tabular/ml SAWEI"
         return "tabular/ml"

@@ -3,9 +3,24 @@ defaults:
   - structured_ppo_f1
   - override /instance_sets@training_instances: mixed_train_60_40
   - override /instance_sets@validation_instances: mixed_validation
+  - override /validation_panels@frequent_validation_panel: mixed_frequent
+  - override /validation_panels@full_validation_panel: mixed_full
   - _self_
 
-# Intentionally fails until the YAHPO side of the mixed manifest is runnable.
+reward_id: reference-regret-improvement
+dacboenv:
+  reward_keys: [reference_regret_improvement]
+  reference_provider:
+    _target_: dacboenv.reference.CompositeReferenceProvider
+    providers:
+      bbob:
+        _target_: dacboenv.reference.BBOBExactReferenceProvider
+      yahpo:
+        _target_: dacboenv.reference.ManifestReferenceProvider
+        source: ${oc.env:DACBO_YAHPO_REFERENCE_TABLE,dacboenv/experiment/analysis/yahpo_best_known_references.json}
+        expected_runtime_objective_transform: negative_accuracy
+        expected_reporting_objective_transform: one_minus_accuracy
+        expected_fidelity: fixed_maximum
 experiment:
   n_workers: 32
   total_timesteps: 64

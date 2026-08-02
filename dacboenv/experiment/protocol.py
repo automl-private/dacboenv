@@ -119,6 +119,12 @@ def official_yahpo_so_task_ids() -> tuple[str, ...]:
     )
 
 
+def sealed_final_test_task_ids() -> frozenset[str]:
+    """Return every intrinsically sealed BBOB and official YAHPO final-test task."""
+    strict_bbob = expected_bbob_task_ids(BBOB_STRICT_TEST_FUNCTIONS, (2, 8, 16), 2)
+    return frozenset((*strict_bbob, *official_yahpo_so_task_ids()))
+
+
 def _plain_value(value: Any) -> Any:
     if isinstance(value, Mapping):
         if not all(isinstance(key, str) for key in value):

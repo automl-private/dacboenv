@@ -5,13 +5,30 @@ split: train
 status: blocked
 runnable: false
 role: training
-manifest_hash: af7fa8a335cb8d41958667ae2df6240337dc230cba057e882c95de5d199e9acf
+manifest_hash: 9491fcbeadea02cea9d3cb55bbb8f513b86184cf385be90cea7bcf30e91b45dd
 blockers:
-  - yahpo_gym is not installed in the pinned project environment
-  - yahpo_data is not installed or pinned to a version or commit
-  - no empirical-reference table covers non-official candidate instances with full scientific keys
+  - the one checked non-test row is an explicitly provenance-incomplete engineering smoke; 0 of 92 required references are training-eligible
+  - per-scenario reference coverage cannot satisfy the exact requested train and validation counts
+  - task_ids deliberately remain empty so the sealed official test inventory can never fill a coverage shortage
 task_ids: []
 inner_seeds: [null]
+reference_coverage:
+  table_path: dacboenv/experiment/analysis/yahpo_best_known_references.json
+  table_sha256: 9fa1f6a6bf6cedaa7e3efb0262811900130b4cc43c3eb443896560bd5ac8593d
+  provenance_complete_non_test_count: 0
+  required_train_count: 68
+  required_validation_count: 24
+  required_total_before_split: 92
+  selected_task_count: 0
+  smoke_only_task_ids:
+    - yahpo/so/lcbench/3945/None
+installed_benchmark:
+  yahpo_gym_version: 1.0.2
+  yahpo_gym_source_commit: 93f5b151d4e2f44daa5314cd10533aafec37d630
+  yahpo_data_version: 1.0.2
+  yahpo_data_source_commit: efdab9072f63bd680396cd4b78b927c4a0caaad3
+  yahpo_data_compatibility_patch_sha256: c6adb9d0449561770486cf71e6146d494559fefa44ff403358903d03ad58e155
+  config_space_tree_sha256: 5e1b32fce2bfeeed3d6de19f44c2d5e672cde77353f1352e623aeb80130b0356
 selection_protocol:
   master_seed: 3670740481
   generator: per_scenario_numpy.random.SeedSequence
@@ -26,3 +43,4 @@ selection_protocol:
     rbv2_super: 8
     nb301: 0
 training_budget_multipliers: [0.6, 0.8, 1.0]
+default_training_budget_multiplier: 1.0

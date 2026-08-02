@@ -104,9 +104,9 @@ def gather_data_smac(rundir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:  # noqa
         if len(intensifier_info["incumbent_ids"]) == 0:
             logger.info(f"Skip {cfg_fn}, intensifier was not active yet...")
             continue
-        assert (
-            len(intensifier_info["incumbent_ids"]) == 1
-        ), f"Multi-objective not supported or sth went wrong. {intensifier_info['incumbent_ids']}"
+        assert len(intensifier_info["incumbent_ids"]) == 1, (
+            f"Multi-objective not supported or sth went wrong. {intensifier_info['incumbent_ids']}"
+        )
         incumbent_id = intensifier_info["incumbent_ids"][0]
         trajectory = pd.DataFrame(intensifier_info["trajectory"])
         trajectory["cost"] = trajectory["costs"].map(lambda x: x[0])
@@ -412,7 +412,7 @@ def create_configs(rundir: Path) -> str:
         # opt_cfg.dacboenv = cfg_env.dacboenv
         opt_cfg.optimizer_id = opt_cfg.policy_id
 
-        eval_cfg_fn = Path(f"dacboenv/configs/policy/optimized/{opt_cfg.policy_id.replace('--','/')}.yaml")
+        eval_cfg_fn = Path(f"dacboenv/configs/policy/optimized/{opt_cfg.policy_id.replace('--', '/')}.yaml")
         eval_cfg_fn.parent.mkdir(parents=True, exist_ok=True)
         yaml_str = OmegaConf.to_yaml(opt_cfg)
         yaml_str = f"# @package _global_\n\n{yaml_str}"

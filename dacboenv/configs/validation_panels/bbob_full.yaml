@@ -1,0 +1,39 @@
+schema_version: 1
+id: bbob-validation-full-v1
+domain: bbob
+split: validation
+status: ready
+runnable: true
+role: full_checkpoint_selection
+manifest_hash: 8e33d1f9299585278210a238e8582452eb9765f1cac644e0ae762574476456bc
+task_ids:
+  - bbob/4/2/1
+  - bbob/4/7/1
+  - bbob/4/11/1
+  - bbob/4/16/1
+  - bbob/4/20/1
+  - bbob/8/2/1
+  - bbob/8/7/1
+  - bbob/8/11/1
+  - bbob/8/16/1
+  - bbob/8/20/1
+inner_seeds: [1349011988, 2024774586, 595161999, 1294824964]
+source_manifest:
+  id: bbob-validation-v1
+  hash: 36ed3fb56ddc141069b1efad21f4f2ee51d98fed5a0ebaf8c1cdc0d3fcfec196
+  task_semantics_unchanged: true
+seed_protocol:
+  kind: frozen
+  source_master_seed: 3670740482
+  source_seed_count: 4
+  selected_seed_count: 4
+panel:
+  tier: full
+  episode_count: 40
+  checkpoint_selection_eligible: true
+  trained_checkpoints_only: true
+aggregation:
+  order: [inner_seed, native_instance, function, dimension]
+  dimension_weights:
+    "4": 0.5
+    "8": 0.5

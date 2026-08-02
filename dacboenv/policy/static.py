@@ -29,12 +29,8 @@ class StaticParameterPolicy(AbstractPolicy):
             is the parameter value.
         """
         super().__init__(env, par_val=par_val)
-        if isinstance(env.action_space, Discrete) and not env.action_space.contains(
-            par_val
-        ):
-            raise ValueError(
-                f"Static action {par_val!r} is not in {env.action_space}."
-            )
+        if isinstance(env.action_space, Discrete) and not env.action_space.contains(par_val):
+            raise ValueError(f"Static action {par_val!r} is not in {env.action_space}.")
         self._par_val = par_val
 
     def __call__(self, obs: ObsType | None = None) -> ActType:  # noqa: ARG002

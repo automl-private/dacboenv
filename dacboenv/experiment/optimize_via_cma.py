@@ -36,13 +36,13 @@ def worker(x: list[float], config: dict[str, Any]) -> dict[str, Any]:
     Replace with your actual computation.
     """
     # Import dacboenv again for custom resolvers
-    import dacboenv  # noqa: F401, F811
+    import dacboenv  # noqa: F401, F811, PLC0415
 
     cfg = OmegaConf.create(config["cfg"])
     # The instance is selected randomly
-    assert (
-        cfg.dacboenv.instance_selector._target_ == "dacboenv.env.instance.RandomInstanceSelector"
-    ), "Pass dacboenv.env.instance.RandomInstanceSelector!"
+    assert cfg.dacboenv.instance_selector._target_ == "dacboenv.env.instance.RandomInstanceSelector", (
+        "Pass dacboenv.env.instance.RandomInstanceSelector!"
+    )
     task = make_task(cfg)
     seed, instance = task.objective_function._env.instance
     trial_info = TrialInfo(

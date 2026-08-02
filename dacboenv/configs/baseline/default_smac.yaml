@@ -4,6 +4,8 @@ defaults:
   - _self_
 
 optimizer_id: Default-SMAC3-BlackBoxFacade
+experiment:
+  allow_sealed_test: false
 seed: 0
 baserundir: runs_structured_baselines
 outdir: ${baserundir}/${optimizer_id}/${evaluation_instances.id}

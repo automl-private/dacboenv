@@ -1,0 +1,31 @@
+schema_version: 1
+id: yahpo-validation-frequent-unavailable-v1
+domain: yahpo
+split: validation
+status: blocked
+runnable: false
+role: frequent_checkpoint_screening
+manifest_hash: bb0c5a63e171db3a931b4829962ebb74cb0a3012a76f0ebb644e795c77db8085
+blockers:
+  - provenance-complete non-test best-known references cannot yet supply 2 frozen validation instances per seen scenario
+  - task_ids remain empty; official YAHPO-SO test instances may never fill a validation coverage shortage
+task_ids: []
+inner_seeds: [1349011988, 2024774586]
+source_manifest:
+  id: yahpo-validation-unavailable-v1
+  required_status: ready
+scenarios:
+  - lcbench
+  - rbv2_glmnet
+  - rbv2_rpart
+  - rbv2_ranger
+  - rbv2_xgboost
+  - rbv2_super
+panel:
+  tier: frequent
+  instances_per_scenario: 2
+  inner_seeds_per_instance: 2
+  target_episode_count: 24
+  selected_episode_count: 0
+  full_native_budget: true
+  official_test_instances_excluded: true

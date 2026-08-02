@@ -2,3 +2,7 @@
 defaults:
   - lcb_quantile_ppo_base
   - /env/interaction_freq: f1
+
+optimizer:
+  n_steps: 64
+  batch_size: 256

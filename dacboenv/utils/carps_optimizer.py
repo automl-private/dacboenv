@@ -26,6 +26,10 @@ if TYPE_CHECKING:
 
 _BBOB_TASK_ID = re.compile(r"^bbob/(?P<dimension>\d+)/(?P<function_id>\d+)/(?P<instance_id>\d+)$")
 _BBOB_CONFIG_FILENAME = re.compile(r"^cfg_(?P<dimension>\d+)_(?P<function_id>\d+)_(?P<instance_id>\d+)\.yaml$")
+_YAHPO_SO_TASK_ID = re.compile(
+    r"^yahpo/so/(?P<scenario>[^/]+)/(?P<instance>[^/]+)/None$",
+    flags=re.IGNORECASE,
+)
 _BBOB_MAX_FUNCTION_ID = 24
 EXPECTED_NATIVE_BBOB_DIMENSIONS = (2, 4, 8, 16, 32)
 _PACKAGE_RELATIVE_SMAC_LOGGING_PATH = Path("dacboenv/configs/logging/smac_internal.yaml")
@@ -263,14 +267,91 @@ def get_task_config(task_id: str) -> DictConfig:
         return maybe_add_defaults(cfg, str(config_path))
 
     df = get_carps_config_index("task")
-    ids = [task_id]
-    # TODO raise proper error if task_id not in index. Can happen when task comes from external module.
-    # Find smart registering method.
-    config_fn = df.set_index("task_id").loc[ids].reset_index().iloc[0]["config_fn"]
+    matching_rows = df.loc[df["task_id"] == task_id]
+    if matching_rows.empty:
+        yahpo_match = _YAHPO_SO_TASK_ID.fullmatch(task_id)
+        if yahpo_match is not None:
+            return _build_installed_yahpo_so_task_config(
+                task_id=task_id,
+                scenario=yahpo_match.group("scenario"),
+                instance=yahpo_match.group("instance"),
+            )
+        raise KeyError(f"CARP-S has no task config for {task_id!r}.")
+    config_fn = matching_rows.iloc[0]["config_fn"]
     cfg = OmegaConf.load(config_fn)
     if not isinstance(cfg, DictConfig):
         raise TypeError(f"Expected a mapping in task config {config_fn}.")
     return maybe_add_defaults(cfg, config_fn)
+
+
+@lru_cache(maxsize=256)
+def _build_installed_yahpo_so_task_config(
+    *,
+    task_id: str,
+    scenario: str,
+    instance: str,
+) -> DictConfig:
+    """Build a non-test YAHPO-SO task config from the installed live data.
+
+    CARP-S 1.1 packages task YAMLs only for its historical YAHPO-SO suite.
+    A scientifically frozen split can contain other installed YAHPO instances,
+    so those tasks must be resolvable without writing into CARP-S or
+    ``yahpo_gym``.  We reuse the scenario metadata and native budget from one
+    packaged config, but obtain the optimization space for the requested
+    instance from the accepted live CARP-S objective adapter.
+
+    This function constructs configuration only; it never evaluates the
+    objective.  The returned config is copied by ``build_carps_optimizer``
+    before any episode-local mutation.
+    """
+    from carps.objective_functions.yahpo import YahpoObjectiveFunction  # noqa: PLC0415
+
+    index = get_carps_config_index("task")
+    prefix = f"yahpo/so/{scenario}/"
+    scenario_rows = index.loc[index["task_id"].astype(str).str.startswith(prefix)]
+    if scenario_rows.empty:
+        raise KeyError(
+            f"No packaged CARP-S YAHPO-SO template exists for scenario {scenario!r}; cannot construct {task_id!r}."
+        )
+
+    template_path = str(scenario_rows.sort_values("task_id").iloc[0]["config_fn"])
+    template = OmegaConf.load(template_path)
+    if not isinstance(template, DictConfig):
+        raise TypeError(f"Expected a mapping in YAHPO task template {template_path}.")
+    template = maybe_add_defaults(template, template_path)
+
+    metrics = list(template.task.objective_function.metric)
+    live_objective = YahpoObjectiveFunction(
+        bench=scenario,
+        instance=str(instance),
+        metric=metrics,
+        budget_type=None,
+        seed=0,
+    )
+    serialized_space = live_objective.configspace.to_serialized_dict()
+
+    template.task.name = task_id
+    template.task.objective_function.bench = scenario
+    template.task.objective_function.instance = str(instance)
+    template.task.input_space.configuration_space.d = serialized_space
+    template.task.metadata.dimensions = sum(
+        not hp.__class__.__name__.startswith("Constant") for hp in live_objective.configspace.values()
+    )
+    template.task.metadata.search_space_n_categoricals = sum(
+        hp.__class__.__name__.startswith("Categorical") for hp in live_objective.configspace.values()
+    )
+    template.task.metadata.search_space_n_ordinals = sum(
+        hp.__class__.__name__.startswith("Ordinal") for hp in live_objective.configspace.values()
+    )
+    template.task.metadata.search_space_n_integers = sum(
+        hp.__class__.__name__.startswith("Integer") for hp in live_objective.configspace.values()
+    )
+    template.task.metadata.search_space_n_floats = sum(
+        hp.__class__.__name__.startswith("Float") for hp in live_objective.configspace.values()
+    )
+    template.task.metadata.search_space_has_conditionals = bool(live_objective.configspace.conditions)
+    template.task.metadata.search_space_has_forbiddens = bool(live_objective.configspace.forbidden_clauses)
+    return template
 
 
 def _prepare_episode_smac_config(cfg: DictConfig, seed: int) -> dict[str, int]:  # noqa: C901, PLR0915
@@ -385,12 +466,14 @@ def _prepare_episode_smac_config(cfg: DictConfig, seed: int) -> dict[str, int]: 
     return component_seeds
 
 
-def build_carps_optimizer(
+def build_carps_optimizer(  # noqa: C901
     task_id: str,
     seed: int,
     optimizer_id: str | None = None,
     optimizer_cfg: DictConfig | None = None,
     output_directory: str | Path | None = None,
+    yahpo_budget_multiplier: float = 1.0,
+    context_split: str = "train",
 ) -> Optimizer:
     """Build carps optimizer.
 
@@ -426,6 +509,17 @@ def build_carps_optimizer(
     cfg = get_task_config(task_id=task_id)
     cfg.seed = seed
 
+    if _YAHPO_SO_TASK_ID.fullmatch(task_id) is not None:
+        from dacboenv.experiment.yahpo_protocol import apply_yahpo_budget_multiplier  # noqa: PLC0415
+
+        native_budget = int(cfg.task.optimization_resources.n_trials)
+        cfg.task.optimization_resources.n_trials = apply_yahpo_budget_multiplier(
+            native_budget,
+            yahpo_budget_multiplier,
+            initial_design_size=1,
+            split=context_split,
+        )
+
     if hasattr(cfg_opt, "optimizer"):
         cfg = OmegaConf.merge(cfg, cfg_opt)
     else:
@@ -454,6 +548,14 @@ def build_carps_optimizer(
 
     optimizer = make_optimizer(cfg=cfg, task=task)
     optimizer.setup_optimizer()
+    if _YAHPO_SO_TASK_ID.fullmatch(task_id) is not None:
+        initial_design_size = len(optimizer.solver.optimizer.intensifier.config_selector._initial_design_configs)
+        effective_budget = int(optimizer.solver.optimizer._scenario.n_trials)
+        if initial_design_size > effective_budget:
+            raise ValueError(
+                f"YAHPO effective budget {effective_budget} is smaller than initial-design size "
+                f"{initial_design_size} for {task_id!r}."
+            )
     optimizer.seed_stream_metadata = {
         "selected_inner_seed": int(seed),
         **component_seeds,

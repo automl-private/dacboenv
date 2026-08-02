@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -26,7 +27,15 @@ from dacboenv.env.action import (
 )
 from dacboenv.env.instance import InstanceSelector, RoundRobinInstanceSelector
 from dacboenv.env.observation import WEI_ALPHA_LEVELS, ObservationSpace
-from dacboenv.env.reward import TRUE_REGRET_REWARD_KEY, DACBOReward
+from dacboenv.env.reward import REFERENCE_REGRET_REWARD_KEY, TRUE_REGRET_REWARD_KEY, DACBOReward
+from dacboenv.reference import (
+    BBOBExactReferenceProvider,
+    JSONLReferenceBreachRecorder,
+    ObjectiveReference,
+    ReferenceBreachContext,
+    ReferenceProvider,
+    reference_regret,
+)
 from dacboenv.utils.carps_optimizer import build_carps_optimizer, is_bbob_task_id
 from dacboenv.utils.loggingutils import get_logger
 from dacboenv.utils.math import safe_log10
@@ -44,6 +53,9 @@ if TYPE_CHECKING:
 ActType = int | float | list[float] | np.ndarray | None
 
 logger = get_logger("dacboenv")
+
+_YAHPO_SCENARIO_INDEX = 2
+_YAHPO_INSTANCE_INDEX = 3
 
 
 @dataclass_json
@@ -99,7 +111,7 @@ class DACBOEnv(gym.Env):
         Computes the current reward from the optimizer.
     """
 
-    def __init__(  # noqa: PLR0913, PLR0917
+    def __init__(  # noqa: PLR0913, PLR0915, PLR0917
         self,
         task_ids: list[str],
         optimizer_cfg: DictConfig | None = None,
@@ -117,7 +129,12 @@ class DACBOEnv(gym.Env):
         evaluation_mode: bool = False,  # noqa: FBT001, FBT002
         interaction_frequency: int = 1,
         protocol_metadata: dict[str, Any] | None = None,
-        **kwargs: dict,  # noqa: ARG002
+        reference_provider: ReferenceProvider | None = None,
+        reference_breach_path: str | Path | None = None,
+        run_id: str | None = None,
+        yahpo_training_budget_multiplier: float = 1.0,
+        context_split: str = "train",
+        **kwargs: dict,
     ) -> None:
         """Initialize the DACBOEnv environment.
 
@@ -157,6 +174,14 @@ class DACBOEnv(gym.Env):
             Defaults to one evaluation per policy decision. Tempo actions
             continue to obtain their duration from the action itself.
         """
+        legacy_instance_config = kwargs.get("deprecated_legacy_instance_config")
+        if legacy_instance_config:
+            raise ValueError(
+                "Legacy configs/instances composition "
+                f"{legacy_instance_config!r} is deprecated and is not a scientific manifest. "
+                "Select a versioned instance_sets manifest; see "
+                "reports/RUN_COMMANDS_POST_STAGE_A.md."
+            )
         if reward_keys is None:
             reward_keys = ["incumbent_cost"]
         if action_space_kwargs is None:
@@ -185,6 +210,13 @@ class DACBOEnv(gym.Env):
             raise ValueError(f"interaction_frequency must be > 0, got {interaction_frequency}.")
         self._interaction_frequency = interaction_frequency
         self._protocol_metadata = dict(protocol_metadata or {})
+        self._reference_provider = reference_provider
+        self._reference_breach_path = None if reference_breach_path is None else Path(reference_breach_path)
+        self._run_id = run_id or str(self._protocol_metadata.get("run_id", f"dacboenv-seed-{self._seed}"))
+        self._yahpo_training_budget_multiplier = float(yahpo_training_budget_multiplier)
+        if context_split not in {"train", "validation", "test"}:
+            raise ValueError(f"context_split must be train, validation, or test, got {context_split!r}.")
+        self._context_split = context_split
 
         # Instance Set
         self._prepared_reset_result: tuple[ObsType, dict[str, Any], int | None] | None = None
@@ -234,6 +266,8 @@ class DACBOEnv(gym.Env):
         self.current_seed = -1
         self.current_threshold: float | None = None
         self._objective_minimum: float | None = None
+        self._objective_reference: ObjectiveReference | None = None
+        self._reference_breach_recorder: JSONLReferenceBreachRecorder | None = None
         self.last_action: ActType | None = None
 
     @property
@@ -282,6 +316,11 @@ class DACBOEnv(gym.Env):
         """Whether the selected reward requires a known BBOB optimum."""
         return TRUE_REGRET_REWARD_KEY in self._reward_keys
 
+    @property
+    def _uses_reference_regret_reward(self) -> bool:
+        """Whether any reward consumes an exact or best-known reference."""
+        return bool({TRUE_REGRET_REWARD_KEY, REFERENCE_REGRET_REWARD_KEY} & set(self._reward_keys))
+
     def _get_bbob_objective_minimum(self, task_id: str) -> float:
         """Return the active CARP-S BBOB objective's finite true minimum."""
         objective_function = self._carps_solver.task.objective_function
@@ -298,18 +337,92 @@ class DACBOEnv(gym.Env):
         return float(objective_minimum)
 
     def _setup_reward(self, task_id: str) -> None:
-        """Build the reward manager and its optional BBOB-only context."""
+        """Build the reward manager and its privileged reference context."""
         # The known BBOB optimum is privileged reward-only information. Read
         # it from the live CARP-S objective rather than reconstructing a
         # second IOH problem, and never add it to the policy observation.
-        if self._uses_true_regret_reward:
-            self._objective_minimum = self._get_bbob_objective_minimum(task_id)
+        if self._uses_reference_regret_reward:
+            provider = self._reference_provider
+            if provider is None and is_bbob_task_id(task_id):
+                provider = BBOBExactReferenceProvider()
+            if provider is None:
+                raise ValueError(
+                    f"Reward {REFERENCE_REGRET_REWARD_KEY!r} requires an explicit reference_provider "
+                    f"for non-BBOB task {task_id!r}."
+                )
+            objective_function = self._carps_solver.task.objective_function
+            if is_bbob_task_id(task_id):
+                task_metadata: dict[str, Any] = {
+                    "task_id": task_id,
+                    "runtime_objective_transform": "identity",
+                    "reporting_objective_transform": "identity",
+                    "fidelity": "not_applicable",
+                }
+            else:
+                parts = task_id.split("/")
+                objective_targets = tuple(str(value) for value in getattr(objective_function, "metrics", ()))
+                if len(objective_targets) != 1:
+                    raise ValueError(
+                        f"Reference-regret reward requires exactly one runtime objective target for {task_id!r}; "
+                        f"got {list(objective_targets)!r}."
+                    )
+                task_metadata = {
+                    "task_id": task_id,
+                    "runtime_objective_transform": "negative_accuracy",
+                    "reporting_objective_transform": "one_minus_accuracy",
+                    "fidelity": "fixed_maximum",
+                    "scenario": (parts[_YAHPO_SCENARIO_INDEX] if len(parts) > _YAHPO_SCENARIO_INDEX else "unknown"),
+                    "instance": (parts[_YAHPO_INSTANCE_INDEX] if len(parts) > _YAHPO_INSTANCE_INDEX else "unknown"),
+                    "objective_target": objective_targets[0],
+                }
+            self._objective_reference = provider.get_reference(task_id, objective_function, task_metadata)
+            self._objective_minimum = self._objective_reference.value
+            breach_path = self._reference_breach_path
+            if breach_path is None:
+                output_directory = Path(self._smac_instance._scenario.output_directory)
+                breach_path = output_directory / "reference_breaches.jsonl"
+            self._reference_breach_recorder = JSONLReferenceBreachRecorder(breach_path)
 
         self._reward = DACBOReward(
             self._smac_instance,
             self._reward_keys,
             self._rho,
             objective_minimum=self._objective_minimum,
+        )
+
+    @staticmethod
+    def _task_scenario_and_instance(task_id: str) -> tuple[str, str]:
+        parts = task_id.split("/")
+        if parts[0].lower() == "yahpo" and len(parts) >= 4:  # noqa: PLR2004
+            return parts[2], parts[3]
+        if parts[0].lower() == "bbob" and len(parts) == 4:  # noqa: PLR2004
+            return "bbob", parts[3]
+        return parts[0], parts[-1]
+
+    def _check_reference_breach(self, trial_value: Any) -> None:
+        """Persist a successful evaluation that materially beats its reference."""
+        objective_reference = getattr(self, "_objective_reference", None)
+        breach_recorder = getattr(self, "_reference_breach_recorder", None)
+        if objective_reference is None or breach_recorder is None:
+            return
+        status = getattr(trial_value, "status", None)
+        if status is not None and getattr(status, "name", str(status)) != "SUCCESS":
+            return
+        costs = np.asarray(trial_value.cost, dtype=float).reshape(-1)
+        observed = float(costs[0]) if costs.size else np.inf
+        scenario, instance = self._task_scenario_and_instance(self.current_task_id)
+        reference_regret(
+            objective_reference,
+            observed,
+            recorder=breach_recorder,
+            context=ReferenceBreachContext(
+                run_id=self._run_id,
+                trial=int(self._smac_instance.runhistory.finished),
+                outer_seed=self._seed,
+                inner_seed=self.current_seed,
+                scenario=scenario,
+                instance=instance,
+            ),
         )
 
     @property
@@ -449,6 +562,29 @@ class DACBOEnv(gym.Env):
         if self._action_space.space.n != 5:  # noqa: PLR2004
             raise ValueError(f"The {observation_key} table requires exactly five posterior modes.")
 
+    def _previous_parameter_from_last_action(self) -> Any:
+        """Map the last public action to the declared parameter observation."""
+        if isinstance(self.action_space, Box):
+            # Gymnasium's Box.contains is shape-sensitive. Policies may return
+            # a scalar for a one-dimensional continuous action, but the
+            # observation must match the declared ``(1,)`` float32 Box.
+            return np.asarray(
+                self.last_action,
+                dtype=self.action_space.dtype,
+            ).reshape(self.action_space.shape)
+        if isinstance(self._action_space, WEITempoRLActionSpace):
+            assert isinstance(self.last_action, Sequence | np.ndarray)
+            return np.array([self._action_space._param_levels[int(self.last_action[1])]])
+        if isinstance(self._action_space, WEIDiscreteActionSpace):
+            action_idx = int(np.asarray(self.last_action).item())
+            return np.array([self._action_space._param_levels[action_idx]])
+        if isinstance(self._action_space, PosteriorQuantileActionSpace):
+            action_idx = int(np.asarray(self.last_action).item())
+            return np.array([self._action_space.quantile_levels[action_idx]])
+        if isinstance(self._action_space, PosteriorModeActionSpace):
+            return np.array([self._action_space.normalized_action])
+        return self.last_action
+
     def modify_obs(self, obs: ObsType) -> ObsType:
         """Modify observations.
 
@@ -468,22 +604,7 @@ class DACBOEnv(gym.Env):
         """
         if "previous_param" in obs:
             if self.last_action is not None:
-                previous_param = self.last_action
-                if isinstance(self._action_space, WEITempoRLActionSpace):
-                    assert isinstance(self.last_action, Sequence | np.ndarray)
-                    previous_param = np.array([self._action_space._param_levels[int(self.last_action[1])]])
-                elif isinstance(self._action_space, WEIDiscreteActionSpace):
-                    action_idx = int(np.asarray(self.last_action).item())
-                    previous_param = np.array([self._action_space._param_levels[action_idx]])
-                elif isinstance(self._action_space, PosteriorQuantileActionSpace):
-                    action_idx = int(np.asarray(self.last_action).item())
-                    previous_param = np.array(
-                        [self._action_space.quantile_levels[action_idx]],
-                    )
-                elif isinstance(self._action_space, PosteriorModeActionSpace):
-                    previous_param = np.array(
-                        [self._action_space.normalized_action],
-                    )
+                previous_param = self._previous_parameter_from_last_action()
             elif isinstance(self.action_space, Box):
                 # TODO adjust default/initial action. Right now: middle of action space
                 previous_param = (self.action_space.high + self.action_space.low) / 2
@@ -651,6 +772,7 @@ class DACBOEnv(gym.Env):
         trial_info = self._smac_instance.ask()
         _, trial_value = self._smac_instance._runner.run_wrapper(trial_info)
         self._smac_instance.tell(trial_info, trial_value)
+        self._check_reference_breach(trial_value)
 
         terminated = False
 
@@ -784,6 +906,8 @@ class DACBOEnv(gym.Env):
         self._episode_length = 0
         self.current_threshold = None
         self._objective_minimum = None
+        self._objective_reference = None
+        self._reference_breach_recorder = None
 
         # Reset SMAC instance
         if hasattr(self, "_carps_solver"):
@@ -799,6 +923,12 @@ class DACBOEnv(gym.Env):
             inner_seed = self._inner_seed_generator.integers(low=0, high=2**32, dtype=np.uint32)
         inner_seed = int(inner_seed)
         self.instance = (inner_seed, task_id)
+        # Reference resolution and initial-design breach persistence happen
+        # before the first policy-visible observation. Make the active context
+        # authoritative before either operation so journals never contain the
+        # constructor sentinels (empty task / seed -1).
+        self.current_seed = inner_seed
+        self.current_task_id = task_id
 
         # Build carps optimizer (wrapper around smac) with appropriate objective function
         optimizer_id = "SMAC3-BlackBoxFacade" if self._optimizer_cfg is None else None
@@ -807,10 +937,13 @@ class DACBOEnv(gym.Env):
             task_id=task_id,
             seed=inner_seed,
             optimizer_cfg=self._optimizer_cfg,
+            yahpo_budget_multiplier=self._yahpo_training_budget_multiplier,
+            context_split=self._context_split,
         )
         # Get the smac instance
         self._smac_facade = self._carps_solver.solver
         self._smac_instance = self._carps_solver.solver.optimizer
+        self._n_trials = int(self._smac_instance._scenario.n_trials)
 
         if self._smac_instance._scenario.count_objectives() != 1:
             raise NotImplementedError("Multi-objective not supported.")
@@ -848,9 +981,6 @@ class DACBOEnv(gym.Env):
         # Setup reward
         self._setup_reward(task_id)
 
-        self.current_seed = inner_seed
-        self.current_task_id = task_id
-
         if not self._evaluation_mode:
             # Work off new initial design
             # This is important for training DAC policies because for the phase of the initial design, no action can
@@ -868,6 +998,7 @@ class DACBOEnv(gym.Env):
                 trial_info = self._smac_instance.ask()
                 _, trial_value = self._smac_instance._runner.run_wrapper(trial_info)
                 self._smac_instance.tell(trial_info, trial_value)
+                self._check_reference_breach(trial_value)
 
         # The initial design is already part of the BO state. Returning hard
         # coded defaults would hide the consumed budget, fitted surrogate and

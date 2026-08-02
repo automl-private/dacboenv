@@ -6,7 +6,7 @@ from abc import abstractmethod
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from typing import Any, TypeAlias
+    from typing import Any
 
     from dacboenv.dacboenv import ActType, DACBOEnv
     from dacboenv.env.observations.types import ObsType
@@ -65,4 +65,4 @@ class AbstractPolicy:
         """
 
 
-Policy: TypeAlias = AbstractPolicy
+type Policy = AbstractPolicy

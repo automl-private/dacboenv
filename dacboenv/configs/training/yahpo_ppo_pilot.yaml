@@ -4,14 +4,23 @@ defaults:
   - override /instance_sets@training_instances: yahpo_train
   - override /instance_sets@validation_instances: yahpo_validation
   - override /instance_sets@test_instances: yahpo_test_official_so
+  - override /validation_panels@frequent_validation_panel: yahpo_frequent
+  - override /validation_panels@full_validation_panel: yahpo_full
   - _self_
 
-# Intentionally fails at manifest validation until the pinned YAHPO data and
-# fully keyed non-test reference table described by the manifest are present.
+reward_id: reference-regret-improvement
+dacboenv:
+  reward_keys: [reference_regret_improvement]
+  reference_provider:
+    _target_: dacboenv.reference.ManifestReferenceProvider
+    source: ${oc.env:DACBO_YAHPO_REFERENCE_TABLE,dacboenv/experiment/analysis/yahpo_best_known_references.json}
+    expected_runtime_objective_transform: negative_accuracy
+    expected_reporting_objective_transform: one_minus_accuracy
+    expected_fidelity: fixed_maximum
 experiment:
-  n_workers: 4
-  total_timesteps: 16
-  checkpoint_freq: 8
+  n_workers: 12
+  total_timesteps: 24
+  checkpoint_freq: 24
   progress_bar: false
   final_evaluation:
     enabled: false
@@ -19,6 +28,6 @@ experiment:
     enabled: false
 optimizer:
   n_steps: 2
-  batch_size: 8
+  batch_size: 24
   n_epochs: 1
 baserundir: runs_pilot_yahpo

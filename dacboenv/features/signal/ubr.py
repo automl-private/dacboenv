@@ -51,10 +51,7 @@ def model_fitted(model: AbstractModel | None) -> bool:
     if model is None:
         return False
 
-    return bool(
-        getattr(model, "_is_trained", False)
-        or (isinstance(model, RandomForest) and model._rf is not None)
-    )
+    return bool(getattr(model, "_is_trained", False) or (isinstance(model, RandomForest) and model._rf is not None))
 
 
 def calculate_ubr(

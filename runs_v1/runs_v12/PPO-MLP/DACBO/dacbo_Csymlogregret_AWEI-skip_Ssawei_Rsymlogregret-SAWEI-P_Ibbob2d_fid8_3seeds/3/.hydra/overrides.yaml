@@ -1,9 +1,0 @@
-- +instances=bbob2d_8_3seeds
-- +task=dacboenv_sawei_symlog_skip
-- +opt/ppo=mlp
-- +env/refperf=saweip
-- experiment.n_workers=16
-- experiment.n_episodes=1000
-- seed=3
-- +env/instance_selector=roundrobin
-- baserundir=runsicml2

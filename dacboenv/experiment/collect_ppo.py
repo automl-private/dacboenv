@@ -88,7 +88,10 @@ def _normalization_wrapper(model: Path, run_directory: Path) -> Path | None:
         if checkpoint_wrapper.is_file():
             return checkpoint_wrapper
 
-    candidates = [model.parent / "vecnormalize.pkl"]
+    candidates: list[Path] = []
+    if model.parent == run_directory / "validation" and model.name == "best_model.zip":
+        candidates.append(model.parent / "best_balanced_vecnormalize.pkl")
+    candidates.append(model.parent / "vecnormalize.pkl")
     if model.parent != run_directory:
         candidates.append(run_directory / "vecnormalize.pkl")
     return next((candidate for candidate in candidates if candidate.is_file()), None)

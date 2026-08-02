@@ -88,6 +88,51 @@ def test_quantile_action_selects_the_requested_posterior_quantile(
     assert value.item() == pytest.approx(expected)
 
 
+def _two_point_action_margins(
+    acquisition_function: LCB | UCB,
+) -> tuple[list[int], np.ndarray, np.ndarray]:
+    """Return choices, uncertain-point margins, and beta in action order."""
+    action_space = PosteriorQuantileActionSpace(_smbo_with(acquisition_function))
+    acquisition_function._model = SimpleNamespace(
+        # A has the better mean and low uncertainty; B has a worse mean and
+        # high uncertainty. The model returns variance, not standard deviation.
+        predict_marginalized=lambda _x: (
+            np.asarray([[0.0], [1.0]]),
+            np.asarray([[0.01], [4.0]]),
+        ),
+    )
+    acquisition_function._num_data = 1
+
+    choices: list[int] = []
+    margins: list[float] = []
+    beta: list[float] = []
+    for action_index in range(action_space.space.n):
+        action_space.update_optimizer(action_index)
+        scores = acquisition_function._compute(np.asarray([[0.0], [1.0]])).reshape(-1)
+        choices.append(int(np.argmax(scores)))
+        margins.append(float(scores[1] - scores[0]))
+        beta.append(float(acquisition_function._beta))
+    return choices, np.asarray(margins), np.asarray(beta)
+
+
+def test_lcb_actions_increasingly_favor_the_uncertain_point() -> None:
+    """Lower cost quantiles provide the intended exploration ordering."""
+    choices, uncertain_point_margins, beta = _two_point_action_margins(LCB(update_beta=False))
+
+    assert choices == [0, 1, 1, 1, 1]
+    assert np.all(np.diff(uncertain_point_margins) > 0.0)
+    assert np.all(np.diff(beta) > 0.0)
+
+
+def test_ucb_actions_increasingly_avoid_the_uncertain_point() -> None:
+    """An upper cost bound is risk-averse, rather than exploratory, in minimization."""
+    choices, uncertain_point_margins, beta = _two_point_action_margins(UCB(update_beta=False))
+
+    assert choices == [0, 0, 0, 0, 0]
+    assert np.all(np.diff(uncertain_point_margins) < 0.0)
+    assert np.all(np.diff(beta) > 0.0)
+
+
 def test_median_quantile_is_pure_posterior_mean() -> None:
     acquisition_function = LCB(update_beta=False)
     action_space = PosteriorQuantileActionSpace(

@@ -106,8 +106,9 @@ def probe_env_factory(
 
     def make_probe_env(**kwargs: Any) -> tuple[DACBOEnv, list[tuple[str, int]]]:
         build_calls.clear()
+        action_space_class = kwargs.pop("action_space_class", ProbeActionSpace)
         env = DACBOEnv(
-            action_space_class=ProbeActionSpace,
+            action_space_class=action_space_class,
             observation_keys=[],
             evaluation_mode=True,
             **kwargs,
@@ -255,6 +256,37 @@ def test_dynamic_inner_seed_stream_is_independent_of_instance_selector(
     random_seeds = collect_inner_seeds(random_env)
 
     assert random_seeds == round_robin_seeds
+
+
+def test_action_space_choice_cannot_change_training_context_trace(
+    probe_env_factory: Callable[..., tuple[DACBOEnv, list[tuple[str, int]]]],
+) -> None:
+    """All controller families receive the same task/inner-seed trace."""
+
+    def collect(action_space_class: type[ProbeActionSpace]) -> list[tuple[int, str]]:
+        env, _ = probe_env_factory(
+            task_ids=["task-a", "task-b", "task-c"],
+            inner_seeds=[None],
+            instance_selector_class=RandomInstanceSelector,
+            action_space_class=action_space_class,
+            seed=999,
+        )
+        env.reset(seed=73)
+        trace = [env.instance]
+        for _ in range(11):
+            env.reset()
+            trace.append(env.instance)
+        env.close()
+        return trace
+
+    action_spaces = {
+        name: type(f"Probe{name.title()}ActionSpace", (ProbeActionSpace,), {})
+        for name in ("wei", "lcb", "ucb", "af_selection")
+    }
+    traces = {name: collect(action_space_class) for name, action_space_class in action_spaces.items()}
+
+    assert traces["wei"] == traces["lcb"] == traces["ucb"] == traces["af_selection"]
+    assert len({inner_seed for inner_seed, _task_id in traces["wei"]}) == len(traces["wei"])
 
 
 @pytest.mark.parametrize("inner_seeds", [[None, 7], [None, None]])

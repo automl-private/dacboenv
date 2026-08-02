@@ -106,9 +106,7 @@ def test_quantile_actions_receive_matching_candidate_rows(
     updated = observation_space.get_observation()
 
     assert observation_space.space.contains(updated)
-    assert updated["global_state"][
-        GLOBAL_STATE_INDEX["previous_control"]
-    ] == pytest.approx(0.005)
+    assert updated["global_state"][GLOBAL_STATE_INDEX["previous_control"]] == pytest.approx(0.005)
 
 
 def test_af_selection_rows_use_one_hot_identity_and_comparable_features(
@@ -122,12 +120,12 @@ def test_af_selection_rows_use_one_hot_identity_and_comparable_features(
     action_space = PosteriorModeActionSpace(smbo)
     observation_space = ObservationSpace(
         smbo,
-        keys=["global_state", "af_action_features"],
+        keys=["global_state", "action_features"],
         action_space=action_space,
     )
 
     initial = observation_space.get_initial_observation()
-    features = initial["af_action_features"]
+    features = initial["action_features"]
 
     assert observation_space.space.contains(initial)
     assert features.shape == (5, 10)
@@ -145,6 +143,25 @@ def test_af_selection_rows_use_one_hot_identity_and_comparable_features(
 
     assert observation_space.space.contains(updated)
     assert action_space.selected_mode == MAXIMUM_VARIANCE
-    assert updated["global_state"][
-        GLOBAL_STATE_INDEX["previous_control"]
-    ] == pytest.approx(1.0)
+    assert updated["global_state"][GLOBAL_STATE_INDEX["previous_control"]] == pytest.approx(1.0)
+
+
+def test_legacy_af_action_features_alias_is_preserved(tmp_path: Path) -> None:
+    """Saved AF policies may continue requesting the former observation key."""
+    smbo = make_smbo(
+        tmp_path / "legacy-mode-smac",
+        PosteriorModeAcquisition(),
+    )
+    action_space = PosteriorModeActionSpace(smbo)
+    observation_space = ObservationSpace(
+        smbo,
+        keys=["global_state", "af_action_features"],
+        action_space=action_space,
+    )
+
+    observation = observation_space.get_initial_observation()
+
+    assert set(observation) == {"global_state", "af_action_features"}
+    assert observation_space.space.contains(observation)
+    assert observation["af_action_features"].shape == (5, 10)
+    assert np.isfinite(observation["af_action_features"]).all()

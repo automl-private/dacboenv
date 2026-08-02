@@ -1,0 +1,33 @@
+schema_version: 1
+id: bbob-train-v1
+domain: bbob
+split: train
+status: ready
+runnable: true
+role: training
+manifest_hash: 50dda02f306a2cad36af36dfae05962b6a3c0955d8a1404254896ae155a44152
+task_ids:
+  - bbob/2/3/0
+  - bbob/2/6/0
+  - bbob/2/8/0
+  - bbob/2/13/0
+  - bbob/2/17/0
+  - bbob/2/21/0
+  - bbob/4/3/0
+  - bbob/4/6/0
+  - bbob/4/8/0
+  - bbob/4/13/0
+  - bbob/4/17/0
+  - bbob/4/21/0
+inner_seeds: [null]
+seed_protocol:
+  kind: per_episode_stream
+  root: outer_ppo_seed
+  stream: training_inner_seed
+  dtype: uint32
+bbob:
+  functions: [3, 6, 8, 13, 17, 21]
+  dimensions: [2, 4]
+  native_instance: 0
+  expected_native_dimensions: [2, 4, 8, 16, 32]
+  transition_balance: persistent_dimension_worker_groups_required

@@ -56,7 +56,7 @@ case "${mode}" in
         training_families=("ucb_quantile_ppo|runs_ucb_quantile")
         ;;
     posterior_quantile)
-        training_families=("ucb_quantile_ppo|runs_post_quantile")
+        training_families=("lcb_quantile_ppo|runs_post_quantile")
         ;;
     af_selection)
         training_families=("af_selection_ppo|runs_af_selection")

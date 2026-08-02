@@ -4,4 +4,4 @@ observation_space_id: structured-af-selection
 dacboenv:
   observation_keys:
     - global_state
-    - af_action_features
+    - action_features

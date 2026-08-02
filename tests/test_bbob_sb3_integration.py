@@ -4,14 +4,18 @@ from __future__ import annotations
 
 import warnings
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
 from carps.utils.running import make_task
 from dacboenv.experiment.collect_ppo import create_ppo_eval_configs
+from dacboenv.experiment.default_smac import normalized_telescoping_return, run_default_smac_episode
 from dacboenv.experiment.ppo import make_env_factory
 from dacboenv.optimizer import DACBOEnvOptimizer
+from dacboenv.utils import carps_optimizer as carps_optimizer_module
 from dacboenv.utils.carps_optimizer import get_bbob_n_trials, get_task_config
+from dacboenv.utils.seeding import episode_component_seeds
 from hydra import compose, initialize_config_module
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
@@ -50,12 +54,148 @@ def _real_bbob_config(
     return cfg
 
 
+def _install_tiny_native_budget(monkeypatch: pytest.MonkeyPatch, n_trials: int = 7) -> None:
+    """Retain the native task config/objective while shortening a smoke episode."""
+    native_get_task_config = carps_optimizer_module.get_task_config
+
+    def tiny_get_task_config(task_id: str) -> DictConfig:
+        task_cfg = native_get_task_config(task_id)
+        task_cfg.task.optimization_resources.n_trials = n_trials
+        return task_cfg
+
+    monkeypatch.setattr(carps_optimizer_module, "get_task_config", tiny_get_task_config)
+
+
+def _run_tiny_native_episode(
+    training_config: str,
+    output_directory: Path,
+    action_sequence: list[int] | None = None,
+) -> dict[str, Any]:
+    """Complete one reduced-budget episode through the real optimizer stack."""
+    cfg = _real_bbob_config(training_config, true_regret=True)
+    env = make_env_factory(cfg, worker_id=0, output_directory=output_directory)()
+    rewards: list[float] = []
+    actions: list[int] = []
+    try:
+        observation, reset_info = env.reset()
+        assert reset_info["task_id"] == "bbob/2/3/0"
+        assert reset_info["inner_seed"] == 0
+        assert env.observation_space.contains(observation)
+
+        terminated = False
+        action_index = 0
+        final_info: dict[str, Any] = {}
+        while not terminated:
+            action = (
+                action_index % env.action_space.n
+                if action_sequence is None
+                else action_sequence[action_index % len(action_sequence)]
+            )
+            observation, reward, terminated, truncated, final_info = env.step(action)
+            assert not truncated
+            assert env.observation_space.contains(observation)
+            assert np.isfinite(float(reward))
+            actions.append(action)
+            rewards.append(float(reward))
+            action_index += 1
+
+        return {
+            "actions": actions,
+            "rewards": rewards,
+            "final_incumbent": float(env.get_incumbent_cost()),
+            "bo_evaluations": env.get_n_finished_trials(),
+            "policy_decisions": final_info["policy_decisions"],
+        }
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize(
+    "training_config",
+    [
+        "structured_ppo_f1",
+        "lcb_quantile_ppo_f1",
+        "ucb_quantile_ppo_f1",
+        "af_selection_ppo_f1",
+    ],
+)
+def test_every_action_space_completes_a_tiny_native_bbob_episode(
+    training_config: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """All four controllers complete a real seven-trial BBOB/SMAC episode."""
+    monkeypatch.chdir(tmp_path)
+    _install_tiny_native_budget(monkeypatch)
+
+    result = _run_tiny_native_episode(training_config, tmp_path / training_config)
+
+    assert result["bo_evaluations"] == 7
+    assert result["policy_decisions"] == 5
+    assert result["actions"] == [0, 1, 2, 3, 4]
+
+
+def test_tiny_native_bbob_episode_replays_exactly(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A frozen task/inner-seed/action sequence gives identical native results."""
+    monkeypatch.chdir(tmp_path)
+    _install_tiny_native_budget(monkeypatch)
+
+    first = _run_tiny_native_episode("structured_ppo_f1", tmp_path / "replay-first")
+    repeated = _run_tiny_native_episode("structured_ppo_f1", tmp_path / "replay-repeated")
+
+    assert repeated == first
+
+
+def test_tiny_paired_static_random_and_default_smac_baselines(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Static, random, and default SMAC share one reduced validation context."""
+    monkeypatch.chdir(tmp_path)
+    _install_tiny_native_budget(monkeypatch)
+
+    static_result = _run_tiny_native_episode(
+        "structured_ppo_f1",
+        tmp_path / "static",
+        action_sequence=[2],
+    )
+    random_actions = np.random.default_rng(123).integers(0, 5, size=5).tolist()
+    random_result = _run_tiny_native_episode(
+        "structured_ppo_f1",
+        tmp_path / "random",
+        action_sequence=random_actions,
+    )
+    default_result = run_default_smac_episode(
+        "bbob/2/3/0",
+        0,
+        output_directory=tmp_path / "default-smac",
+    )
+
+    assert static_result["bo_evaluations"] == 7
+    assert static_result["actions"] == [2] * 5
+    assert random_result["bo_evaluations"] == 7
+    assert random_result["actions"] == random_actions
+    assert default_result.bo_evaluations == 7
+    assert np.isfinite(default_result.final_incumbent)
+    assert np.isfinite(default_result.telescoping_return)
+
+
+def test_default_smac_telescoping_return_handles_initially_solved_context() -> None:
+    """An initial-design solution has zero potential change, not unit return."""
+    assert normalized_telescoping_return(0.0, 0.0) == pytest.approx(0.0)
+    assert normalized_telescoping_return(10.0, 10.0) == pytest.approx(0.0)
+    assert normalized_telescoping_return(10.0, 1.0) > 0.0
+
+
 @pytest.mark.parametrize(
     ("training_config", "feature_key", "feature_shape"),
     [
         ("lcb_quantile_ppo_f1", "action_features", (5, 4)),
         ("ucb_quantile_ppo_f1", "action_features", (5, 4)),
-        ("af_selection_ppo_f1", "af_action_features", (5, 10)),
+        ("af_selection_ppo_f1", "action_features", (5, 10)),
     ],
 )
 def test_new_controller_configs_build_real_bbob_environments(
@@ -89,7 +229,7 @@ def test_new_controller_configs_build_real_bbob_environments(
         assert np.isfinite(float(reward))
         assert env.observation_space.contains(next_observation)
         assert np.isfinite(next_observation[feature_key]).all()
-        if feature_key == "action_features":
+        if training_config != "af_selection_ppo_f1":
             acquisition_function = env._smac_instance.intensifier.config_selector._acquisition_function
             assert acquisition_function._posterior_quantile == pytest.approx(
                 cfg.dacboenv.action_space_kwargs.quantile_levels[4],
@@ -202,7 +342,17 @@ def test_selected_inner_seed_controls_real_smac_initial_design(
             assert env.instance == (inner_seed, "bbob/2/3/0")
             assert scenario_seed == inner_seed
             assert int(env._carps_solver.task.seed) == inner_seed
-            assert env._smac_instance.intensifier.config_selector._random_design._seed == inner_seed
+            component_seeds = episode_component_seeds(inner_seed)
+            assert env._carps_solver.seed_stream_metadata == {
+                "selected_inner_seed": inner_seed,
+                **component_seeds,
+            }
+            assert env._smac_facade._initial_design._seed == component_seeds["initial_design"]
+            assert (
+                env._smac_instance.intensifier.config_selector._random_design._seed == component_seeds["random_design"]
+            )
+            assert env._smac_facade._acquisition_maximizer._seed == component_seeds["acquisition_maximizer"]
+            assert len(set(component_seeds.values())) == len(component_seeds)
             initial_design = [
                 dict(configuration)
                 for configuration in env._smac_instance.intensifier.config_selector._initial_design_configs
@@ -246,7 +396,10 @@ def test_streamed_inner_seed_replays_real_bbob_and_resets_control_state(
                 assert env.instance == (inner_seed, "bbob/2/3/0")
                 assert int(env._smac_instance._scenario.seed) == inner_seed
                 assert int(env._carps_solver.task.seed) == inner_seed
-                assert env._smac_instance.intensifier.config_selector._random_design._seed == inner_seed
+                assert (
+                    env._smac_instance.intensifier.config_selector._random_design._seed
+                    == episode_component_seeds(inner_seed)["random_design"]
+                )
                 assert acquisition_function.mode == "expected_improvement"
 
                 initial_design = [

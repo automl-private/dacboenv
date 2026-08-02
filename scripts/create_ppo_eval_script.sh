@@ -136,20 +136,20 @@ esac
 case "${policy_family}" in
     wei)
         task_prefix="dacbo_Ccost_inc_AWEI-discrete-f"
-        task_suffix="_Sstructured_R${policy_reward_id}_Ibbob-train-diverse"
+        task_suffix="_Sstructured_R${policy_reward_id}_Ibbob-train-v1"
         ;;
     lcb_quantile|posterior_quantile)
         policy_family="lcb_quantile"
         task_prefix="dacbo_Ccost_inc_ALCB-quantile-discrete-f"
-        task_suffix="_Sstructured-quantile_R${policy_reward_id}_Ibbob-train-diverse"
+        task_suffix="_Sstructured-quantile_R${policy_reward_id}_Ibbob-train-v1"
         ;;
     ucb_quantile)
         task_prefix="dacbo_Ccost_inc_AUCB-quantile-discrete-f"
-        task_suffix="_Sstructured-quantile_R${policy_reward_id}_Ibbob-train-diverse"
+        task_suffix="_Sstructured-quantile_R${policy_reward_id}_Ibbob-train-v1"
         ;;
     af_selection)
         task_prefix="dacbo_Ccost_inc_AAF-select-f"
-        task_suffix="_Sstructured-af-selection_R${policy_reward_id}_Ibbob-train-diverse"
+        task_suffix="_Sstructured-af-selection_R${policy_reward_id}_Ibbob-train-v1"
         ;;
     *)
         echo "Unknown DACBO_POLICY_FAMILY=${policy_family}." >&2

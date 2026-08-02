@@ -1,0 +1,24 @@
+schema_version: 1
+id: mixed-validation-unavailable-v1
+domain: mixed
+split: validation
+status: blocked
+runnable: false
+role: checkpoint_selection
+manifest_hash: 6f01b69549d2f412cfb8976af93ee66f0fbab543330699356902a929ad7bf985
+blockers:
+  - yahpo-validation-unavailable-v1 has no scientifically valid task inventory or references
+task_ids: []
+inner_seeds: [1349011988, 2024774586, 595161999, 1294824964]
+seed_protocol:
+  kind: frozen
+  generator: numpy.random.SeedSequence.generate_state
+  master_seed: 3670740482
+  dtype: uint32
+  count: 4
+composition:
+  bbob_manifest: bbob-validation-v1
+  yahpo_manifest: yahpo-validation-unavailable-v1
+  balanced_score_weights:
+    bbob: 0.5
+    yahpo: 0.5

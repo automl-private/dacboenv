@@ -5,7 +5,8 @@ from __future__ import annotations
 import copy
 import math
 import re
-from functools import lru_cache
+from functools import lru_cache, partial
+from importlib.resources import files
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -13,38 +14,77 @@ import numpy as np
 import pandas as pd
 from carps.utils.env_vars import CARPS_ROOT
 from carps.utils.running import make_optimizer, make_task
-from ConfigSpace import ConfigurationSpace, Float
 from omegaconf import DictConfig, OmegaConf
 from smac.acquisition.function.abstract_acquisition_function import AbstractAcquisitionFunction
+from smac.initial_design.sobol_design import SobolInitialDesign
 from smac.random_design.abstract_random_design import AbstractRandomDesign
+
+from dacboenv.utils.seeding import episode_component_seeds
 
 if TYPE_CHECKING:
     from carps.optimizers.optimizer import Optimizer
 
 _BBOB_TASK_ID = re.compile(r"^bbob/(?P<dimension>\d+)/(?P<function_id>\d+)/(?P<instance_id>\d+)$")
+_BBOB_CONFIG_FILENAME = re.compile(r"^cfg_(?P<dimension>\d+)_(?P<function_id>\d+)_(?P<instance_id>\d+)\.yaml$")
 _BBOB_MAX_FUNCTION_ID = 24
+EXPECTED_NATIVE_BBOB_DIMENSIONS = (2, 4, 8, 16, 32)
+_PACKAGE_RELATIVE_SMAC_LOGGING_PATH = Path("dacboenv/configs/logging/smac_internal.yaml")
+
+
+def _resolve_package_relative_smac_logging_path(cfg: DictConfig) -> None:
+    """Make the saved repository-relative SMAC logging path runtime-portable."""
+    config_path = "optimizer.smac_cfg.smac_kwargs.logging_level"
+    logging_level = OmegaConf.select(cfg, config_path)
+    package_logging_path = Path(str(files("dacboenv.configs").joinpath("logging/smac_internal.yaml")))
+
+    if isinstance(logging_level, Path):
+        if logging_level == _PACKAGE_RELATIVE_SMAC_LOGGING_PATH:
+            OmegaConf.update(cfg, config_path, package_logging_path, force_add=False)
+        return
+
+    if not isinstance(logging_level, DictConfig):
+        return
+    arguments = OmegaConf.select(logging_level, "_args_")
+    if arguments and Path(str(arguments[0])) == _PACKAGE_RELATIVE_SMAC_LOGGING_PATH:
+        arguments[0] = str(package_logging_path)
+
+
+@lru_cache(maxsize=1)
+def get_native_bbob_task_configs() -> dict[tuple[int, int, int], Path]:
+    """Index native CARP-S BBOB task files and enforce the pinned dimensions."""
+    config_root = Path(CARPS_ROOT) / "configs" / "task" / "BBOB"
+    configs: dict[tuple[int, int, int], Path] = {}
+    for config_path in sorted(config_root.glob("cfg_*.yaml")):
+        match = _BBOB_CONFIG_FILENAME.fullmatch(config_path.name)
+        if match is None:
+            continue
+        key = tuple(int(match.group(name)) for name in ("dimension", "function_id", "instance_id"))
+        if key in configs:
+            raise RuntimeError(f"Duplicate native CARP-S BBOB config for {key}: {configs[key]} and {config_path}.")
+        configs[key] = config_path
+
+    discovered_dimensions = tuple(sorted({dimension for dimension, _, _ in configs}))
+    if discovered_dimensions != EXPECTED_NATIVE_BBOB_DIMENSIONS:
+        raise RuntimeError(
+            "Checked-out CARP-S BBOB dimensions differ from the scientifically audited set: "
+            f"expected {list(EXPECTED_NATIVE_BBOB_DIMENSIONS)}, found {list(discovered_dimensions)} "
+            f"below {config_root}."
+        )
+    return configs
+
+
+def discover_native_bbob_dimensions() -> tuple[int, ...]:
+    """Return the dimensions discovered from native CARP-S BBOB filenames."""
+    return tuple(sorted({dimension for dimension, _, _ in get_native_bbob_task_configs()}))
 
 
 def is_bbob_task_id(task_id: str) -> bool:
-    """Return whether ``task_id`` is a supported canonical BBOB task ID."""
+    """Return whether ``task_id`` maps to an existing native CARP-S BBOB task."""
     match = _BBOB_TASK_ID.fullmatch(task_id)
     if match is None:
         return False
-    dimension = int(match.group("dimension"))
-    function_id = int(match.group("function_id"))
-    return dimension > 0 and 1 <= function_id <= _BBOB_MAX_FUNCTION_ID
-
-
-def make_bbob_configuration_space(dimension: int) -> ConfigurationSpace:
-    """Create the continuous ``[-5, 5]^d`` BBOB configuration space."""
-    if not isinstance(dimension, int) or isinstance(dimension, bool):
-        raise TypeError(f"BBOB dimension must be an integer, got {dimension!r}.")
-    if dimension <= 0:
-        raise ValueError(f"BBOB dimension must be > 0, got {dimension}.")
-
-    configuration_space = ConfigurationSpace()
-    configuration_space.add([Float(name=f"x{i}", bounds=(-5.0, 5.0)) for i in range(dimension)])
-    return configuration_space
+    key = tuple(int(match.group(name)) for name in ("dimension", "function_id", "instance_id"))
+    return key in get_native_bbob_task_configs()
 
 
 def get_bbob_n_trials(dimension: int) -> int:
@@ -195,93 +235,6 @@ def maybe_add_defaults(cfg: DictConfig, cfg_fn: str) -> DictConfig:
     return cfg
 
 
-def _build_bbob_task_config(task_id: str) -> DictConfig:
-    """Build a CARPS BBOB task for any positive dimension.
-
-    CARPS distributions commonly pre-generate only dimensions 2, 4, 8, 16,
-    and 32. DACBO's training curriculum also uses dimensions 3 and 5, so
-    constructing the same task schema dynamically avoids depending on a
-    generated task index.
-    """
-    match = _BBOB_TASK_ID.fullmatch(task_id)
-    if match is None:
-        raise ValueError(f"Invalid BBOB task id: {task_id!r}")
-
-    dimension = int(match.group("dimension"))
-    function_id = int(match.group("function_id"))
-    instance_id = int(match.group("instance_id"))
-    if not 1 <= function_id <= _BBOB_MAX_FUNCTION_ID:
-        raise ValueError(f"BBOB function id must be in [1, {_BBOB_MAX_FUNCTION_ID}], got {function_id}.")
-
-    configuration_space = make_bbob_configuration_space(dimension)
-    n_trials = get_bbob_n_trials(dimension)
-
-    cfg = OmegaConf.create(
-        {
-            "benchmark_id": "BBOB",
-            "task_id": "${task.name}",
-            "task": {
-                "_target_": "carps.utils.task.Task",
-                "name": task_id,
-                "seed": "${seed}",
-                "objective_function": {
-                    "_target_": "carps.objective_functions.bbob.BBOBObjectiveFunction",
-                    "dimension": dimension,
-                    "fid": function_id,
-                    "instance": instance_id,
-                    "seed": "${seed}",
-                },
-                "input_space": {
-                    "_target_": "carps.utils.task.InputSpace",
-                    "configuration_space": {
-                        "_target_": ("ConfigSpace.configuration_space.ConfigurationSpace.from_serialized_dict"),
-                        "_convert_": "object",
-                        "d": configuration_space.to_serialized_dict(),
-                    },
-                    "fidelity_space": {
-                        "_target_": "carps.utils.task.FidelitySpace",
-                        "is_multifidelity": False,
-                        "fidelity_type": None,
-                        "min_fidelity": None,
-                        "max_fidelity": None,
-                    },
-                    "instance_space": None,
-                },
-                "output_space": {
-                    "_target_": "carps.utils.task.OutputSpace",
-                    "n_objectives": 1,
-                    "objectives": ["quality"],
-                },
-                "optimization_resources": {
-                    "_target_": "carps.utils.task.OptimizationResources",
-                    "n_trials": n_trials,
-                    "time_budget": None,
-                    "n_workers": 1,
-                },
-                "metadata": {
-                    "_target_": "carps.utils.task.TaskMetadata",
-                    "has_constraints": False,
-                    "domain": "synthetic",
-                    "objective_function_approximation": "real",
-                    "has_virtual_time": False,
-                    "deterministic": True,
-                    "dimensions": dimension,
-                    "search_space_n_categoricals": 0,
-                    "search_space_n_ordinals": 0,
-                    "search_space_n_integers": 0,
-                    "search_space_n_floats": dimension,
-                    "search_space_has_conditionals": False,
-                    "search_space_has_forbiddens": False,
-                    "search_space_has_priors": False,
-                },
-            },
-        }
-    )
-    if not isinstance(cfg, DictConfig):
-        raise TypeError("Expected the generated BBOB task to be a mapping.")
-    return cfg
-
-
 def get_task_config(task_id: str) -> DictConfig:
     """Get config filename for task id.
 
@@ -295,8 +248,19 @@ def get_task_config(task_id: str) -> DictConfig:
     DictConfig
         The config with the node task.
     """
-    if _BBOB_TASK_ID.fullmatch(task_id):
-        return _build_bbob_task_config(task_id)
+    bbob_match = _BBOB_TASK_ID.fullmatch(task_id)
+    if bbob_match is not None:
+        key = tuple(int(bbob_match.group(name)) for name in ("dimension", "function_id", "instance_id"))
+        config_path = get_native_bbob_task_configs().get(key)
+        if config_path is None:
+            raise FileNotFoundError(
+                f"BBOB task {task_id!r} has no native CARP-S config; only dimensions "
+                f"{list(discover_native_bbob_dimensions())} are allowed and every requested tuple must exist."
+            )
+        cfg = OmegaConf.load(config_path)
+        if not isinstance(cfg, DictConfig):
+            raise TypeError(f"Expected a mapping in task config {config_path}.")
+        return maybe_add_defaults(cfg, str(config_path))
 
     df = get_carps_config_index("task")
     ids = [task_id]
@@ -309,12 +273,60 @@ def get_task_config(task_id: str) -> DictConfig:
     return maybe_add_defaults(cfg, config_fn)
 
 
-def _prepare_episode_smac_config(cfg: DictConfig, seed: int) -> None:
-    """Make the selected inner seed and fresh mutable objects episode-local."""
+def _prepare_episode_smac_config(cfg: DictConfig, seed: int) -> dict[str, int]:  # noqa: C901, PLR0915
+    """Make the selected inner seed and stochastic components episode-local."""
+    component_seeds = episode_component_seeds(seed)
     if OmegaConf.select(cfg, "optimizer.smac_cfg.scenario") is not None:
         cfg.optimizer.smac_cfg.scenario.seed = int(seed)
 
+    initial_design_path = "optimizer.smac_cfg.smac_kwargs.initial_design"
+    initial_design = OmegaConf.select(cfg, initial_design_path)
+    uses_blackbox_defaults = str(OmegaConf.select(cfg, "optimizer.smac_cfg.smac_class", default="")).endswith(
+        ".BlackBoxFacade"
+    )
+    if initial_design is None and uses_blackbox_defaults:
+        OmegaConf.update(
+            cfg,
+            initial_design_path,
+            {
+                "_target_": "smac.initial_design.sobol_design.SobolInitialDesign",
+                "_partial_": True,
+                "n_configs": None,
+                "n_configs_per_hyperparameter": 8,
+                "max_ratio": 0.25,
+                "seed": component_seeds["initial_design"],
+            },
+            force_add=True,
+        )
+        initial_design = OmegaConf.select(cfg, initial_design_path)
+    if isinstance(initial_design, DictConfig):
+        target = str(initial_design.get("_target_", ""))
+        if target.endswith(".get_initial_design"):
+            initial_design_cfg = OmegaConf.to_container(initial_design, resolve=False)
+            assert isinstance(initial_design_cfg, dict)
+            initial_design_cfg["_target_"] = "smac.initial_design.sobol_design.SobolInitialDesign"
+            initial_design_cfg["_partial_"] = True
+            initial_design_cfg.setdefault("n_configs_per_hyperparameter", 8)
+            initial_design_cfg["seed"] = component_seeds["initial_design"]
+            OmegaConf.update(cfg, initial_design_path, initial_design_cfg, force_add=False)
+    elif isinstance(initial_design, partial) and getattr(initial_design.func, "__name__", "") == "get_initial_design":
+        initial_design_kwargs = dict(initial_design.keywords or {})
+        initial_design_kwargs.setdefault("n_configs_per_hyperparameter", 8)
+        initial_design_kwargs["seed"] = component_seeds["initial_design"]
+        cfg.optimizer.smac_cfg.smac_kwargs.initial_design = partial(SobolInitialDesign, **initial_design_kwargs)
+
     acquisition_function = OmegaConf.select(cfg, "optimizer.smac_cfg.smac_kwargs.acquisition_function")
+    if acquisition_function is None and uses_blackbox_defaults:
+        OmegaConf.update(
+            cfg,
+            "optimizer.smac_cfg.smac_kwargs.acquisition_function",
+            {
+                "_target_": "smac.acquisition.function.expected_improvement.EI",
+                "xi": 0.0,
+            },
+            force_add=True,
+        )
+        acquisition_function = OmegaConf.select(cfg, "optimizer.smac_cfg.smac_kwargs.acquisition_function")
     if isinstance(acquisition_function, AbstractAcquisitionFunction):
         # OmegaConf preserves allow_objects values by identity even when its
         # containing DictConfig is deep-copied.
@@ -322,20 +334,63 @@ def _prepare_episode_smac_config(cfg: DictConfig, seed: int) -> None:
 
     random_design_path = "optimizer.smac_cfg.smac_kwargs.random_design"
     random_design = OmegaConf.select(cfg, random_design_path)
+    if random_design is None and uses_blackbox_defaults:
+        OmegaConf.update(
+            cfg,
+            random_design_path,
+            {
+                "_target_": "smac.random_design.probability_design.ProbabilityRandomDesign",
+                "probability": 0.08447232371720552,
+                "seed": component_seeds["random_design"],
+            },
+            force_add=True,
+        )
+        random_design = OmegaConf.select(cfg, random_design_path)
     if isinstance(random_design, AbstractRandomDesign):
         # Hydra may already have materialized this nested object with the outer
         # worker seed. SMAC exposes no public reseed method, so copy it before
         # resetting its two seed-owned fields for this episode.
         random_design = copy.deepcopy(random_design)
-        random_design._seed = int(seed)
-        random_design._rng = np.random.RandomState(seed=int(seed))
+        random_design_seed = component_seeds["random_design"]
+        random_design._seed = random_design_seed
+        random_design._rng = np.random.RandomState(seed=random_design_seed)
         cfg.optimizer.smac_cfg.smac_kwargs.random_design = random_design
-    elif OmegaConf.select(cfg, f"{random_design_path}.scenario") is not None:
-        cfg.optimizer.smac_cfg.smac_kwargs.random_design.scenario.seed = int(seed)
+    elif isinstance(random_design, DictConfig):
+        target = str(random_design.get("_target_", ""))
+        if target.endswith(".get_random_design"):
+            random_design_cfg = OmegaConf.to_container(random_design, resolve=False)
+            assert isinstance(random_design_cfg, dict)
+            random_design_cfg["_target_"] = "smac.random_design.probability_design.ProbabilityRandomDesign"
+            random_design_cfg.pop("scenario", None)
+            random_design_cfg.pop("_partial_", None)
+            random_design_cfg["seed"] = component_seeds["random_design"]
+            OmegaConf.update(cfg, random_design_path, random_design_cfg, force_add=False)
+
+    acquisition_maximizer_path = "optimizer.smac_cfg.smac_kwargs.acquisition_maximizer"
+    acquisition_maximizer = OmegaConf.select(cfg, acquisition_maximizer_path)
+    if acquisition_maximizer is None and acquisition_function is not None:
+        OmegaConf.update(
+            cfg,
+            acquisition_maximizer_path,
+            {
+                "_target_": "smac.acquisition.maximizer.local_and_random_search.LocalAndSortedRandomSearch",
+                "_partial_": True,
+                "challengers": 1000,
+                "local_search_iterations": 10,
+                "seed": component_seeds["acquisition_maximizer"],
+            },
+            force_add=True,
+        )
+
+    return component_seeds
 
 
 def build_carps_optimizer(
-    task_id: str, seed: int, optimizer_id: str | None = None, optimizer_cfg: DictConfig | None = None
+    task_id: str,
+    seed: int,
+    optimizer_id: str | None = None,
+    optimizer_cfg: DictConfig | None = None,
+    output_directory: str | Path | None = None,
 ) -> Optimizer:
     """Build carps optimizer.
 
@@ -376,9 +431,14 @@ def build_carps_optimizer(
     else:
         cfg.optimizer = cfg_opt
 
+    _resolve_package_relative_smac_logging_path(cfg)
+
+    if output_directory is not None:
+        cfg.optimizer.smac_cfg.scenario.output_directory = str(output_directory)
+
     # Reassert the selected inner BO seed after merging because Hydra may have
     # materialized nested components with the outer worker seed already.
-    _prepare_episode_smac_config(cfg, seed)
+    component_seeds = _prepare_episode_smac_config(cfg, seed)
 
     if not hasattr(cfg.optimizer, "_target_"):
         cfg.optimizer._target_ = "carps.optimizers.smac20.SMAC3Optimizer"
@@ -387,12 +447,17 @@ def build_carps_optimizer(
     if hasattr(cfg, "loggers"):
         del cfg.loggers
     task = make_task(cfg=cfg)
+    task.input_space.configuration_space.seed(component_seeds["configspace"])
 
     if OmegaConf.select(cfg, "optimizer.smac_cfg.scenario.n_trials") is not None:
         cfg.optimizer.smac_cfg.scenario.n_trials = cfg.task.optimization_resources.n_trials
 
     optimizer = make_optimizer(cfg=cfg, task=task)
     optimizer.setup_optimizer()
+    optimizer.seed_stream_metadata = {
+        "selected_inner_seed": int(seed),
+        **component_seeds,
+    }
     return optimizer
 
 

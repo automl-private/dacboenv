@@ -156,16 +156,13 @@ def test_gather_can_select_last_model_instead_of_validation_best(
 
     configs_path = tmp_path / "policy-configs"
     create_ppo_eval_configs(tmp_path, configs_path=configs_path, model_selection="last")
-    generated = OmegaConf.load(
-        configs_path / "PPO-Structured-MLP" / "structured-task" / "seed7.yaml"
-    )
+    generated = OmegaConf.load(configs_path / "PPO-Structured-MLP" / "structured-task" / "seed7.yaml")
     assert generated.optimizer.policy_kwargs.model == str(final_model.resolve())
     unresolved = OmegaConf.to_container(generated, resolve=False)
     assert isinstance(unresolved, dict)
-    assert (
-        unresolved["dacboenv"]["optimizer_cfg"]["smac_cfg"]["smac_kwargs"]["logging_level"]["_args_"]
-        == ["dacboenv/configs/logging/smac_internal.yaml"]
-    )
+    assert unresolved["dacboenv"]["optimizer_cfg"]["smac_cfg"]["smac_kwargs"]["logging_level"]["_args_"] == [
+        "dacboenv/configs/logging/smac_internal.yaml"
+    ]
 
 
 def test_gather_rejects_unknown_model_selection(tmp_path: Path) -> None:
@@ -210,6 +207,28 @@ def test_create_eval_config_uses_best_model_and_training_mdp_semantics(
     assert unresolved["dacboenv"]["inner_seeds"] == ["${seed}"]
     assert generated.dacboenv.evaluation_mode is False
     assert generated.dacboenv.terminate_after_reference_performance_reached is False
+
+
+def test_best_model_uses_its_checkpoint_specific_normalization(
+    tmp_path: Path,
+) -> None:
+    """Balanced-best export cannot silently use final normalization state."""
+    run_directory = tmp_path / "runs" / "PPO" / "DACBO" / "task" / "7"
+    _write_run_config(run_directory, vecnormalize=True)
+    validation_directory = run_directory / "validation"
+    validation_directory.mkdir()
+    best_model = validation_directory / "best_model.zip"
+    best_model.touch()
+    best_normalization = validation_directory / "best_balanced_vecnormalize.pkl"
+    best_normalization.touch()
+    (run_directory / "vecnormalize.pkl").touch()
+
+    configs_path = tmp_path / "policy-configs"
+    create_ppo_eval_configs(tmp_path / "runs", configs_path=configs_path)
+    generated = OmegaConf.load(configs_path / "PPO-Structured-MLP" / "structured-task" / "seed7.yaml")
+
+    assert generated.optimizer.policy_kwargs.model == str(best_model.resolve())
+    assert generated.optimizer.policy_kwargs.normalization_wrapper == str(best_normalization)
 
 
 def test_generated_policy_config_loads_through_carps_policy_factory(

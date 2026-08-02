@@ -31,6 +31,7 @@ from dacboenv.utils.carps_optimizer import build_carps_optimizer, is_bbob_task_i
 from dacboenv.utils.loggingutils import get_logger
 from dacboenv.utils.math import safe_log10
 from dacboenv.utils.reference_performance import ReferencePerformance
+from dacboenv.utils.seeding import derive_named_seed
 
 if TYPE_CHECKING:
     from carps.optimizers.optimizer import Optimizer
@@ -115,6 +116,7 @@ class DACBOEnv(gym.Env):
         instance_selector_class: type[InstanceSelector] | None = None,
         evaluation_mode: bool = False,  # noqa: FBT001, FBT002
         interaction_frequency: int = 1,
+        protocol_metadata: dict[str, Any] | None = None,
         **kwargs: dict,  # noqa: ARG002
     ) -> None:
         """Initialize the DACBOEnv environment.
@@ -182,6 +184,7 @@ class DACBOEnv(gym.Env):
         if interaction_frequency <= 0:
             raise ValueError(f"interaction_frequency must be > 0, got {interaction_frequency}.")
         self._interaction_frequency = interaction_frequency
+        self._protocol_metadata = dict(protocol_metadata or {})
 
         # Instance Set
         self._prepared_reset_result: tuple[ObsType, dict[str, Any], int | None] | None = None
@@ -338,14 +341,28 @@ class DACBOEnv(gym.Env):
             selector_seed=self._selector_seed,
         )
 
+    def restart_fixed_instance_sequence(self) -> None:
+        """Restart a frozen evaluation manifest at its first context.
+
+        SB3 vector environments automatically reset a completed episode.  A
+        later explicit evaluation reset would otherwise skip that prepared
+        context and rotate round-robin labels between checkpoints.
+        """
+        if any(seed is None for seed in self._instance_set.seeds):
+            raise ValueError("Only a frozen integer-seed instance sequence can be restarted.")
+        self._build_instance_selector()
+        self._instance = None
+        self._prepared_reset_result = None
+
     def _initialize_outer_seed(self, seed: int | None) -> None:
         """Initialize independent deterministic streams from one outer seed."""
-        self._seed = seed
-        selector_sequence, fallback_sequence, inner_sequence = np.random.SeedSequence(seed).spawn(3)
-        self._selector_seed = int(selector_sequence.generate_state(1, dtype=np.uint32)[0])
-        fallback_generator = np.random.default_rng(fallback_sequence)
+        if seed is None:
+            seed = int(np.random.SeedSequence().generate_state(1, dtype=np.uint32)[0])
+        self._seed = int(seed)
+        self._selector_seed = derive_named_seed(self._seed, "task_selector")
+        fallback_generator = np.random.default_rng(derive_named_seed(self._seed, "fallback_inner_pool"))
         self._fallback_seeds = [int(value) for value in fallback_generator.integers(low=344, high=46483, size=3)]
-        self._inner_seed_generator = np.random.default_rng(inner_sequence)
+        self._inner_seed_generator = np.random.default_rng(derive_named_seed(self._seed, "episode_inner"))
 
     def _reseed_episode_selection(self, seed: int) -> None:
         """Restart outer context selection without changing fixed BO seeds."""
@@ -413,17 +430,24 @@ class DACBOEnv(gym.Env):
                         "requires exactly five posterior quantiles, got "
                         f"{list(self._action_space.quantile_levels)}."
                     )
+            elif isinstance(self._action_space, PosteriorModeActionSpace):
+                self._validate_posterior_mode_feature_space("action_features")
             else:
                 raise ValueError(
                     "The action_features observation requires WEIDiscreteActionSpace, "
-                    "WEITempoRLActionSpace, or PosteriorQuantileActionSpace."
+                    "WEITempoRLActionSpace, PosteriorQuantileActionSpace, or "
+                    "PosteriorModeActionSpace."
                 )
 
         if "af_action_features" in observation_keys:
-            if not isinstance(self._action_space, PosteriorModeActionSpace):
-                raise ValueError("The af_action_features observation requires PosteriorModeActionSpace.")
-            if self._action_space.space.n != 5:  # noqa: PLR2004
-                raise ValueError("The af_action_features table requires exactly five posterior modes.")
+            self._validate_posterior_mode_feature_space("af_action_features")
+
+    def _validate_posterior_mode_feature_space(self, observation_key: str) -> None:
+        """Validate the common or legacy posterior-mode feature table."""
+        if not isinstance(self._action_space, PosteriorModeActionSpace):
+            raise ValueError(f"The {observation_key} observation requires PosteriorModeActionSpace.")
+        if self._action_space.space.n != 5:  # noqa: PLR2004
+            raise ValueError(f"The {observation_key} table requires exactly five posterior modes.")
 
     def modify_obs(self, obs: ObsType) -> ObsType:
         """Modify observations.
@@ -511,6 +535,40 @@ class DACBOEnv(gym.Env):
             (seed,task_id)
         """
         return self.instance_selector.select_instance()  # type: ignore[return-value]
+
+    def _context_info(self) -> dict[str, Any]:
+        """Return auditable episode context without adding it to the policy state."""
+        instance = getattr(self, "_instance", None)
+        fallback_seed = instance[0] if instance is not None else -1
+        fallback_task_id = instance[1] if instance is not None else ""
+        task_id = getattr(self, "current_task_id", fallback_task_id)
+        inner_seed = getattr(self, "current_seed", fallback_seed)
+        info: dict[str, Any] = {
+            "task_id": task_id,
+            "inner_seed": inner_seed,
+        }
+        scenario = getattr(getattr(self, "_smac_instance", None), "_scenario", None)
+        if scenario is not None and hasattr(scenario, "n_trials"):
+            try:
+                bo_evaluations = self.get_n_finished_trials()
+            except AttributeError:
+                # Lightweight environment probes need not implement SMAC's
+                # private runhistory attributes merely to receive reset info.
+                bo_evaluations = 0
+            bo_budget = int(scenario.n_trials)
+            info.update(
+                {
+                    "bo_evaluations": bo_evaluations,
+                    "bo_budget": bo_budget,
+                    "budget_fraction": bo_evaluations / max(bo_budget, 1),
+                    "domain": task_id.split("/", maxsplit=1)[0].lower(),
+                }
+            )
+        info.update(getattr(self, "_protocol_metadata", {}))
+        seed_metadata = getattr(getattr(self, "_carps_solver", None), "seed_stream_metadata", None)
+        if seed_metadata is not None:
+            info["seed_stream_metadata"] = dict(seed_metadata)
+        return info
 
     def step(self, action: ActType) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
         """Execute one optimization step using the selected acquisition function and parameters.
@@ -625,7 +683,11 @@ class DACBOEnv(gym.Env):
         obs = self.get_observation()
         reward = self.get_reward() if not self._evaluation_mode else 0
 
-        info = {}
+        info = self._context_info()
+        observation_space = getattr(self, "_dacbo_observation_space", None)
+        diagnostics_fn = getattr(observation_space, "get_action_feature_diagnostics", None)
+        if callable(diagnostics_fn):
+            info.update(diagnostics_fn())
 
         logger.info(
             f"BO trial: {self._smac_instance.runhistory.finished}, "
@@ -681,7 +743,7 @@ class DACBOEnv(gym.Env):
             info.copy(),
         )
 
-    def reset(
+    def reset(  # noqa: C901, PLR0915
         self,
         *,
         seed: int | None = None,
@@ -758,7 +820,7 @@ class DACBOEnv(gym.Env):
         # operation. Legacy observations do not depend on this ordering.
         self._action_space = self._action_space_class(smac_instance=self._smac_instance, **self._action_space_kwargs)
         self.action_space = self._action_space.space  # gym action space
-        self.action_space.seed(inner_seed)
+        self.action_space.seed(derive_named_seed(inner_seed, "policy_action_space"))
         self.last_action = None
 
         # Setup observation space
@@ -813,7 +875,12 @@ class DACBOEnv(gym.Env):
         initial_obs = self._dacbo_observation_space.get_initial_observation()
         initial_obs = self.modify_obs(obs=initial_obs)
 
-        return initial_obs, {}
+        info = self._context_info()
+        diagnostics_fn = getattr(self._dacbo_observation_space, "get_action_feature_diagnostics", None)
+        if callable(diagnostics_fn):
+            info.update(diagnostics_fn())
+        logger.info(f"Selected episode context: {info}")
+        return initial_obs, info
 
     def get_n_finished_trials(self) -> int:
         """Get the number of told trials from the SMAC instance.

@@ -1,0 +1,11 @@
+# @package _global_
+
+static_action_index: ???
+optimizer_id: StaticAction-${static_action_index}
+policy_id: StaticAction-${static_action_index}
+optimizer:
+  policy_class:
+    _target_: dacboenv.policy.static.StaticParameterPolicy
+    _partial_: true
+  policy_kwargs:
+    par_val: ${static_action_index}

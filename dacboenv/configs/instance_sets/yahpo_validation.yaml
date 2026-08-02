@@ -1,0 +1,25 @@
+schema_version: 1
+id: yahpo-validation-unavailable-v1
+domain: yahpo
+split: validation
+status: blocked
+runnable: false
+role: checkpoint_selection
+manifest_hash: 0e1ae8670bf0a84087d6d8693254e2bb7521d5ac9d152a0d95257ff5d603f521
+blockers:
+  - yahpo_gym is not installed in the pinned project environment
+  - yahpo_data is not installed or pinned to a version or commit
+  - no empirical-reference table covers non-official candidate instances with full scientific keys
+task_ids: []
+inner_seeds: [1349011988, 2024774586, 595161999, 1294824964]
+seed_protocol:
+  kind: frozen
+  generator: numpy.random.SeedSequence.generate_state
+  master_seed: 3670740482
+  dtype: uint32
+  count: 4
+selection_protocol:
+  master_seed: 3670740481
+  official_test_instances_excluded: true
+  validation_instances_per_scenario: 4
+  nb301_instances: 0

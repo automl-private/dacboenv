@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
@@ -19,7 +20,10 @@ if TYPE_CHECKING:
 
 MIN_TRANSITION_POINTS = 2
 TRUE_REGRET_EPSILON = 1e-6
+TRUE_REGRET_REFERENCE_TOLERANCE = 1e-8
 TRUE_REGRET_REWARD_KEY = "true_regret_improvement"
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -239,6 +243,17 @@ def calc_true_regret_improvement(
         raise ValueError("True-regret reward requires a non-empty initial design.")
 
     costs = _get_ordered_scalar_costs(smbo)
+    if costs.size > 0:
+        latest_cost = float(costs[-1])
+        if np.isfinite(latest_cost) and latest_cost < objective_minimum - TRUE_REGRET_REFERENCE_TOLERANCE:
+            logger.warning(
+                "Successful objective cost %.17g is below the supplied objective minimum %.17g "
+                "by %.17g, exceeding the reference-breach tolerance %.17g. The regret is clipped at zero.",
+                latest_cost,
+                objective_minimum,
+                objective_minimum - latest_cost,
+                TRUE_REGRET_REFERENCE_TOLERANCE,
+            )
     if costs.size <= n_initial or costs.size < MIN_TRANSITION_POINTS:
         return 0.0
 
@@ -371,8 +386,8 @@ class DACBOReward:
     ----------
     _reward_types : list[RewardType]
         The selected reward types.
-    _parego : ParEGO
-        ParEGO scalarization utility.
+    _parego : ParEGO | None
+        ParEGO scalarization utility, constructed only for multiple rewards.
 
     Methods
     -------
@@ -421,7 +436,11 @@ class DACBOReward:
 
         self._reward_types = [self._REWARD_MAP[key] for key in self._keys]
 
-        self._parego = ParEGO(len(self._reward_types), self._smac_instance._scenario.seed, self._rho)
+        self._parego = (
+            ParEGO(len(self._reward_types), self._smac_instance._scenario.seed, self._rho)
+            if len(self._reward_types) > 1
+            else None
+        )
         self._cached_key: tuple[int, float | None, float | None] | None = None
         self._cached_reward: float | None = None
 
@@ -462,6 +481,8 @@ class DACBOReward:
             reward = float(next(iter(full_reward.values())))
         else:
             # Multi-objective using ParEGO
+            if self._parego is None:
+                raise RuntimeError("ParEGO scalarization requires multiple reward types.")
             reward = float(self._parego(list(full_reward.values())))
 
         self._cached_key = cache_key

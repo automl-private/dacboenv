@@ -1,0 +1,22 @@
+# @package _global_
+defaults:
+  - structured_ppo_f1
+  - override /instance_sets@training_instances: mixed_train_60_40
+  - override /instance_sets@validation_instances: mixed_validation
+  - _self_
+
+# Intentionally fails until the YAHPO side of the mixed manifest is runnable.
+experiment:
+  n_workers: 32
+  total_timesteps: 64
+  checkpoint_freq: 64
+  progress_bar: false
+  final_evaluation:
+    enabled: false
+  validation:
+    enabled: false
+optimizer:
+  n_steps: 2
+  batch_size: 64
+  n_epochs: 1
+baserundir: runs_pilot_mixed

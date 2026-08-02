@@ -1,8 +1,10 @@
 # @package _global_
 defaults:
   - /task: dacboenv_structured_reference_free
-  - /instance_sets@training_instances: bbob_train_diverse
-  - /instance_sets@validation_instances: bbob_validation_holdout
+  - /instance_sets@training_instances: bbob_train
+  - /instance_sets@validation_instances: bbob_validation
+  # Loaded only for provenance/hash logging; the runner never evaluates it.
+  - /instance_sets@test_instances: bbob_test_strict
   - /opt/ppo: structured_mlp
   - _self_
 
@@ -24,6 +26,11 @@ experiment:
   vecnormalize: false
   progress_bar: true
   start_method: forkserver
+  training_sampler:
+    enabled: true
+    # For BBOB-only runs workers are split persistently across dimensions.
+    # Mixed runs use ceil(0.6 * n_workers), i.e. 20/12 at 32 workers.
+    bbob_fraction: 0.6
 
   # Keep inner-BO training compute comparable across interaction frequencies.
   # SB3 counts policy decisions, so f5/f10 use 1/5 and 1/10 as many calls.

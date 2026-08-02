@@ -1,0 +1,36 @@
+schema_version: 1
+id: bbob-validation-v1
+domain: bbob
+split: validation
+status: ready
+runnable: true
+role: checkpoint_selection
+manifest_hash: 36ed3fb56ddc141069b1efad21f4f2ee51d98fed5a0ebaf8c1cdc0d3fcfec196
+task_ids:
+  - bbob/4/2/1
+  - bbob/4/7/1
+  - bbob/4/11/1
+  - bbob/4/16/1
+  - bbob/4/20/1
+  - bbob/8/2/1
+  - bbob/8/7/1
+  - bbob/8/11/1
+  - bbob/8/16/1
+  - bbob/8/20/1
+inner_seeds: [1349011988, 2024774586, 595161999, 1294824964]
+seed_protocol:
+  kind: frozen
+  generator: numpy.random.SeedSequence.generate_state
+  master_seed: 3670740482
+  dtype: uint32
+  count: 4
+bbob:
+  functions: [2, 7, 11, 16, 20]
+  dimensions: [4, 8]
+  native_instance: 1
+  expected_native_dimensions: [2, 4, 8, 16, 32]
+aggregation:
+  order: [inner_seed, native_instance, function, dimension]
+  dimension_weights:
+    "4": 0.5
+    "8": 0.5

@@ -1,0 +1,28 @@
+schema_version: 1
+id: mixed-train-60-40-unavailable-v1
+domain: mixed
+split: train
+status: blocked
+runnable: false
+role: training
+manifest_hash: 2baab852ad326459e23efd74044f0f37de936e740eda513c8dfabd7daaaa1069
+blockers:
+  - yahpo-train-unavailable-v1 has no scientifically valid task inventory or references
+task_ids: []
+inner_seeds: [null]
+composition:
+  bbob_manifest: bbob-train-v1
+  yahpo_manifest: yahpo-train-unavailable-v1
+  target_transition_weights:
+    bbob: 0.6
+    yahpo: 0.4
+  preferred_persistent_workers:
+    total: 32
+    bbob: 20
+    yahpo: 12
+  realized_worker_weights:
+    bbob: 0.625
+    yahpo: 0.375
+  bbob_dimension_workers:
+    "2": 10
+    "4": 10

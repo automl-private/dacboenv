@@ -19,10 +19,15 @@ from carps.loggers.file_logger import get_run_directory
 from carps.utils.loggingutils import get_logger
 from carps.utils.running import make_task
 from hydra.utils import instantiate
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf, open_dict
 
 # Register OmegaConf resolvers.
 import dacboenv  # noqa: F401
+from dacboenv.experiment.protocol import (
+    require_runnable_manifest,
+    validate_manifest_structure,
+    validate_native_bbob_manifest,
+)
 from dacboenv.task import rollout
 
 if TYPE_CHECKING:
@@ -49,6 +54,19 @@ def _make_policy(cfg: DictConfig, env: Any) -> AbstractPolicy:
 def main(cfg: DictConfig) -> None:
     """Run one complete baseline pass over the configured context set."""
     logger.info(OmegaConf.to_yaml(cfg))
+    manifest = OmegaConf.to_container(cfg.evaluation_instances, resolve=True)
+    if not isinstance(manifest, dict):
+        raise TypeError("evaluation_instances must be a manifest mapping.")
+    validate_manifest_structure(manifest)
+    require_runnable_manifest(manifest)
+    if manifest["domain"] == "bbob":
+        validate_native_bbob_manifest(manifest)
+    with open_dict(cfg.dacboenv):
+        cfg.dacboenv.protocol_metadata = {
+            "evaluation_manifest/version": int(manifest["schema_version"]),
+            "evaluation_manifest_id": str(manifest["id"]),
+            "evaluation_manifest_hash": str(manifest["manifest_hash"]),
+        }
     task = make_task(cfg)
     env = task.objective_function._env
     policy = _make_policy(cfg, env)

@@ -1,0 +1,10 @@
+# @package _global_
+
+optimizer_id: MarginalRandom
+policy_id: MarginalRandom
+optimizer:
+  policy_class:
+    _target_: dacboenv.policy.random.MarginalRandomPolicy
+    _partial_: true
+  policy_kwargs:
+    probabilities: ???

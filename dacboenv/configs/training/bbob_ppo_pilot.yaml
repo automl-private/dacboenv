@@ -1,0 +1,24 @@
+# @package _global_
+defaults:
+  - structured_ppo_f1
+  - _self_
+
+# Two tiny PPO updates; this is a wiring smoke test, not a scientific result.
+reward_id: true-regret-improvement
+dacboenv:
+  reward_keys: [true_regret_improvement]
+experiment:
+  n_workers: 4
+  total_timesteps: 16
+  checkpoint_freq: 8
+  progress_bar: false
+  final_evaluation:
+    # Native BBOB episode budgets are deliberately not consumed by this wiring smoke.
+    enabled: false
+  validation:
+    enabled: false
+optimizer:
+  n_steps: 2
+  batch_size: 8
+  n_epochs: 1
+baserundir: runs_pilot_bbob

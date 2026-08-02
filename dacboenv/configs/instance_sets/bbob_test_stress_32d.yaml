@@ -1,0 +1,32 @@
+schema_version: 1
+id: bbob-test-stress-32d-v1
+domain: bbob
+split: test
+status: ready
+runnable: true
+role: high_dimensional_stress_reporting
+primary_ood: false
+manifest_hash: 4db0b63ef437e610c9734a75e775853613f6d9b6e08b3d5401e8635d66198a94
+task_ids:
+  - bbob/32/1/2
+  - bbob/32/5/2
+  - bbob/32/9/2
+  - bbob/32/12/2
+  - bbob/32/15/2
+  - bbob/32/19/2
+  - bbob/32/22/2
+  - bbob/32/24/2
+inner_seeds: [4186603198, 1289272855, 3065569299, 2920417400, 1709701155]
+seed_protocol:
+  kind: frozen
+  generator: numpy.random.SeedSequence.generate_state
+  master_seed: 3670740483
+  dtype: uint32
+  count: 5
+bbob:
+  functions: [1, 5, 9, 12, 15, 19, 22, 24]
+  dimensions: [32]
+  native_instance: 2
+  expected_native_dimensions: [2, 4, 8, 16, 32]
+aggregation:
+  order: [inner_seed, native_instance, function, dimension]

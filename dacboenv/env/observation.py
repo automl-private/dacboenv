@@ -64,6 +64,8 @@ ACTION_LOCAL_CANDIDATES = 32
 ACTION_FEATURE_SEED = 0
 MIN_TRANSITION_POINTS = 2
 PREDICTION_STD_EPS = 1e-12
+ACTION_FEATURE_NDIM = 2
+_SELECTED_ACTION_CANDIDATES_ATTRIBUTE = "_dacboenv_selected_action_feature_candidates"
 
 GLOBAL_STATE_NAMES = (
     "budget_percentage",
@@ -100,9 +102,7 @@ AF_ACTION_FEATURE_NAMES = (
     "novelty",
     "normalized_ei_rank",
 )
-AF_ACTION_FEATURE_INDEX = {
-    name: index for index, name in enumerate(AF_ACTION_FEATURE_NAMES)
-}
+AF_ACTION_FEATURE_INDEX = {name: index for index, name in enumerate(AF_ACTION_FEATURE_NAMES)}
 
 
 def _scalar_cost(cost: Any) -> float:
@@ -124,9 +124,7 @@ def _cost_history(smbo: SMBO) -> np.ndarray:
     """
     return np.asarray(
         [
-            _scalar_cost(value.cost)
-            if getattr(value, "status", StatusType.SUCCESS) == StatusType.SUCCESS
-            else np.inf
+            _scalar_cost(value.cost) if getattr(value, "status", StatusType.SUCCESS) == StatusType.SUCCESS else np.inf
             for value in smbo.runhistory._data.values()
         ],
         dtype=float,
@@ -178,9 +176,7 @@ def _effective_dimension(smbo: SMBO) -> float:
     if len(configs) == 0:
         return float(len(smbo._scenario.configspace))
 
-    active_dimensions = [
-        float(np.isfinite(np.asarray(config.get_array(), dtype=float)).sum()) for config in configs
-    ]
+    active_dimensions = [float(np.isfinite(np.asarray(config.get_array(), dtype=float)).sum()) for config in configs]
     return float(np.mean(active_dimensions))
 
 
@@ -382,11 +378,7 @@ def calculate_calibration_error(smbo: SMBO, memory: Memory | None = None) -> flo
     if memory is None:
         return -1.0
 
-    values = [
-        float(value)
-        for value in memory.get("calibration", [])
-        if value is not None and float(value) >= 0.0
-    ]
+    values = [float(value) for value in memory.get("calibration", []) if value is not None and float(value) >= 0.0]
     if len(values) == 0:
         return -1.0
 
@@ -589,6 +581,8 @@ def calculate_action_features(smbo: SMBO, memory: Memory | None = None) -> np.nd
     del memory
     features = np.zeros((len(WEI_ALPHA_LEVELS), len(ACTION_FEATURE_NAMES)), dtype=np.float32)
     features[:, ACTION_FEATURE_INDEX["alpha"]] = WEI_ALPHA_LEVELS
+    selected_candidates: list[Any | None] = [None] * len(WEI_ALPHA_LEVELS)
+    setattr(smbo, _SELECTED_ACTION_CANDIDATES_ATTRIBUTE, selected_candidates)
 
     selector = smbo.intensifier.config_selector
     model = selector._model
@@ -623,8 +617,7 @@ def calculate_action_features(smbo: SMBO, memory: Memory | None = None) -> np.nd
     exploration[nonzero_std] = std[nonzero_std] * norm.pdf(z[nonzero_std])
 
     scores = (
-        WEI_ALPHA_LEVELS[:, None] * exploitation[None, :]
-        + (1.0 - WEI_ALPHA_LEVELS[:, None]) * exploration[None, :]
+        WEI_ALPHA_LEVELS[:, None] * exploitation[None, :] + (1.0 - WEI_ALPHA_LEVELS[:, None]) * exploration[None, :]
     )
     scores[:, ~np.isfinite(scores).all(axis=0)] = -np.inf
     model_scale = _model_target_scale(smbo)
@@ -634,6 +627,7 @@ def calculate_action_features(smbo: SMBO, memory: Memory | None = None) -> np.nd
             continue
 
         best_index = int(np.nanargmax(scores[row]))
+        selected_candidates[row] = candidates[best_index]
         features[row] = np.asarray(
             [
                 alpha,
@@ -680,10 +674,7 @@ def _action_candidate_posterior(
 
     try:
         candidate_arrays = np.vstack(
-            [
-                np.asarray(configuration.get_array(), dtype=float)
-                for configuration in candidates
-            ]
+            [np.asarray(configuration.get_array(), dtype=float) for configuration in candidates]
         )
         mean, variance = model.predict_marginalized(candidate_arrays)
         mean = np.asarray(mean, dtype=float).reshape(-1)
@@ -732,6 +723,8 @@ def calculate_posterior_quantile_action_features(
         dtype=np.float32,
     )
     features[:, ACTION_FEATURE_INDEX["control_value"]] = quantiles
+    selected_candidates: list[Any | None] = [None] * len(quantiles)
+    setattr(smbo, _SELECTED_ACTION_CANDIDATES_ATTRIBUTE, selected_candidates)
 
     posterior = _action_candidate_posterior(smbo)
     if posterior is None:
@@ -749,6 +742,7 @@ def calculate_posterior_quantile_action_features(
             continue
 
         best_index = int(np.argmax(scores[row]))
+        selected_candidates[row] = candidates[best_index]
         features[row] = np.asarray(
             [
                 quantile,
@@ -778,9 +772,7 @@ def _normalized_ranks(values: np.ndarray) -> np.ndarray:
 
     floor = float(np.min(flat_values[finite]))
     safe_values = np.where(finite, flat_values, np.nextafter(floor, -np.inf))
-    return (rankdata(safe_values, method="average") - 1.0) / (
-        flat_values.size - 1.0
-    )
+    return (rankdata(safe_values, method="average") - 1.0) / (flat_values.size - 1.0)
 
 
 def calculate_af_action_features(
@@ -797,6 +789,8 @@ def calculate_af_action_features(
     del memory
     n_modes = len(POSTERIOR_MODE_NAMES)
     features = AF_ACTION_FEATURE_DEFAULT.copy()
+    selected_candidates: list[Any | None] = [None] * n_modes
+    setattr(smbo, _SELECTED_ACTION_CANDIDATES_ATTRIBUTE, selected_candidates)
     selector = smbo.intensifier.config_selector
     acquisition_function = selector._acquisition_function
     if not isinstance(acquisition_function, PosteriorModeAcquisition):
@@ -832,12 +826,10 @@ def calculate_af_action_features(
         best_index = best_indices.get(mode)
         if best_index is None or not 0 <= best_index < len(candidates):
             continue
-        if not (
-            np.isfinite(mean[best_index])
-            and np.isfinite(std[best_index])
-            and np.isfinite(ei_ranks[best_index])
-        ):
+        if not (np.isfinite(mean[best_index]) and np.isfinite(std[best_index]) and np.isfinite(ei_ranks[best_index])):
             continue
+
+        selected_candidates[row] = candidates[best_index]
 
         features[
             row,
@@ -865,9 +857,7 @@ def calculate_af_action_features(
         ] = ei_ranks[best_index]
 
     if features.shape[0] != n_modes:
-        raise RuntimeError(
-            f"Expected one feature row per posterior mode, got {features.shape}."
-        )
+        raise RuntimeError(f"Expected one feature row per posterior mode, got {features.shape}.")
     return features
 
 
@@ -1193,17 +1183,21 @@ knn_entropy_observation = ObservationType(
 y_skewness_observation = ObservationType(
     "y_skewness",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo, memory: np.nan_to_num(skew(costs).item(), nan=0)  # noqa: ARG005
-    if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 0
-    else 0,
+    lambda smbo, _memory: (
+        np.nan_to_num(skew(costs).item(), nan=0)
+        if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 0
+        else 0
+    ),
     0,
 )
 y_kurtosis_observation = ObservationType(
     "y_kurtosis",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo, memory: np.nan_to_num(kurtosis(costs).item(), nan=0)  # noqa: ARG005
-    if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 0
-    else 0,
+    lambda smbo, _memory: (
+        np.nan_to_num(kurtosis(costs).item(), nan=0)
+        if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 0
+        else 0
+    ),
     0,
 )
 y_mean_observation = ObservationType(
@@ -1221,9 +1215,11 @@ std_observation = ObservationType(
 variability_observation = ObservationType(
     "y_variability",
     Box(low=0, high=np.inf, dtype=np.float32),
-    lambda smbo, memory: calc_variability(costs)  # noqa: ARG005
-    if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 3  # noqa: PLR2004
-    else -1,
+    lambda smbo, _memory: (
+        calc_variability(costs)
+        if len(costs := smbo.intensifier.config_selector._collect_data()[1]) > 3  # noqa: PLR2004
+        else -1
+    ),
     -1,
 )
 tsd_best_observation = ObservationType(
@@ -1235,25 +1231,27 @@ tsd_best_observation = ObservationType(
 knn_entropy_best_observation = ObservationType(
     "knn_entropy_best",
     Box(low=0, high=np.inf, dtype=np.float32),
-    lambda smbo, memory: knn_entropy(configs)  # type: ignore[arg-type] # noqa: ARG005
-    if len(configs := get_best_percentile_configs(smbo, min_samples=4)) > 3  # noqa: PLR2004 (default k == 3)
-    else 0,
+    lambda smbo, _memory: (
+        knn_entropy(configs)  # type: ignore[arg-type]
+        if len(configs := get_best_percentile_configs(smbo, min_samples=4)) > 3  # noqa: PLR2004 (default k == 3)
+        else 0
+    ),
     0,
 )
 skewness_best_observation = ObservationType(
     "y_skewness_best",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo, memory: np.nan_to_num(skew(costs).item(), nan=0)  # noqa: ARG005
-    if len(costs := get_best_percentile_costs(smbo)) > 0
-    else 0,
+    lambda smbo, _memory: (
+        np.nan_to_num(skew(costs).item(), nan=0) if len(costs := get_best_percentile_costs(smbo)) > 0 else 0
+    ),
     0,
 )
 kurtosis_best_observation = ObservationType(
     "y_kurtosis_best",
     Box(low=-np.inf, high=np.inf, dtype=np.float32),
-    lambda smbo, memory: np.nan_to_num(kurtosis(costs).item(), nan=0)  # noqa: ARG005
-    if len(costs := get_best_percentile_costs(smbo)) > 0
-    else 0,
+    lambda smbo, _memory: (
+        np.nan_to_num(kurtosis(costs).item(), nan=0) if len(costs := get_best_percentile_costs(smbo)) > 0 else 0
+    ),
     0,
 )
 mean_best_observation = ObservationType(
@@ -1271,9 +1269,11 @@ std_best_observation = ObservationType(
 variability_best_observation = ObservationType(
     "y_variability_best",
     Box(low=0, high=np.inf, dtype=np.float32),
-    lambda smbo, memory: calc_variability(costs)  # type: ignore[arg-type] # noqa: ARG005
-    if len(costs := get_best_percentile_costs(smbo, min_samples=4)) > 3  # noqa: PLR2004
-    else -1,
+    lambda smbo, _memory: (
+        calc_variability(costs)  # type: ignore[arg-type]
+        if len(costs := get_best_percentile_costs(smbo, min_samples=4)) > 3  # noqa: PLR2004
+        else -1
+    ),
     -1,
 )
 budget_percentage_observation = ObservationType(
@@ -1285,20 +1285,21 @@ budget_percentage_observation = ObservationType(
 inc_improvement_scaled_observation = ObservationType(
     "inc_improvement_scaled",
     Box(low=0, high=1, dtype=np.float32),
-    lambda smbo, memory: 1 - min(curr, prev) / max(curr, prev)  # noqa: ARG005
-    if len(t := smbo.intensifier.trajectory) > 1
-    and t[-1].trial == len(smbo.runhistory)
-    and max(curr := abs(t[-1].costs[-1]), prev := abs(t[-2].costs[-1])) != 0
-    else 0,
+    lambda smbo, _memory: (
+        1 - min(curr, prev) / max(curr, prev)
+        if len(t := smbo.intensifier.trajectory) > 1
+        and t[-1].trial == len(smbo.runhistory)
+        and max(curr := abs(t[-1].costs[-1]), prev := abs(t[-2].costs[-1])) != 0
+        else 0
+    ),
     0,
 )
 has_categorical_hps = ObservationType(
     "has_categorical_hps",
     Box(low=0, high=1, dtype=bool),
-    lambda smbo, memory: len(  # noqa: ARG005
-        [hp for hp in smbo._scenario.configspace.values() if isinstance(hp, CategoricalHyperparameter)]
-    )
-    > 0,
+    lambda smbo, _memory: (
+        len([hp for hp in smbo._scenario.configspace.values() if isinstance(hp, CategoricalHyperparameter)]) > 0
+    ),
     False,  # noqa: FBT003
 )
 knn_difference_observation = ObservationType(
@@ -1511,9 +1512,7 @@ STRUCTURED_OBSERVATIONS = [
     action_features_observation,
     af_action_features_observation,
 ]
-STRUCTURED_OBSERVATION_NAMES = frozenset(
-    observation.name for observation in STRUCTURED_OBSERVATIONS
-)
+STRUCTURED_OBSERVATION_NAMES = frozenset(observation.name for observation in STRUCTURED_OBSERVATIONS)
 
 ALL_OBSERVATIONS = LEGACY_OBSERVATIONS + STRUCTURED_OBSERVATIONS
 
@@ -1647,10 +1646,7 @@ class ObservationSpace:
     def _configure_action_conditioned_defaults(self) -> None:
         """Bind reset defaults to the installed structured action controller."""
         for obs in self._observation_types:
-            if (
-                obs.name == "action_features"
-                and isinstance(self._action_space, PosteriorQuantileActionSpace)
-            ):
+            if obs.name == "action_features" and isinstance(self._action_space, PosteriorQuantileActionSpace):
                 default = np.zeros(
                     (
                         len(self._action_space.quantile_levels),
@@ -1658,18 +1654,21 @@ class ObservationSpace:
                     ),
                     dtype=np.float32,
                 )
-                default[:, ACTION_FEATURE_INDEX["control_value"]] = (
-                    self._action_space.quantile_levels
-                )
+                default[:, ACTION_FEATURE_INDEX["control_value"]] = self._action_space.quantile_levels
                 obs.default = default
-            elif (
-                obs.name == "af_action_features"
-                and isinstance(self._action_space, PosteriorModeActionSpace)
+            elif obs.name in {"action_features", "af_action_features"} and isinstance(
+                self._action_space, PosteriorModeActionSpace
             ):
-                default = AF_ACTION_FEATURE_DEFAULT.copy()
-                acquisition_function = (
-                    self._smac_instance.intensifier.config_selector._acquisition_function
+                # New policies use the common ``action_features`` key. Keep the
+                # former AF-specific key as an identical compatibility alias for
+                # already-saved policy configurations.
+                obs.space = Box(
+                    low=AF_ACTION_FEATURE_LOW,
+                    high=AF_ACTION_FEATURE_HIGH,
+                    dtype=np.float32,
                 )
+                default = AF_ACTION_FEATURE_DEFAULT.copy()
+                acquisition_function = self._smac_instance.intensifier.config_selector._acquisition_function
                 if isinstance(acquisition_function, PosteriorModeAcquisition):
                     default[
                         POSTERIOR_MODE_NAMES.index(LOWER_CONFIDENCE_BOUND),
@@ -1687,6 +1686,63 @@ class ObservationSpace:
             The observation space.
         """
         return self._observation_space
+
+    def get_action_feature_diagnostics(self) -> dict[str, Any]:
+        """Summarize selected proxy candidates without exposing them to PPO."""
+        if self._cached_observation is None or "action_features" not in self._cached_observation:
+            return {}
+        features = np.asarray(self._cached_observation["action_features"], dtype=float)
+        if features.ndim != ACTION_FEATURE_NDIM or features.shape[0] == 0:
+            return {}
+
+        candidates = list(getattr(self._smac_instance, _SELECTED_ACTION_CANDIDATES_ATTRIBUTE, []))
+        if len(candidates) != features.shape[0]:
+            candidates = [None] * features.shape[0]
+        valid_candidates = [candidate for candidate in candidates if candidate is not None]
+        candidate_keys = [
+            tuple(np.nan_to_num(np.asarray(candidate.get_array(), dtype=float), nan=-1e30).round(12).tolist())
+            for candidate in valid_candidates
+        ]
+        unique_count = len(set(candidate_keys))
+        duplicate_fraction = 1.0 - unique_count / len(candidate_keys) if candidate_keys else 0.0
+
+        hyperparameters = list(self._smac_instance._scenario.configspace.values())
+        distances = [
+            _configuration_distance(left, right, hyperparameters)
+            for left_index, left in enumerate(valid_candidates)
+            for right in valid_candidates[left_index + 1 :]
+        ]
+        if features.shape[1] == len(ACTION_FEATURE_NAMES):
+            z_values = features[:, ACTION_FEATURE_INDEX["standardized_improvement"]]
+            uncertainties = features[:, ACTION_FEATURE_INDEX["normalized_uncertainty"]]
+            novelties = features[:, ACTION_FEATURE_INDEX["novelty"]]
+            identity_width = 1
+        elif features.shape[1] == len(AF_ACTION_FEATURE_NAMES):
+            z_values = features[:, AF_ACTION_FEATURE_INDEX["standardized_improvement"]]
+            uncertainties = features[:, AF_ACTION_FEATURE_INDEX["normalized_uncertainty"]]
+            novelties = features[:, AF_ACTION_FEATURE_INDEX["novelty"]]
+            identity_width = len(POSTERIOR_MODE_NAMES)
+        else:
+            return {}
+
+        uncertainty_ranks = rankdata(uncertainties, method="average")
+        action_ranks = np.arange(features.shape[0], dtype=float)
+        if np.ptp(uncertainty_ranks) <= np.finfo(float).eps:
+            spearman = 0.0
+        else:
+            spearman = float(np.corrcoef(action_ranks, uncertainty_ranks)[0, 1])
+        consequence_rows = features[:, identity_width:]
+        zero_rows = np.all(np.isclose(consequence_rows, 0.0), axis=1)
+        return {
+            "action_features/unique_candidate_count": unique_count,
+            "action_features/duplicate_candidate_fraction": duplicate_fraction,
+            "action_features/mean_pairwise_candidate_distance": float(np.mean(distances)) if distances else 0.0,
+            "action_features/uncertainty_by_action": uncertainties.tolist(),
+            "action_features/novelty_by_action": novelties.tolist(),
+            "action_features/z_by_action": z_values.tolist(),
+            "action_features/spearman_action_vs_uncertainty": spearman,
+            "action_features/zero_consequence_row_fraction": float(np.mean(zero_rows)),
+        }
 
     def get_observation(self) -> ObsType:
         """Compute the current observation values from the given optimizer.
@@ -1772,18 +1828,14 @@ class ObservationSpace:
         return {key: value.copy() for key, value in observation.items()}
 
     def _compute_observation(self, observation_type: ObservationType) -> np.ndarray:
-        if (
-            observation_type.name == "action_features"
-            and isinstance(self._action_space, PosteriorQuantileActionSpace)
-        ):
+        if observation_type.name == "action_features" and isinstance(self._action_space, PosteriorQuantileActionSpace):
             value = calculate_posterior_quantile_action_features(
                 self._smac_instance,
                 quantile_levels=self._action_space.quantile_levels,
                 memory=self._memory,
             )
-        elif (
-            observation_type.name == "af_action_features"
-            and isinstance(self._action_space, PosteriorModeActionSpace)
+        elif observation_type.name in {"action_features", "af_action_features"} and isinstance(
+            self._action_space, PosteriorModeActionSpace
         ):
             value = calculate_af_action_features(
                 self._smac_instance,
@@ -1794,10 +1846,7 @@ class ObservationSpace:
         return np.atleast_1d(value).astype(np.float32)
 
     def _default_observation(self) -> ObsType:
-        return {
-            obs.name: np.atleast_1d(obs.default).astype(np.float32)
-            for obs in self._observation_types
-        }
+        return {obs.name: np.atleast_1d(obs.default).astype(np.float32) for obs in self._observation_types}
 
     def _cache_observation(self, trial: int, observation: ObsType) -> None:
         self._last_observation_trial = trial

@@ -1,0 +1,12 @@
+# @package _global_
+defaults:
+  - /instance_sets@evaluation_instances: bbob_validation
+  - _self_
+
+optimizer_id: Default-SMAC3-BlackBoxFacade
+seed: 0
+baserundir: runs_structured_baselines
+outdir: ${baserundir}/${optimizer_id}/${evaluation_instances.id}
+hydra:
+  run:
+    dir: ${outdir}

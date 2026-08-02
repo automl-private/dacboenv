@@ -10,10 +10,12 @@ import numpy as np
 import pytest
 from dacboenv.experiment.snapshot_branch import (
     DEFAULT_BRANCH_HORIZONS,
+    DETERMINISTIC_REPLAY_PROCESS_ENVIRONMENT,
     BOSnapshot,
     ExactHorizonError,
     SnapshotReplayError,
     replay_snapshot,
+    require_deterministic_replay_process_environment,
     run_snapshot_branch_diagnostic,
 )
 
@@ -120,6 +122,17 @@ def _zero_reference(task_id: str) -> float:  # noqa: ARG001
     return 0.0
 
 
+def test_live_replay_process_environment_is_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in DETERMINISTIC_REPLAY_PROCESS_ENVIRONMENT:
+        monkeypatch.delenv(name, raising=False)
+    with pytest.raises(RuntimeError, match="process settings fixed before Python starts"):
+        require_deterministic_replay_process_environment()
+
+    for name, value in DETERMINISTIC_REPLAY_PROCESS_ENVIRONMENT.items():
+        monkeypatch.setenv(name, value)
+    require_deterministic_replay_process_environment()
+
+
 def test_snapshot_replay_reconstructs_action_prefix() -> None:
     factory = ToyFactory()
     snapshot = BOSnapshot("train/a", np.int64(23), [1, 0])  # type: ignore[arg-type]
@@ -186,6 +199,9 @@ def test_dynamic_oracle_static_value_frequencies_and_gaps() -> None:
     assert one.best_static_action == 0  # deterministic tie break between actions 0 and 2
     assert one.best_static_value == pytest.approx(1.5)
     assert one.dynamic_headroom == pytest.approx(1.5)
+    assert one.relative_dynamic_headroom == pytest.approx(0.5)
+    assert one.normalized_dynamic_headroom >= 0.0
+    assert one.normalized_relative_dynamic_headroom >= 0.0
     assert one.mean_value_by_action == pytest.approx({0: 1.5, 1: 1.0, 2: 1.5})
     assert one.best_action_frequencies == pytest.approx({0: 0.5, 1: 0.0, 2: 0.5})
     assert one.mean_gap_to_dynamic_best_by_action == pytest.approx({0: 1.5, 1: 2.0, 2: 1.5})
@@ -248,6 +264,25 @@ def test_forbidden_task_is_rejected_before_factory_or_reference_use() -> None:
     assert reference_calls == []
 
 
+def test_intrinsic_final_test_guard_does_not_depend_on_caller_list() -> None:
+    factory = ToyFactory()
+    reference_calls: list[str] = []
+
+    def reference(task_id: str) -> float:
+        reference_calls.append(task_id)
+        return 0.0
+
+    with pytest.raises(ValueError, match="forbidden/test task IDs"):
+        run_snapshot_branch_diagnostic(
+            [BOSnapshot("bbob/2/1/2", 7)],
+            factory,
+            reference,
+            forbidden_task_ids=set(),
+        )
+    assert factory.created == []
+    assert reference_calls == []
+
+
 def test_wrong_factory_context_is_rejected_and_closed() -> None:
     factory = ToyFactory(wrong_context=True)
 
@@ -281,3 +316,28 @@ def test_multi_evaluation_step_cannot_be_mislabeled_as_shorter_bo_horizon() -> N
 
 def test_default_horizons_are_one_five_and_ten_bo_evaluations() -> None:
     assert DEFAULT_BRANCH_HORIZONS == (1, 5, 10)
+
+
+def test_portable_snapshot_metadata_is_validated_and_serializable() -> None:
+    snapshot = BOSnapshot(
+        "train/a",
+        19,
+        (0, 1),
+        action_space="wei",
+        interaction_frequency=1,
+        budget_fraction=0.5,
+        history_policy="uniform_random",
+        source_manifest="bbob-validation-v1",
+        source_manifest_hash="a" * 64,
+        code_commit="b" * 40,
+        observation_hash="c" * 64,
+        incumbent=4.0,
+        initial_design_incumbent=10.0,
+        reference_kind="exact",
+    )
+
+    assert json.loads(json.dumps(snapshot.__dict__))["history_policy"] == "uniform_random"
+    with pytest.raises(ValueError, match="budget_fraction"):
+        BOSnapshot("train/a", 19, budget_fraction=1.1)
+    with pytest.raises(ValueError, match="reference_kind"):
+        BOSnapshot("train/a", 19, reference_kind="optimum")

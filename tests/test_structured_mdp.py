@@ -28,7 +28,10 @@ if not hasattr(_tree, "DTYPE"):
 
 from carps.optimizers.smac20 import SMAC3Optimizer
 from dacboenv.dacboenv import DACBOEnv
-from dacboenv.env import observation as observation_module
+from dacboenv.env import (
+    observation as observation_module,
+    reward as reward_module,
+)
 from dacboenv.env.action import WEIDiscreteActionSpace, WEITempoRLActionSpace
 from dacboenv.env.observation import (
     ACTION_FEATURE_DEFAULT,
@@ -47,6 +50,7 @@ from dacboenv.env.observation import (
 from dacboenv.env.reward import (
     LEGACY_REWARDS,
     TRUE_REGRET_EPSILON,
+    TRUE_REGRET_REFERENCE_TOLERANCE,
     DACBOReward,
     _initial_design_location_and_scale,
     calc_reference_free_improvement,
@@ -311,6 +315,43 @@ def test_true_regret_reward_clips_at_the_known_optimum() -> None:
     assert repeated_floor == pytest.approx(0.0)
 
 
+def test_true_regret_reward_is_safe_when_initial_design_solves_task() -> None:
+    """A zero initial regret has a finite scale and emits no later reward."""
+    reward = calc_true_regret_improvement(
+        make_fake_smbo([2.0, 3.0, 2.0], n_initial=2),
+        2.0,
+    )
+
+    assert np.isfinite(reward)
+    assert reward == pytest.approx(0.0)
+
+
+def test_true_regret_reward_logs_reference_breach_before_clipping(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A successful value materially below the supplied optimum is visible."""
+    caplog.set_level("WARNING", logger="dacboenv.env.reward")
+
+    reward = calc_true_regret_improvement(
+        make_fake_smbo([8.0, 12.0, 1.0], n_initial=2),
+        2.0,
+    )
+
+    assert reward > 0.0
+    assert "below the supplied objective minimum" in caplog.text
+    assert "reference-breach tolerance" in caplog.text
+
+    caplog.clear()
+    calc_true_regret_improvement(
+        make_fake_smbo(
+            [8.0, 12.0, 2.0 - TRUE_REGRET_REFERENCE_TOLERANCE / 2],
+            n_initial=2,
+        ),
+        2.0,
+    )
+    assert "below the supplied objective minimum" not in caplog.text
+
+
 @pytest.mark.parametrize("objective_minimum", [None, np.nan, np.inf, -np.inf])
 def test_true_regret_reward_requires_finite_optimum(
     objective_minimum: float | None,
@@ -346,6 +387,43 @@ def test_reward_manager_routes_true_objective_minimum() -> None:
     )
     assert manager.get_reward() == manager.get_reward()
     assert "true_regret_improvement" not in [reward.name for reward in LEGACY_REWARDS]
+
+
+def test_reference_regret_alias_is_numerically_identical_to_stage_a_bbob_reward() -> None:
+    """The generic provider spelling must not alter the frozen BBOB trajectory."""
+    costs = [8.0, 12.0, 7.0, 4.0]
+    old = DACBOReward(
+        make_fake_smbo(costs, n_initial=2),
+        keys=["true_regret_improvement"],
+        objective_minimum=2.0,
+    ).get_reward()
+    general = DACBOReward(
+        make_fake_smbo(costs, n_initial=2),
+        keys=["reference_regret_improvement"],
+        objective_minimum=2.0,
+    ).get_reward()
+
+    assert general == old
+
+
+def test_single_reward_does_not_construct_or_call_parego(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A scalar reward must not consume a scalarization RNG stream."""
+
+    class UnexpectedParEGO:
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+            raise AssertionError("ParEGO must not be constructed for one reward.")
+
+    monkeypatch.setattr(reward_module, "ParEGO", UnexpectedParEGO)
+    manager = DACBOReward(
+        make_fake_smbo([8.0, 12.0, 7.0], n_initial=2),
+        keys=["true_regret_improvement"],
+        objective_minimum=2.0,
+    )
+
+    assert manager._parego is None
+    assert manager.get_reward() > 0.0
 
 
 @pytest.mark.parametrize(
@@ -736,6 +814,59 @@ def test_fixed_interaction_frequency_sums_rewards_and_stops_at_terminal() -> Non
     }
 
 
+def test_interaction_frequency_sums_true_regret_transition_rewards() -> None:
+    """A held action returns the telescoping sum of its true-regret substeps."""
+    initial_costs = [10.0, 12.0]
+    later_costs = [8.0, 4.0, 3.0]
+    objective_minimum = 2.0
+    smbo = make_fake_smbo(initial_costs, n_initial=len(initial_costs))
+    manager = DACBOReward(
+        smbo,
+        keys=["true_regret_improvement"],
+        objective_minimum=objective_minimum,
+    )
+    env = DACBOEnv.__new__(DACBOEnv)
+    env._action_space = object()
+    env._interaction_frequency = len(later_costs)
+    env._episode_reward = 0.0
+    env._episode_length = 0
+    env.update_optimizer = lambda _action: None
+    env.get_n_finished_trials = lambda: smbo.runhistory.finished
+    substeps = iter(range(1, len(later_costs) + 1))
+
+    def true_regret_substep(*, action: int) -> tuple[dict, float, bool, bool, dict]:  # noqa: ARG001
+        index = next(substeps)
+        smbo.runhistory.set_costs([*initial_costs, *later_costs[:index]])
+        smbo.runhistory.finished = len(smbo.runhistory)
+        return (
+            {"trial": np.asarray([index])},
+            manager.get_reward(),
+            index == len(later_costs),
+            False,
+            {},
+        )
+
+    env._step = true_regret_substep
+    expected = sum(
+        calc_true_regret_improvement(
+            make_fake_smbo(
+                [*initial_costs, *later_costs[:index]],
+                n_initial=len(initial_costs),
+            ),
+            objective_minimum,
+        )
+        for index in range(1, len(later_costs) + 1)
+    )
+
+    observation, reward, terminated, truncated, info = env.step(action=0)
+
+    assert reward == pytest.approx(expected)
+    assert terminated
+    assert not truncated
+    np.testing.assert_array_equal(observation["trial"], np.asarray([3]))
+    assert info["episode"] == {"r": pytest.approx(expected), "l": 1}
+
+
 def test_bo_budget_exhaustion_is_terminal_not_a_timeout() -> None:
     """SB3 must not bootstrap beyond the finite BO budget."""
     env = DACBOEnv.__new__(DACBOEnv)
@@ -770,11 +901,14 @@ def test_bo_budget_exhaustion_is_terminal_not_a_timeout() -> None:
     assert reward == pytest.approx(0.25)
     assert terminated
     assert not truncated
-    assert info == {
-        "bo_evaluations": 1,
-        "policy_decisions": 1,
-        "episode": {"r": 0.25, "l": 1},
-    }
+    assert info["task_id"] == "bbob/2/1/0"
+    assert info["inner_seed"] == 0
+    assert info["bo_budget"] == 1
+    assert info["budget_fraction"] == pytest.approx(1.0)
+    assert info["domain"] == "bbob"
+    assert info["bo_evaluations"] == 1
+    assert info["policy_decisions"] == 1
+    assert info["episode"] == {"r": 0.25, "l": 1}
 
 
 def test_interaction_frequency_validation() -> None:

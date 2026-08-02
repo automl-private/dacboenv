@@ -73,6 +73,26 @@ def test_mixed_workers_use_requested_persistent_20_12_split() -> None:
     }
 
 
+def test_mixed_yahpo_workers_are_two_per_persistent_scenario() -> None:
+    scenarios = (
+        "lcbench",
+        "rbv2_glmnet",
+        "rbv2_rpart",
+        "rbv2_ranger",
+        "rbv2_xgboost",
+        "rbv2_super",
+    )
+    tasks = ["bbob/2/3/0", "bbob/4/3/0", *(f"yahpo/so/{scenario}/1/None" for scenario in scenarios)]
+    assignments = [assign_training_worker_context(tasks, worker_id=worker_id, n_workers=32) for worker_id in range(32)]
+    yahpo_assignments = [assignment for assignment in assignments if assignment.domain == "yahpo"]
+
+    assert Counter(assignment.yahpo_scenario for assignment in yahpo_assignments) == dict.fromkeys(scenarios, 2)
+    assert all(
+        {task_id.split("/")[2] for task_id in assignment.task_ids} == {assignment.yahpo_scenario}
+        for assignment in yahpo_assignments
+    )
+
+
 def test_worker_assignments_do_not_depend_on_action_space() -> None:
     tasks = [f"bbob/{dimension}/{function_id}/0" for dimension in (2, 4) for function_id in (3, 6)]
 
@@ -99,6 +119,7 @@ def test_validation_aggregation_balances_dimensions_and_scenarios() -> None:
     scores = aggregate_validation_scores(task_ids, [101, 202], one_seed_rewards * 2)
 
     assert scores.bbob_score == 2.0
+    assert scores.per_dimension == {4: 1.0, 8: 3.0}
     assert scores.per_scenario == {"lcbench": 10.0, "rbv2_glmnet": 0.0}
     assert scores.yahpo_score == 5.0
     assert scores.balanced_score == 3.5

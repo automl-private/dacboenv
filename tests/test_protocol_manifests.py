@@ -187,7 +187,7 @@ def test_unavailable_yahpo_and_mixed_manifests_do_not_fabricate_tasks() -> None:
     official_test = _load("yahpo_test_official_so")
     assert official_test["status"] == "defined"
     assert official_test["task_ids"]
-    with pytest.raises(ManifestUnavailableError, match="yahpo_gym"):
+    with pytest.raises(ManifestUnavailableError, match="sealed"):
         require_runnable_manifest(official_test)
 
 

@@ -75,6 +75,8 @@ def probe_env_factory(
         task_id: str,
         seed: int,
         optimizer_cfg: object,  # noqa: ARG001
+        yahpo_budget_multiplier: float,  # noqa: ARG001
+        context_split: str,  # noqa: ARG001
     ) -> SimpleNamespace:
         build_calls.append((task_id, seed))
         config_selector = SimpleNamespace(_initial_design_configs=[])

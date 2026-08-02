@@ -62,6 +62,7 @@ def test_categorical_policy_statistics_are_normalized_and_use_logit_gap() -> Non
     assert statistics.normalized_entropy == pytest.approx(np.mean(expected_entropy))
     assert statistics.max_probability == pytest.approx(0.35)
     assert statistics.top1_top2_logit_gap == pytest.approx(np.log(2.5) / 2)
+    assert statistics.logit_std_across_states == pytest.approx(np.mean(np.std(logits, axis=0)))
     np.testing.assert_array_equal(statistics.deterministic_actions, [0, 0])
 
 
@@ -74,9 +75,11 @@ def test_policy_sensitivity_metrics_compute_directional_kl_and_tv() -> None:
     first_kl = 0.8 * np.log(0.8 / 0.6) + 0.2 * np.log(0.2 / 0.4)
     assert metrics["mean_kl"] == pytest.approx(first_kl / 2)
     assert metrics["mean_total_variation"] == pytest.approx(0.1)
+    assert metrics["top_action_change_rate"] == pytest.approx(0.0)
     assert policy_sensitivity_metrics(reference, reference) == {
         "mean_kl": pytest.approx(0.0),
         "mean_total_variation": pytest.approx(0.0),
+        "top_action_change_rate": pytest.approx(0.0),
     }
 
 
@@ -96,15 +99,30 @@ def test_structured_policy_sensitivity_applies_all_state_interventions() -> None
         values = np.exp(logits - np.max(logits, axis=1, keepdims=True))
         return values / np.sum(values, axis=1, keepdims=True)
 
-    metrics = structured_policy_sensitivity(observation, probabilities)
+    another_task = {
+        "global_state": observation["global_state"].copy(),
+        "action_features": observation["action_features"][::-1].copy(),
+    }
+    another_phase = {
+        "global_state": observation["global_state"].copy() * 2.0,
+        "action_features": np.roll(observation["action_features"], shift=1, axis=0),
+    }
+    metrics = structured_policy_sensitivity(
+        observation,
+        probabilities,
+        state_from_another_task=another_task,
+        state_from_another_budget_phase=another_phase,
+    )
 
     assert set(metrics) == {
         "zero_global_state",
         "permute_global_features",
         "mean_action_features",
         "permute_action_rows",
-        "state_from_another_worker",
+        "state_from_another_task",
+        "state_from_another_budget_phase",
     }
+    assert all("top_action_change_rate" in values for values in metrics.values())
     assert metrics["mean_action_features"]["mean_total_variation"] > 0.0
     assert metrics["permute_action_rows"]["mean_total_variation"] == pytest.approx(0.0)
 
@@ -148,12 +166,16 @@ def test_action_callback_records_policy_switch_episode_and_quartile_metrics(tmp_
             {
                 "bo_evaluations": 1,
                 "domain": "bbob",
+                "task_id": "bbob/2/3/0",
                 "action_features/unique_candidate_count": 4,
                 "action_features/uncertainty_by_action": [0.1, 0.2, 0.3, 0.4, 0.5],
             },
             {"bo_evaluations": 3, "task_id": "yahpo/so/lcbench/1/None"},
         ],
-        "obs_tensor": {"global_state": th.as_tensor([[0.1, 0.0], [0.3, 0.0]])},
+        "obs_tensor": {
+            "global_state": th.as_tensor([[0.1, 0.0], [0.3, 0.0]]),
+            "action_features": th.zeros((2, 5, 1)),
+        },
         "env": vector_env,
     }
     assert callback._on_step()
@@ -162,8 +184,14 @@ def test_action_callback_records_policy_switch_episode_and_quartile_metrics(tmp_
     callback.locals = {
         "actions": np.asarray([1, 0]),
         "dones": np.asarray([True, True]),
-        "infos": [{"bo_evaluations": 6}, {"bo_evaluations": 9}],
-        "obs_tensor": {"global_state": th.as_tensor([[0.6, 0.0], [0.9, 0.0]])},
+        "infos": [
+            {"bo_evaluations": 6, "task_id": "bbob/2/3/0"},
+            {"bo_evaluations": 9, "task_id": "yahpo/so/lcbench/1/None"},
+        ],
+        "obs_tensor": {
+            "global_state": th.as_tensor([[0.6, 0.0], [0.9, 0.0]]),
+            "action_features": th.ones((2, 5, 1)),
+        },
         "env": vector_env,
     }
     assert callback._on_step()
@@ -174,14 +202,17 @@ def test_action_callback_records_policy_switch_episode_and_quartile_metrics(tmp_
     assert 0.0 <= logger.mean("policy/normalized_entropy") <= 1.0
     assert logger.mean("policy/max_probability") > 0.9
     assert logger.mean("policy/top1_top2_logit_gap") == pytest.approx(4.0)
+    assert "policy/logit_std_across_states" in logger.values
     assert logger.mean("policy/deterministic_switch_rate") == pytest.approx(0.5)
     assert logger.mean("policy/stochastic_switch_rate") == pytest.approx(1.0)
     assert logger.mean("policy/constant_episode_fraction") == pytest.approx(0.5)
+    assert callback.deterministic_constant_episode_fraction == pytest.approx(0.5)
+    assert len(callback.sensitivity_state_samples) == 4
     assert logger.mean("policy/action_histogram_by_budget_quartile/q1_action_0") == pytest.approx(1.0)
     assert logger.mean("policy/action_histogram_by_budget_quartile/q2_action_1") == pytest.approx(1.0)
     assert logger.mean("policy/action_histogram_by_budget_quartile/q3_action_1") == pytest.approx(1.0)
     assert logger.mean("policy/action_histogram_by_budget_quartile/q4_action_0") == pytest.approx(1.0)
-    assert logger.mean("policy/action_histogram_by_domain/bbob_action_0") == pytest.approx(1.0)
-    assert logger.mean("policy/action_histogram_by_domain/yahpo_action_1") == pytest.approx(1.0)
+    assert logger.mean("policy/action_histogram_by_domain/bbob_action_0") == pytest.approx(0.5)
+    assert logger.mean("policy/action_histogram_by_domain/yahpo_action_1") == pytest.approx(0.5)
     assert logger.mean("action_features/unique_candidate_count") == pytest.approx(4.0)
     assert logger.mean("action_features/uncertainty_by_action/action_4") == pytest.approx(0.5)

@@ -180,6 +180,8 @@ def test_tiny_paired_static_random_and_default_smac_baselines(
     assert random_result["actions"] == random_actions
     assert default_result.bo_evaluations == 7
     assert np.isfinite(default_result.final_incumbent)
+    assert np.isfinite(default_result.normalized_anytime_auc)
+    assert len(default_result.incumbent_trajectory) == 7
     assert np.isfinite(default_result.telescoping_return)
 
 

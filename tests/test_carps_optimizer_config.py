@@ -40,10 +40,7 @@ def test_carps_1_1_optimizer_lookup_without_packaged_index() -> None:
     """Named optimizers remain usable when CARPS only ships YAML configs."""
     config = load_optimizer_config("SMAC3-BlackBoxFacade")
 
-    assert (
-        config.optimizer.smac_cfg.smac_class
-        == "smac.facade.blackbox_facade.BlackBoxFacade"
-    )
+    assert config.optimizer.smac_cfg.smac_class == "smac.facade.blackbox_facade.BlackBoxFacade"
 
 
 def test_carps_1_1_non_bbob_task_lookup_without_packaged_index() -> None:

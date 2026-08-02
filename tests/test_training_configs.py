@@ -133,16 +133,18 @@ def test_smac_logging_path_is_concrete_in_saved_hydra_config() -> None:
 
 
 @pytest.mark.parametrize(
-    ("config_name", "frequency", "total_timesteps", "n_updates", "collected"),
+    ("config_name", "frequency", "n_steps", "batch_size", "total_timesteps", "n_updates", "collected"),
     [
-        ("structured_ppo_f1", 1, 409600, 200, 409600),
-        ("structured_ppo_f5", 5, 81920, 40, 81920),
-        ("structured_ppo_f10", 10, 40960, 20, 40960),
+        ("structured_ppo_f1", 1, 64, 256, 409600, 200, 409600),
+        ("structured_ppo_f5", 5, 16, 128, 81920, 160, 81920),
+        ("structured_ppo_f10", 10, 8, 64, 40960, 160, 40960),
     ],
 )
 def test_structured_training_configs(
     config_name: str,
     frequency: int,
+    n_steps: int,
+    batch_size: int,
     total_timesteps: int,
     n_updates: int,
     collected: int,
@@ -161,8 +163,8 @@ def test_structured_training_configs(
         1.0,
     ]
     assert cfg.experiment.n_workers == 32
-    assert cfg.optimizer.n_steps == 64
-    assert cfg.optimizer.batch_size == 256
+    assert cfg.optimizer.n_steps == n_steps
+    assert cfg.optimizer.batch_size == batch_size
     assert cfg.optimizer.n_epochs == 5
     assert cfg.optimizer.gamma == pytest.approx(1.0)
     assert cfg.optimizer.gae_lambda == pytest.approx(0.95)
@@ -176,11 +178,12 @@ def test_structured_training_configs(
     assert cfg.dacboenv.optimizer_cfg.smac_cfg.smac_kwargs.intensifier.max_config_calls == 1
     assert len(cfg.dacboenv.task_ids) == 12
     assert list(cfg.dacboenv.inner_seeds) == [None]
-    assert len(cfg.experiment.validation.task_ids) * len(cfg.experiment.validation.inner_seeds) == 40
+    assert len(cfg.experiment.validation.task_ids) * len(cfg.experiment.validation.inner_seeds) == 20
+    assert len(cfg.experiment.validation.full_task_ids) * len(cfg.experiment.validation.full_inner_seeds) == 40
     assert (
         cfg.experiment.validation.instance_selector_class._target_ == "dacboenv.env.instance.RoundRobinInstanceSelector"
     )
-    assert schedule.rollout_size == 2048
+    assert schedule.rollout_size == 32 * n_steps
     assert schedule.total_timesteps == total_timesteps
     assert schedule.n_updates == n_updates
     assert schedule.collected_timesteps == collected
@@ -258,8 +261,13 @@ def test_structured_controller_training_matrices_compose(
         assert cfg.optimizer_id == "PPO-Structured-MLP"
         assert len(cfg.dacboenv.task_ids) == 12
         assert list(cfg.dacboenv.inner_seeds) == [None]
-        assert len(cfg.experiment.validation.task_ids) * len(cfg.experiment.validation.inner_seeds) == 40
-        assert schedule.rollout_size == 2048
+        assert len(cfg.experiment.validation.task_ids) * len(cfg.experiment.validation.inner_seeds) == 20
+        assert len(cfg.experiment.validation.full_task_ids) * len(cfg.experiment.validation.full_inner_seeds) == 40
+        expected_n_steps = {1: 64, 5: 16, 10: 8}[frequency]
+        expected_batch_size = {1: 256, 5: 128, 10: 64}[frequency]
+        assert cfg.optimizer.n_steps == expected_n_steps
+        assert cfg.optimizer.batch_size == expected_batch_size
+        assert schedule.rollout_size == 32 * expected_n_steps
         assert schedule.collected_timesteps * frequency == 409600
         assert cfg.experiment.checkpoint_freq == 20480 // frequency
         assert cfg.experiment.validation.eval_freq == 20480 // frequency
@@ -568,10 +576,58 @@ def test_ppo_runner_smoke_without_vecnormalize(
     assert protocol_metadata["train_manifest_hash"] == cfg.training_instances.manifest_hash
     assert protocol_metadata["validation_manifest_hash"] == cfg.validation_instances.manifest_hash
     assert protocol_metadata["test_manifest_hash"] == cfg.test_instances.manifest_hash
-    assert (tmp_path / "policy_sensitivity.json").is_file()
+    sensitivity = json.loads((tmp_path / "policy_sensitivity.json").read_text(encoding="utf-8"))
+    assert set(sensitivity["interventions"]) == {
+        "zero_global_state",
+        "permute_global_features",
+        "mean_action_features",
+        "permute_action_rows",
+        "state_from_another_task",
+        "state_from_another_budget_phase",
+    }
+    assert sensitivity["interventions"]["state_from_another_task"]["status"] == "unavailable"
+    assert "logit_std_across_states" in sensitivity["summary"]
+    assert "deterministic_constant_episode_fraction" in sensitivity["summary"]
     action_log = tmp_path / "tensorboard" / "actions.csv"
     assert action_log.is_file()
     assert "env_0/bo_evaluations" in action_log.read_text(encoding="utf-8").splitlines()[0]
+
+
+def test_policy_sensitivity_report_wires_distinct_task_and_budget_sources() -> None:
+    def observation(scores: tuple[float, float, float]) -> dict[str, np.ndarray]:
+        return {
+            "global_state": np.asarray([0.1, 0.2], dtype=np.float32),
+            "action_features": np.asarray(scores, dtype=np.float32)[:, None],
+        }
+
+    def probabilities(state: dict[str, np.ndarray]) -> np.ndarray:
+        logits = np.asarray(state["action_features"])[..., 0]
+        exponential = np.exp(logits - np.max(logits, axis=-1, keepdims=True))
+        return exponential / np.sum(exponential, axis=-1, keepdims=True)
+
+    samples = [
+        {"task_id": "bbob/4/2/1", "budget_fraction": 0.1, "observation": observation((3, 1, 0))},
+        {"task_id": "bbob/4/7/1", "budget_fraction": 0.1, "observation": observation((0, 3, 1))},
+        {"task_id": "bbob/4/2/1", "budget_fraction": 0.8, "observation": observation((1, 0, 3))},
+    ]
+    fallback = {name: value[None, ...] for name, value in samples[0]["observation"].items()}
+
+    report = ppo_module.build_policy_sensitivity_report(
+        fallback,
+        probabilities,
+        state_samples=samples,
+        deterministic_constant_episode_fraction=0.25,
+    )
+
+    assert report["substitution_provenance"]["status"] == "complete"
+    assert report["substitution_provenance"]["state_from_another_task"]["task_changed"] is True
+    assert report["substitution_provenance"]["state_from_another_budget_phase"]["budget_phase_changed"] is True
+    assert all(
+        "top_action_change_rate" in report["interventions"][name]
+        for name in ppo_module._POLICY_SENSITIVITY_INTERVENTIONS
+    )
+    assert report["summary"]["logit_std_across_states"] > 0.0
+    assert report["summary"]["deterministic_constant_episode_fraction"] == pytest.approx(0.25)
 
 
 def test_normalized_training_env_is_frozen_for_final_evaluation(
@@ -670,6 +726,9 @@ def test_fixed_manifest_validation_repeats_identically_and_saves_protocol_bests(
     cfg.experiment.validation.inner_seeds = [1234, 5678]
     cfg.experiment.validation.n_eval_episodes = 4
     cfg.experiment.validation.eval_freq = 2
+    cfg.experiment.validation.full_task_ids = ["bbob/4/2/1", "bbob/8/7/1"]
+    cfg.experiment.validation.full_inner_seeds = [1234, 5678]
+    cfg.experiment.validation.full_n_eval_episodes = 4
     cfg.optimizer.n_steps = 2
     cfg.optimizer.batch_size = 2
     cfg.optimizer.n_epochs = 1
@@ -688,15 +747,80 @@ def test_fixed_manifest_validation_repeats_identically_and_saves_protocol_bests(
 
     ppo_module.main.__wrapped__(cfg)
 
-    evaluations = np.load(tmp_path / "validation" / "evaluations.npz")
+    evaluations = np.load(tmp_path / "validation" / "frequent" / "evaluations.npz")
     np.testing.assert_array_equal(
         evaluations["results"],
         np.asarray([[1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 3.0, 4.0]]),
     )
+    assert (tmp_path / "validation" / "frequent" / "checkpoints" / "step_2_model.zip").is_file()
+    assert (tmp_path / "validation" / "frequent" / "checkpoints" / "step_4_model.zip").is_file()
+    assert (tmp_path / "validation" / "full" / "selection.json").is_file()
     assert (tmp_path / "validation" / "best_model.zip").is_file()
     assert (tmp_path / "validation" / "best_balanced_model.zip").is_file()
     assert (tmp_path / "validation" / "best_bbob_model.zip").is_file()
     assert not (tmp_path / "validation" / "best_yahpo_model.zip").exists()
+
+
+def test_full_validation_nominates_top_three_halfway_and_final_without_step_zero(tmp_path: Path) -> None:
+    """The expensive panel receives only the prescribed trained candidates."""
+    history: list[dict[str, Any]] = []
+    for step, score in ((20, 0.9), (40, 0.2), (60, 0.8), (80, 0.7)):
+        model_path = tmp_path / f"step_{step}.zip"
+        model_path.write_bytes(b"checkpoint")
+        history.append(
+            {
+                "training_step": step,
+                "model_path": str(model_path),
+                "normalization_path": None,
+                "scores": {"balanced": score},
+            }
+        )
+    final_path = tmp_path / "final.zip"
+    final_path.write_bytes(b"final")
+
+    candidates = ppo_module.nominate_full_validation_candidates(
+        history,
+        final_model_path=final_path,
+        final_normalization_path=None,
+        final_training_step=100,
+    )
+
+    assert {candidate.training_step for candidate in candidates} == {20, 40, 60, 80, 100}
+    assert next(candidate for candidate in candidates if candidate.training_step == 40).nomination_reasons == (
+        "approximately_halfway",
+    )
+    assert next(candidate for candidate in candidates if candidate.training_step == 100).candidate_id == "final"
+
+
+def test_final_full_selection_uses_mandatory_final_frequent_score_for_step_zero_comparison() -> None:
+    """A non-periodic final step must not become a false missing comparison."""
+    step_zero = ppo_module.ValidationScores(None, None, 0.2, 0.2, {}, {})
+    final = ppo_module.ValidationScores(None, None, 0.7, 0.7, {}, {})
+
+    comparison = ppo_module.build_trained_vs_step_zero_comparison(
+        step_zero_scores=step_zero,
+        final_scores=final,
+        selected_full={"candidate_id": "final", "training_step": 100, "score": 0.8},
+        frequent_history=[{"training_step": 80, "scores": {"balanced": 0.9}}],
+    )
+
+    assert comparison["full_selected_checkpoint_frequent_score"] == pytest.approx(0.7)
+    assert comparison["full_selected_checkpoint_frequent_score_source"] == "final_frequent_evaluation"
+    assert comparison["best_trained_improves_over_step_zero"] is True
+
+
+def test_missing_full_selection_reports_unknown_instead_of_false_step_zero_comparison() -> None:
+    step_zero = ppo_module.ValidationScores(None, None, 0.2, 0.2, {}, {})
+    final = ppo_module.ValidationScores(None, None, 0.1, 0.1, {}, {})
+
+    comparison = ppo_module.build_trained_vs_step_zero_comparison(
+        step_zero_scores=step_zero,
+        final_scores=final,
+        selected_full=None,
+        frequent_history=[],
+    )
+
+    assert comparison["best_trained_improves_over_step_zero"] is None
 
 
 @pytest.mark.parametrize("optimizer_config", ["ppo_old", "ppo_alphanet2", "ppo_alphanet3"])
@@ -830,6 +954,7 @@ def test_every_structured_family_has_five_static_action_baselines(
     assert cfg.instance_set_id == "bbob-validation-v1"
     assert cfg.reward_id == "true-regret-improvement"
     assert cfg.evaluation_instances.manifest_hash == "36ed3fb56ddc141069b1efad21f4f2ee51d98fed5a0ebaf8c1cdc0d3fcfec196"
+    assert cfg.dacboenv.context_split == "validation"
 
 
 def test_default_smac_uses_the_same_frozen_validation_manifest() -> None:
@@ -905,11 +1030,12 @@ def test_baseline_test_override_covers_every_final_context() -> None:
     """Switching to the frozen test split automatically expands to 195 runs."""
     cfg = compose_config(
         "+baseline=structured_random",
-        "instance_sets@evaluation_instances=bbob_test_holdout",
+        "instance_sets@evaluation_instances=bbob_test_strict",
     )
 
-    assert cfg.instance_set_id == "bbob-test-holdout"
+    assert cfg.instance_set_id == "bbob-test-strict-v1"
     assert cfg.experiment.n_episodes == 195
+    assert cfg.dacboenv.context_split == "test"
 
 
 def test_native_carps_bbob_dimensions_match_audited_protocol() -> None:

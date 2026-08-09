@@ -56,7 +56,10 @@ DEFAULT_BEST_KNOWN_PROVENANCE_KEYS = frozenset(
         "source_code_commit",
     }
 )
-"""Required generation provenance for every empirical best-known value."""
+"""Required provenance for every empirical or explicitly assumed best-known value."""
+
+ASSUMED_BOUND_SOURCE_METHOD = "assumed_accuracy_upper_bound_v1"
+"""Explicit non-empirical YAHPO reference convention requested by the protocol owner."""
 
 YAHPO_BEST_KNOWN_PROVENANCE_KEYS = DEFAULT_BEST_KNOWN_PROVENANCE_KEYS | frozenset(
     {
@@ -511,11 +514,13 @@ def _validate_provenance_strings(reference: ObjectiveReference, required_keys: f
 
 
 def _validate_provenance_seeds_and_budget(reference: ObjectiveReference, required_keys: frozenset[str]) -> None:
+    assumption_based = reference.metadata.get("source_method") == ASSUMED_BOUND_SOURCE_METHOD
     if "source_seeds" in required_keys:
         seeds = reference.metadata["source_seeds"]
-        if not isinstance(seeds, tuple) or not seeds:
+        if not isinstance(seeds, tuple) or (not seeds and not assumption_based):
             raise ReferenceProvenanceError(
-                f"Best-known reference {reference.task_id!r} source_seeds must be a non-empty sequence."
+                f"Best-known reference {reference.task_id!r} source_seeds must be a sequence and may be empty "
+                f"only for {ASSUMED_BOUND_SOURCE_METHOD!r}."
             )
         if any(isinstance(seed, bool) or not isinstance(seed, int) for seed in seeds):
             raise ReferenceProvenanceError(
@@ -523,10 +528,37 @@ def _validate_provenance_seeds_and_budget(reference: ObjectiveReference, require
             )
     if "source_evaluation_budget" in required_keys:
         budget = reference.metadata["source_evaluation_budget"]
-        if isinstance(budget, bool) or not isinstance(budget, int) or budget <= 0:
+        valid_budget = (
+            isinstance(budget, int)
+            and not isinstance(budget, bool)
+            and (budget == 0 if assumption_based else budget > 0)
+        )
+        if not valid_budget:
             raise ReferenceProvenanceError(
-                f"Best-known reference {reference.task_id!r} source_evaluation_budget must be a positive integer."
+                f"Best-known reference {reference.task_id!r} source_evaluation_budget must be a positive integer, "
+                f"or zero only for {ASSUMED_BOUND_SOURCE_METHOD!r}."
             )
+
+
+def _validate_assumed_bound_provenance(reference: ObjectiveReference) -> None:
+    """Require an assumed bound to remain explicit and never masquerade as an empirical optimum."""
+    if reference.metadata.get("source_method") != ASSUMED_BOUND_SOURCE_METHOD:
+        return
+    required = {
+        "reference_basis": "assumed_metric_upper_bound",
+        "empirical": False,
+        "exactness_proved": False,
+        "assumption_authority": "user_specified_protocol",
+    }
+    mismatches = {
+        key: {"expected": expected, "actual": reference.metadata.get(key)}
+        for key, expected in required.items()
+        if reference.metadata.get(key) != expected
+    }
+    if mismatches:
+        raise ReferenceProvenanceError(
+            f"Assumed-bound reference {reference.task_id!r} has invalid provenance markers: {mismatches}."
+        )
 
 
 def _validate_yahpo_identity(reference: ObjectiveReference) -> str:
@@ -630,6 +662,7 @@ def _validate_best_known_provenance(
         )
     _validate_provenance_strings(reference, required_keys)
     _validate_provenance_seeds_and_budget(reference, required_keys)
+    _validate_assumed_bound_provenance(reference)
     if "generation_date" in required_keys:
         _validate_generation_date(reference.metadata["generation_date"], task_id=reference.task_id)
 

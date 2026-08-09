@@ -8,7 +8,6 @@ from typing import Any
 import pytest
 from dacboenv.env.instance import RoundRobinInstanceSelector
 from dacboenv.experiment.protocol import (
-    ManifestUnavailableError,
     manifest_hash,
     require_runnable_manifest,
     validate_manifest_structure,
@@ -80,28 +79,29 @@ def test_bbob_panels_remain_disjoint_from_the_strict_test_manifest() -> None:
 
 
 @pytest.mark.parametrize(
-    ("name", "target_episodes"),
-    [("yahpo_frequent", 24), ("yahpo_full", 96)],
+    ("name", "task_count", "seed_count", "episode_count"),
+    [("yahpo_frequent", 12, 2, 24), ("yahpo_full", 24, 4, 96)],
 )
-def test_yahpo_tiers_fail_closed_until_reference_coverage_exists(name: str, target_episodes: int) -> None:
+def test_yahpo_tiers_are_frozen_ready_replays(name: str, task_count: int, seed_count: int, episode_count: int) -> None:
     panel = _panel(name)
 
-    assert panel["status"] == "blocked"
-    assert panel["runnable"] is False
-    assert panel["task_ids"] == []
-    assert panel["panel"]["target_episode_count"] == target_episodes
-    assert panel["panel"]["selected_episode_count"] == 0
+    assert panel["status"] == "ready"
+    assert panel["runnable"] is True
+    assert len(panel["task_ids"]) == task_count
+    assert len(panel["inner_seeds"]) == seed_count
+    assert panel["panel"]["episode_count"] == episode_count
     assert panel["panel"]["official_test_instances_excluded"] is True
-    assert any("provenance-complete" in blocker for blocker in panel["blockers"])
-    with pytest.raises(ManifestUnavailableError, match="not runnable"):
-        require_runnable_manifest(panel)
+    require_runnable_manifest(panel)
+    selector = RoundRobinInstanceSelector(panel["task_ids"], panel["inner_seeds"])
+    contexts = selector.select_instance(size=episode_count)
+    assert len(contexts) == len(set(contexts)) == episode_count
 
 
 @pytest.mark.parametrize(
     ("name", "bbob_episodes", "yahpo_episodes", "total_episodes"),
     [("mixed_frequent", 20, 24, 44), ("mixed_full", 40, 96, 136)],
 )
-def test_mixed_tiers_expose_concrete_bbob_portions_but_forbid_partial_execution(
+def test_mixed_tiers_are_complete_balanced_panels(
     name: str,
     bbob_episodes: int,
     yahpo_episodes: int,
@@ -112,13 +112,11 @@ def test_mixed_tiers_expose_concrete_bbob_portions_but_forbid_partial_execution(
     bbob = panel["composition"]["bbob"]
     yahpo = panel["composition"]["yahpo"]
 
-    assert panel["runnable"] is False
-    assert panel["task_ids"] == []
-    assert panel["panel"]["target_episode_count"] == total_episodes
+    assert panel["runnable"] is True
+    assert len(panel["task_ids"]) * len(panel["inner_seeds"]) == total_episodes
+    assert panel["panel"]["episode_count"] == total_episodes
     assert bbob["task_ids"] == canonical["task_ids"]
     assert bbob["episode_count"] == bbob_episodes
-    assert yahpo["task_ids"] == []
-    assert yahpo["target_episode_count"] == yahpo_episodes
+    assert len(yahpo["task_ids"]) * len(yahpo["inner_seeds"]) == yahpo_episodes
     assert panel["composition"]["balanced_score_weights"] == {"bbob": 0.5, "yahpo": 0.5}
-    with pytest.raises(ManifestUnavailableError, match="not runnable"):
-        require_runnable_manifest(panel)
+    require_runnable_manifest(panel)

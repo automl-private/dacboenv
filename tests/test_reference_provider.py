@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 from dacboenv.reference import (
+    ASSUMED_BOUND_SOURCE_METHOD,
     BBOBExactReferenceProvider,
     CompositeReferenceProvider,
     ExactReferenceBreachError,
@@ -282,6 +283,29 @@ def test_incomplete_smoke_reference_requires_explicit_nontraining_override() -> 
     provider = ManifestReferenceProvider([row], allow_incomplete_best_known=True)
     reference = provider.get_reference(row["task_id"], object(), None)
     assert reference.metadata["provenance_status"] == "smoke_only_incomplete"
+
+
+def test_assumed_bound_reference_requires_explicit_nonempirical_markers() -> None:
+    row = _yahpo_row(value=-100.0)
+    row["metadata"].update(
+        {
+            "reporting_value": 0.0,
+            "source_method": ASSUMED_BOUND_SOURCE_METHOD,
+            "source_seeds": [],
+            "source_evaluation_budget": 0,
+            "reference_basis": "assumed_metric_upper_bound",
+            "empirical": False,
+            "exactness_proved": False,
+            "assumption_authority": "user_specified_protocol",
+        }
+    )
+
+    provider = ManifestReferenceProvider([row])
+    assert provider.get_reference(row["task_id"], object(), None).value == -100.0
+
+    row["metadata"]["empirical"] = True
+    with pytest.raises(ReferenceProvenanceError, match="invalid provenance markers"):
+        ManifestReferenceProvider([row])
 
 
 def test_manifest_provider_accepts_json_csv_yaml_and_task_keyed_rows(tmp_path: Path) -> None:

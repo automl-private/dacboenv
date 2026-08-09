@@ -8,7 +8,7 @@ from itertools import combinations
 from pathlib import Path
 from typing import Any
 
-from dacboenv.experiment.protocol import file_sha256, load_manifest, manifest_hash
+from dacboenv.experiment.protocol import file_sha256, load_manifest, manifest_hash, official_yahpo_so_task_ids
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 REFERENCE_TABLE_PATH = Path("dacboenv/experiment/analysis/yahpo_best_known_references.json")
@@ -69,8 +69,11 @@ def build_manifest_overlap_report(repository_root: Path = REPOSITORY_ROOT) -> di
     reference_path = repository_root / REFERENCE_TABLE_PATH
     reference_table = json.loads(reference_path.read_text(encoding="utf-8"))
     references = reference_table.get("references", [])
+    sealed_yahpo = set(official_yahpo_so_task_ids())
     provenance_complete = sum(
-        reference.get("metadata", {}).get("provenance_status") == "complete" for reference in references
+        reference.get("metadata", {}).get("provenance_status") == "complete"
+        and reference.get("task_id") not in sealed_yahpo
+        for reference in references
     )
     smoke_only_incomplete = sum(
         reference.get("metadata", {}).get("provenance_status") == "smoke_only_incomplete" for reference in references
@@ -107,6 +110,8 @@ def build_manifest_overlap_report(repository_root: Path = REPOSITORY_ROOT) -> di
         "yahpo_reference_coverage": {
             "table_path": REFERENCE_TABLE_PATH.as_posix(),
             "table_sha256": file_sha256(reference_path),
+            "installed_reference_count": len(references),
+            "reference_basis": reference_table.get("reference_convention", {}).get("basis"),
             "provenance_complete_non_test_count": provenance_complete,
             "smoke_only_incomplete_count": smoke_only_incomplete,
             "required_train_count": REQUIRED_YAHPO_TRAIN_REFERENCES,

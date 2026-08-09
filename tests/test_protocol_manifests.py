@@ -43,7 +43,7 @@ BBOB_MANIFEST_NAMES = (
     "bbob_test_full_2d8d",
     "bbob_test_stress_32d",
 )
-BLOCKED_MANIFEST_NAMES = (
+YAHPO_AND_MIXED_MANIFEST_NAMES = (
     "yahpo_train",
     "yahpo_validation",
     "mixed_train_60_40",
@@ -66,7 +66,7 @@ def test_dedicated_validation_and_test_seed_lists_are_frozen_and_disjoint() -> N
 
 
 def test_all_protocol_manifests_have_valid_deterministic_content_hashes() -> None:
-    names = (*BBOB_MANIFEST_NAMES, "yahpo_test_official_so", *BLOCKED_MANIFEST_NAMES)
+    names = (*BBOB_MANIFEST_NAMES, "yahpo_test_official_so", *YAHPO_AND_MIXED_MANIFEST_NAMES)
     manifests = [_load(name) for name in names]
 
     assert len({manifest["manifest_hash"] for manifest in manifests}) == len(manifests)
@@ -174,15 +174,19 @@ def test_official_yahpo_manifest_has_all_checked_configs_and_references() -> Non
     validate_official_yahpo_manifest(manifest, reference_csv=YAHPO_REFERENCE_CSV)
 
 
-def test_unavailable_yahpo_and_mixed_manifests_do_not_fabricate_tasks() -> None:
-    for name in BLOCKED_MANIFEST_NAMES:
+def test_yahpo_and_mixed_manifests_are_ready_and_sealed_test_remains_closed() -> None:
+    expected_counts = {
+        "yahpo_train": 68,
+        "yahpo_validation": 24,
+        "mixed_train_60_40": 80,
+        "mixed_validation": 34,
+    }
+    for name in YAHPO_AND_MIXED_MANIFEST_NAMES:
         manifest = _load(name)
-        assert manifest["status"] == "blocked"
-        assert manifest["runnable"] is False
-        assert manifest["task_ids"] == []
-        assert manifest["blockers"]
-        with pytest.raises(ManifestUnavailableError, match="not runnable"):
-            require_runnable_manifest(manifest)
+        assert manifest["status"] == "ready"
+        assert manifest["runnable"] is True
+        assert len(manifest["task_ids"]) == expected_counts[name]
+        require_runnable_manifest(manifest)
 
     official_test = _load("yahpo_test_official_so")
     assert official_test["status"] == "defined"

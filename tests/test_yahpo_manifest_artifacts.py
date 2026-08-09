@@ -30,7 +30,7 @@ FROZEN_BBOB_HASHES = {
     "bbob_validation": "36ed3fb56ddc141069b1efad21f4f2ee51d98fed5a0ebaf8c1cdc0d3fcfec196",
     "bbob_test_strict": "8ba80dd92a2422c2569192abc196513f66aa1ed0d5d248d29deffc0dbf1115ae",
 }
-BLOCKED_YAHPO_MANIFESTS = (
+READY_YAHPO_MANIFESTS = (
     "yahpo_train",
     "yahpo_validation",
     "mixed_train_60_40",
@@ -56,28 +56,28 @@ def _ordered_task_hash(task_ids: list[str]) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def test_blocked_manifests_name_reference_coverage_not_installation() -> None:
+def test_reference_table_and_yahpo_manifests_are_complete() -> None:
     reference_table = _load_json(REFERENCE_TABLE)
-    assert reference_table["status"] == "smoke_only_incomplete"
-    assert len(reference_table["references"]) == 1
-    smoke_reference = reference_table["references"][0]
-    smoke_task = smoke_reference["task_id"]
-    assert smoke_task == "yahpo/so/lcbench/3945/None"
-    assert smoke_task not in official_yahpo_so_task_ids()
-    assert smoke_reference["metadata"]["provenance_status"] == "smoke_only_incomplete"
+    assert reference_table["status"] == "complete"
+    assert len(reference_table["references"]) == 608
+    assert {row["value"] for row in reference_table["references"]} == {-100.0, -1.0}
+    assert all(row["metadata"]["provenance_status"] == "complete" for row in reference_table["references"])
 
-    for name in BLOCKED_YAHPO_MANIFESTS:
+    expected_counts = {
+        "yahpo_train": 68,
+        "yahpo_validation": 24,
+        "mixed_train_60_40": 80,
+        "mixed_validation": 34,
+    }
+    for name in READY_YAHPO_MANIFESTS:
         manifest = _load_manifest(name)
-        blockers = " ".join(manifest["blockers"]).lower()
         coverage = manifest["reference_coverage"]
 
-        assert manifest["status"] == "blocked"
-        assert manifest["runnable"] is False
-        assert manifest["task_ids"] == []
-        assert "reference" in blockers
-        assert "not installed" not in blockers
+        assert manifest["status"] == "ready"
+        assert manifest["runnable"] is True
+        assert len(manifest["task_ids"]) == expected_counts[name]
         assert coverage["table_sha256"] == file_sha256(REFERENCE_TABLE)
-        assert coverage["provenance_complete_non_test_count"] == 0
+        assert coverage["provenance_complete_non_test_count"] == 588
         assert coverage["required_total_before_split"] == 92
 
 
@@ -183,9 +183,11 @@ def test_overlap_hash_report_matches_live_manifests() -> None:
 
     reference_coverage = report["yahpo_reference_coverage"]
     assert reference_coverage["table_sha256"] == file_sha256(REFERENCE_TABLE)
-    assert reference_coverage["provenance_complete_non_test_count"] == 0
-    assert reference_coverage["smoke_only_incomplete_count"] == 1
+    assert reference_coverage["installed_reference_count"] == 608
+    assert reference_coverage["reference_basis"] == "assumed_metric_upper_bound"
+    assert reference_coverage["provenance_complete_non_test_count"] == 588
+    assert reference_coverage["smoke_only_incomplete_count"] == 0
     assert reference_coverage["required_train_count"] == 68
     assert reference_coverage["required_validation_count"] == 24
     assert reference_coverage["required_total_before_split"] == 92
-    assert reference_coverage["train_validation_all_or_nothing_blocked"] is True
+    assert reference_coverage["train_validation_all_or_nothing_blocked"] is False

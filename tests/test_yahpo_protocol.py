@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 from dacboenv.env.observation import GLOBAL_STATE_INDEX
 from dacboenv.experiment.generate_yahpo_references import source_provenance
+from dacboenv.experiment.populate_yahpo_references import assumed_reference
 from dacboenv.experiment.real_env import real_structured_yahpo_env
 from dacboenv.experiment.yahpo_protocol import (
     YAHPO_TRAIN_COUNTS,
@@ -21,12 +22,30 @@ from dacboenv.experiment.yahpo_protocol import (
     official_yahpo_task_ids,
     yahpo_task_id,
 )
-from dacboenv.reference import ManifestReferenceProvider, ReferenceProvenanceError
+from dacboenv.reference import ASSUMED_BOUND_SOURCE_METHOD, ManifestReferenceProvider
 from dacboenv.utils.carps_optimizer import get_task_config
 
 
 def _synthetic_inventory() -> dict[str, list[str]]:
     return {scenario: [str(index) for index in range(1, 40)] for scenario in YAHPO_TRAIN_COUNTS}
+
+
+@pytest.mark.parametrize(("scenario", "expected"), [("lcbench", -100.0), ("nb301", -100.0), ("rbv2_super", -1.0)])
+def test_assumed_reference_uses_installed_runtime_accuracy_scale(scenario: str, expected: float) -> None:
+    row = assumed_reference(
+        scenario,
+        "instance",
+        generation_date="2026-08-09",
+        data_identity={"version": "1.0.2", "git_commit": "a" * 40, "config_space_tree_sha256": "b" * 64},
+        source_hash="c" * 64,
+        source_content_hash="d" * 64,
+        source_code_commit="e" * 40,
+    )
+
+    assert row["value"] == expected
+    assert row["metadata"]["reporting_value"] == 0.0
+    assert row["metadata"]["empirical"] is False
+    assert row["metadata"]["exactness_proved"] is False
 
 
 def test_split_requires_provenance_before_returning_any_ids() -> None:
@@ -84,7 +103,6 @@ def test_real_yahpo_reference_reward_has_effective_budget_and_no_leakage(tmp_pat
         budget_multiplier=0.6,
         random_design_probability=1.0,
         reference_table=reference_table,
-        allow_incomplete_reference=True,
         reference_breach_path=tmp_path / "reference-breaches.jsonl",
     )
     try:
@@ -99,7 +117,7 @@ def test_real_yahpo_reference_reward_has_effective_budget_and_no_leakage(tmp_pat
         assert np.isfinite(observation["global_state"]).all()
         assert env.observation_space.contains(observation)
         assert env._objective_reference is not None
-        assert env._objective_reference.value == -97.91284942626953
+        assert env._objective_reference.value == -100.0
         assert env._objective_reference.metadata["objective_target"] == "val_accuracy"
         assert all("reference" not in key.lower() for key in observation)
         assert all("reference" not in key.lower() for key in info)
@@ -117,36 +135,35 @@ def test_real_yahpo_reference_reward_has_effective_budget_and_no_leakage(tmp_pat
 
 def test_budget_multiplier_does_not_mutate_best_known_reference() -> None:
     reference_path = Path("dacboenv/experiment/analysis/yahpo_best_known_references.json")
-    with pytest.raises(ReferenceProvenanceError, match="cannot enable training"):
-        ManifestReferenceProvider(reference_path)
-
     provider = ManifestReferenceProvider(
         reference_path,
         expected_runtime_objective_transform="negative_accuracy",
         expected_reporting_objective_transform="one_minus_accuracy",
         expected_fidelity="fixed_maximum",
-        allow_incomplete_best_known=True,
     )
     task_id = "yahpo/so/lcbench/3945/None"
     before = provider.get_reference(task_id, None, None)
     assert apply_yahpo_budget_multiplier(126, 0.6, initial_design_size=2, split="train") == 76
     after = provider.get_reference(task_id, None, None)
     assert after is before
-    assert after.value == -97.91284942626953
-    assert after.metadata["provenance_status"] == "smoke_only_incomplete"
+    assert after.value == -100.0
+    assert after.metadata["provenance_status"] == "complete"
+    assert after.metadata["source_method"] == ASSUMED_BOUND_SOURCE_METHOD
 
 
-def test_checked_smoke_row_records_exact_but_incomplete_source_provenance() -> None:
+def test_checked_table_records_explicit_non_empirical_assumed_bounds() -> None:
     path = Path("dacboenv/experiment/analysis/yahpo_best_known_references.json")
     table = json.loads(path.read_text(encoding="utf-8"))
-    row = table["references"][0]
+    rows = table["references"]
 
-    assert table["status"] == "smoke_only_incomplete"
-    assert row["metadata"]["provenance_status"] == "smoke_only_incomplete"
-    assert row["metadata"]["source_code_commit_contains_method"] is False
-    assert row["metadata"]["source_content_sha256"] == (
-        "ef547c3a9ab2e4118385dad23357b0c69c3a2532161405f0990f8c1d75e492d7"
-    )
+    assert table["status"] == "complete"
+    assert len(rows) == 608
+    assert {row["value"] for row in rows} == {-100.0, -1.0}
+    assert all(row["kind"] == "best_known" for row in rows)
+    assert all(row["metadata"]["provenance_status"] == "complete" for row in rows)
+    assert all(row["metadata"]["source_method"] == ASSUMED_BOUND_SOURCE_METHOD for row in rows)
+    assert all(row["metadata"]["empirical"] is False for row in rows)
+    assert all(row["metadata"]["exactness_proved"] is False for row in rows)
 
 
 def test_generator_reports_exact_source_content_and_fail_closed_status() -> None:

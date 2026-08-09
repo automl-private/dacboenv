@@ -1,45 +1,109 @@
 schema_version: 1
-id: mixed-validation-full-unavailable-v1
+id: mixed-validation-full-v1
 domain: mixed
 split: validation
-status: blocked
-runnable: false
+status: ready
+runnable: true
 role: full_checkpoint_selection
-manifest_hash: 178d928dc78a3c99ecd0d5101bef0e03980521836938652af6642a57d378670b
-blockers:
-  - yahpo-validation-full-unavailable-v1 is blocked by insufficient provenance-complete non-test references
-  - partial BBOB-only execution under a mixed manifest is forbidden
-task_ids: []
-inner_seeds: [1349011988, 2024774586, 595161999, 1294824964]
+task_ids:
+- bbob/4/2/1
+- bbob/4/7/1
+- bbob/4/11/1
+- bbob/4/16/1
+- bbob/4/20/1
+- bbob/8/2/1
+- bbob/8/7/1
+- bbob/8/11/1
+- bbob/8/16/1
+- bbob/8/20/1
+- yahpo/so/lcbench/126025/None
+- yahpo/so/lcbench/167184/None
+- yahpo/so/lcbench/189909/None
+- yahpo/so/lcbench/189905/None
+- yahpo/so/rbv2_glmnet/41216/None
+- yahpo/so/rbv2_glmnet/41157/None
+- yahpo/so/rbv2_glmnet/469/None
+- yahpo/so/rbv2_glmnet/12/None
+- yahpo/so/rbv2_rpart/470/None
+- yahpo/so/rbv2_rpart/29/None
+- yahpo/so/rbv2_rpart/1050/None
+- yahpo/so/rbv2_rpart/42/None
+- yahpo/so/rbv2_ranger/377/None
+- yahpo/so/rbv2_ranger/1510/None
+- yahpo/so/rbv2_ranger/4134/None
+- yahpo/so/rbv2_ranger/1053/None
+- yahpo/so/rbv2_xgboost/41157/None
+- yahpo/so/rbv2_xgboost/6332/None
+- yahpo/so/rbv2_xgboost/60/None
+- yahpo/so/rbv2_xgboost/23517/None
+- yahpo/so/rbv2_super/40966/None
+- yahpo/so/rbv2_super/23381/None
+- yahpo/so/rbv2_super/40900/None
+- yahpo/so/rbv2_super/41146/None
+inner_seeds:
+- 1349011988
+- 2024774586
+- 595161999
+- 1294824964
 panel:
   tier: full
-  target_episode_count: 136
-  selected_episode_count: 0
-  checkpoint_selection_eligible: false
+  episode_count: 136
+  checkpoint_selection_eligible: true
+  trained_checkpoints_only: true
 composition:
   bbob:
     manifest: bbob-validation-full-v1
-    source_manifest_hash: 36ed3fb56ddc141069b1efad21f4f2ee51d98fed5a0ebaf8c1cdc0d3fcfec196
     task_ids:
-      - bbob/4/2/1
-      - bbob/4/7/1
-      - bbob/4/11/1
-      - bbob/4/16/1
-      - bbob/4/20/1
-      - bbob/8/2/1
-      - bbob/8/7/1
-      - bbob/8/11/1
-      - bbob/8/16/1
-      - bbob/8/20/1
-    inner_seeds: [1349011988, 2024774586, 595161999, 1294824964]
+    - bbob/4/2/1
+    - bbob/4/7/1
+    - bbob/4/11/1
+    - bbob/4/16/1
+    - bbob/4/20/1
+    - bbob/8/2/1
+    - bbob/8/7/1
+    - bbob/8/11/1
+    - bbob/8/16/1
+    - bbob/8/20/1
+    inner_seeds:
+    - 1349011988
+    - 2024774586
+    - 595161999
+    - 1294824964
     episode_count: 40
-    status: ready
   yahpo:
-    manifest: yahpo-validation-full-unavailable-v1
-    task_ids: []
-    target_episode_count: 96
-    selected_episode_count: 0
-    status: blocked
+    manifest: yahpo-validation-full-v1
+    task_ids:
+    - yahpo/so/lcbench/126025/None
+    - yahpo/so/lcbench/167184/None
+    - yahpo/so/lcbench/189909/None
+    - yahpo/so/lcbench/189905/None
+    - yahpo/so/rbv2_glmnet/41216/None
+    - yahpo/so/rbv2_glmnet/41157/None
+    - yahpo/so/rbv2_glmnet/469/None
+    - yahpo/so/rbv2_glmnet/12/None
+    - yahpo/so/rbv2_rpart/470/None
+    - yahpo/so/rbv2_rpart/29/None
+    - yahpo/so/rbv2_rpart/1050/None
+    - yahpo/so/rbv2_rpart/42/None
+    - yahpo/so/rbv2_ranger/377/None
+    - yahpo/so/rbv2_ranger/1510/None
+    - yahpo/so/rbv2_ranger/4134/None
+    - yahpo/so/rbv2_ranger/1053/None
+    - yahpo/so/rbv2_xgboost/41157/None
+    - yahpo/so/rbv2_xgboost/6332/None
+    - yahpo/so/rbv2_xgboost/60/None
+    - yahpo/so/rbv2_xgboost/23517/None
+    - yahpo/so/rbv2_super/40966/None
+    - yahpo/so/rbv2_super/23381/None
+    - yahpo/so/rbv2_super/40900/None
+    - yahpo/so/rbv2_super/41146/None
+    inner_seeds:
+    - 1349011988
+    - 2024774586
+    - 595161999
+    - 1294824964
+    episode_count: 96
   balanced_score_weights:
     bbob: 0.5
     yahpo: 0.5
+manifest_hash: 53eee70160c085d6ab0e0757ac3dfd6714e6dc5016d8cc933ce47e8257d22a48

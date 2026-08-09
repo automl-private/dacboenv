@@ -5,32 +5,38 @@ split: test
 status: defined
 runnable: false
 role: final_test_only
-manifest_hash: 5e5c01e3fcd9ae2713a77d02e4c21abbf0190ee6613569da3edc65d09e2095b2
+manifest_hash: f2fefd7d455cf9e336c7c55cc3a875a6030e18941f120cacce56df8bfb011a00
 blockers:
-  - final-test execution is sealed until the explicit final evaluation stage
-  - legacy empirical references lack generation budget, date, source-code commit, and YAHPO data provenance
+- final-test execution is sealed until the explicit final evaluation stage
+- legacy empirical references lack generation budget, date, source-code commit, and
+  YAHPO data provenance
 task_ids:
-  - yahpo/so/lcbench/167168/None
-  - yahpo/so/lcbench/189873/None
-  - yahpo/so/lcbench/189906/None
-  - yahpo/so/nb301/CIFAR10/None
-  - yahpo/so/rbv2_glmnet/375/None
-  - yahpo/so/rbv2_glmnet/458/None
-  - yahpo/so/rbv2_ranger/16/None
-  - yahpo/so/rbv2_ranger/42/None
-  - yahpo/so/rbv2_rpart/14/None
-  - yahpo/so/rbv2_rpart/40499/None
-  - yahpo/so/rbv2_super/1053/None
-  - yahpo/so/rbv2_super/1457/None
-  - yahpo/so/rbv2_super/1063/None
-  - yahpo/so/rbv2_super/1479/None
-  - yahpo/so/rbv2_super/15/None
-  - yahpo/so/rbv2_super/1468/None
-  - yahpo/so/rbv2_xgboost/12/None
-  - yahpo/so/rbv2_xgboost/1501/None
-  - yahpo/so/rbv2_xgboost/16/None
-  - yahpo/so/rbv2_xgboost/40499/None
-inner_seeds: [4186603198, 1289272855, 3065569299, 2920417400, 1709701155]
+- yahpo/so/lcbench/167168/None
+- yahpo/so/lcbench/189873/None
+- yahpo/so/lcbench/189906/None
+- yahpo/so/nb301/CIFAR10/None
+- yahpo/so/rbv2_glmnet/375/None
+- yahpo/so/rbv2_glmnet/458/None
+- yahpo/so/rbv2_ranger/16/None
+- yahpo/so/rbv2_ranger/42/None
+- yahpo/so/rbv2_rpart/14/None
+- yahpo/so/rbv2_rpart/40499/None
+- yahpo/so/rbv2_super/1053/None
+- yahpo/so/rbv2_super/1457/None
+- yahpo/so/rbv2_super/1063/None
+- yahpo/so/rbv2_super/1479/None
+- yahpo/so/rbv2_super/15/None
+- yahpo/so/rbv2_super/1468/None
+- yahpo/so/rbv2_xgboost/12/None
+- yahpo/so/rbv2_xgboost/1501/None
+- yahpo/so/rbv2_xgboost/16/None
+- yahpo/so/rbv2_xgboost/40499/None
+inner_seeds:
+- 4186603198
+- 1289272855
+- 3065569299
+- 2920417400
+- 1709701155
 seed_protocol:
   kind: frozen
   generator: numpy.random.SeedSequence.generate_state
@@ -49,10 +55,17 @@ yahpo_protocol:
   reference_status: empirical_best_known_not_exact
 transfer_protocol:
   held_out_instance_transfer_within_seen_scenarios:
-    scenarios: [lcbench, rbv2_glmnet, rbv2_rpart, rbv2_ranger, rbv2_xgboost, rbv2_super]
+    scenarios:
+    - lcbench
+    - rbv2_glmnet
+    - rbv2_rpart
+    - rbv2_ranger
+    - rbv2_xgboost
+    - rbv2_super
     task_count: 19
   unseen_scenario_transfer:
-    scenarios: [nb301]
+    scenarios:
+    - nb301
     task_count: 1
 inventory_report:
   path: artifacts/yahpo_official_test_inventory.json
@@ -62,216 +75,279 @@ inventory_report:
 access_history:
   post_stage_a_task_objective_evaluations: []
   pre_task_installation_probe:
-    task_ids: [yahpo/so/lcbench/167168/None]
+    task_ids:
+    - yahpo/so/lcbench/167168/None
     purpose: runtime_installation_probe
     learned_policy_evaluation: false
     used_for_model_or_threshold_selection: false
 reference_source:
   path: dacboenv/experiment/analysis/yahpo_so_fmin.csv
-  sha256: e9102fba254b2f60659ee2f7fcb0f97dbe5abc424bd94cc227776526dbca2af8
-  origin_path: lib/yahpo_so_fmin.csv
-  origin_sha256: e9102fba254b2f60659ee2f7fcb0f97dbe5abc424bd94cc227776526dbca2af8
-  source_seed: 2345
-  stored_objective_transform: negative_accuracy
-  provenance_complete: false
+  sha256: 399d94d67b2b5646687752f604f3c316f99ba66d522881942d9b33357feb3f99
+  source_method: assumed_accuracy_upper_bound_v1
+  kind: best_known
+  empirical: false
+  exactness_proved: false
 tasks:
-  - task_id: yahpo/so/lcbench/167168/None
-    scenario: lcbench
-    instance: "167168"
-    target: val_accuracy
-    objective_transform: one_minus_accuracy
-    accuracy_scale: percent
-    fidelity: fixed_maximum
-    budget: 126
-    reference_cost: 0.11825767517089847
-    legacy_minimization_reference: -88.17423248291016
-  - task_id: yahpo/so/lcbench/189873/None
-    scenario: lcbench
-    instance: "189873"
-    target: val_accuracy
-    objective_transform: one_minus_accuracy
-    accuracy_scale: percent
-    fidelity: fixed_maximum
-    budget: 126
-    reference_cost: 0.05035873413085934
-    legacy_minimization_reference: -94.96412658691406
-  - task_id: yahpo/so/lcbench/189906/None
-    scenario: lcbench
-    instance: "189906"
-    target: val_accuracy
-    objective_transform: one_minus_accuracy
-    accuracy_scale: percent
-    fidelity: fixed_maximum
-    budget: 126
-    reference_cost: 0.06610099792480473
-    legacy_minimization_reference: -93.38990020751953
-  - task_id: yahpo/so/nb301/CIFAR10/None
-    scenario: nb301
-    instance: CIFAR10
-    target: val_accuracy
-    objective_transform: one_minus_accuracy
-    accuracy_scale: percent
-    fidelity: fixed_maximum
-    budget: 254
-    reference_cost: 0.05252655029296871
-    legacy_minimization_reference: -94.74734497070312
-  - task_id: yahpo/so/rbv2_glmnet/375/None
-    scenario: rbv2_glmnet
-    instance: "375"
-    target: acc
-    objective_transform: one_minus_accuracy
-    accuracy_scale: fraction
-    fidelity: fixed_maximum
-    budget: 90
-    reference_cost: 0.03909415006637573
-    legacy_minimization_reference: -0.9609058499336243
-  - task_id: yahpo/so/rbv2_glmnet/458/None
-    scenario: rbv2_glmnet
-    instance: "458"
-    target: acc
-    objective_transform: one_minus_accuracy
-    accuracy_scale: fraction
-    fidelity: fixed_maximum
-    budget: 90
-    reference_cost: 0.001810312271118164
-    legacy_minimization_reference: -0.9981896877288818
-  - task_id: yahpo/so/rbv2_ranger/16/None
-    scenario: rbv2_ranger
-    instance: "16"
-    target: acc
-    objective_transform: one_minus_accuracy
-    accuracy_scale: fraction
-    fidelity: fixed_maximum
-    budget: 134
-    reference_cost: 0.03028970956802368
-    legacy_minimization_reference: -0.9697102904319763
-  - task_id: yahpo/so/rbv2_ranger/42/None
-    scenario: rbv2_ranger
-    instance: "42"
-    target: acc
-    objective_transform: one_minus_accuracy
-    accuracy_scale: fraction
-    fidelity: fixed_maximum
-    budget: 134
-    reference_cost: 0.0065947771072387695
-    legacy_minimization_reference: -0.9934052228927612
-  - task_id: yahpo/so/rbv2_rpart/14/None
-    scenario: rbv2_rpart
-    instance: "14"
-    target: acc
-    objective_transform: one_minus_accuracy
-    accuracy_scale: fraction
-    fidelity: fixed_maximum
-    budget: 110
-    reference_cost: 0.19947266578674316
-    legacy_minimization_reference: -0.8005273342132568
-  - task_id: yahpo/so/rbv2_rpart/40499/None
-    scenario: rbv2_rpart
-    instance: "40499"
-    target: acc
-    objective_transform: one_minus_accuracy
-    accuracy_scale: fraction
-    fidelity: fixed_maximum
-    budget: 110
-    reference_cost: 0.11560237407684326
-    legacy_minimization_reference: -0.8843976259231567
-  - task_id: yahpo/so/rbv2_super/1053/None
-    scenario: rbv2_super
-    instance: "1053"
-    target: acc
-    objective_transform: one_minus_accuracy
-    accuracy_scale: fraction
-    fidelity: fixed_maximum
-    budget: 267
-    reference_cost: 0.04006505012512207
-    legacy_minimization_reference: -0.9599349498748779
-  - task_id: yahpo/so/rbv2_super/1457/None
-    scenario: rbv2_super
-    instance: "1457"
-    target: acc
-    objective_transform: one_minus_accuracy
-    accuracy_scale: fraction
-    fidelity: fixed_maximum
-    budget: 267
-    reference_cost: 0.16185903549194336
-    legacy_minimization_reference: -0.8381409645080566
-  - task_id: yahpo/so/rbv2_super/1063/None
-    scenario: rbv2_super
-    instance: "1063"
-    target: acc
-    objective_transform: one_minus_accuracy
-    accuracy_scale: fraction
-    fidelity: fixed_maximum
-    budget: 267
-    reference_cost: 0.03803974390029907
-    legacy_minimization_reference: -0.9619602560997009
-  - task_id: yahpo/so/rbv2_super/1479/None
-    scenario: rbv2_super
-    instance: "1479"
-    target: acc
-    objective_transform: one_minus_accuracy
-    accuracy_scale: fraction
-    fidelity: fixed_maximum
-    budget: 267
-    reference_cost: 0.005999624729156494
-    legacy_minimization_reference: -0.9940003752708435
-  - task_id: yahpo/so/rbv2_super/15/None
-    scenario: rbv2_super
-    instance: "15"
-    target: acc
-    objective_transform: one_minus_accuracy
-    accuracy_scale: fraction
-    fidelity: fixed_maximum
-    budget: 267
-    reference_cost: 0.007912635803222656
-    legacy_minimization_reference: -0.9920873641967773
-  - task_id: yahpo/so/rbv2_super/1468/None
-    scenario: rbv2_super
-    instance: "1468"
-    target: acc
-    objective_transform: one_minus_accuracy
-    accuracy_scale: fraction
-    fidelity: fixed_maximum
-    budget: 267
-    reference_cost: 0.02362692356109619
-    legacy_minimization_reference: -0.9763730764389038
-  - task_id: yahpo/so/rbv2_xgboost/12/None
-    scenario: rbv2_xgboost
-    instance: "12"
-    target: acc
-    objective_transform: one_minus_accuracy
-    accuracy_scale: fraction
-    fidelity: fixed_maximum
-    budget: 170
-    reference_cost: 0.0000152587890625
-    legacy_minimization_reference: -0.9999847412109375
-  - task_id: yahpo/so/rbv2_xgboost/1501/None
-    scenario: rbv2_xgboost
-    instance: "1501"
-    target: acc
-    objective_transform: one_minus_accuracy
-    accuracy_scale: fraction
-    fidelity: fixed_maximum
-    budget: 170
-    reference_cost: 0.01926320791244507
-    legacy_minimization_reference: -0.9807367920875549
-  - task_id: yahpo/so/rbv2_xgboost/16/None
-    scenario: rbv2_xgboost
-    instance: "16"
-    target: acc
-    objective_transform: one_minus_accuracy
-    accuracy_scale: fraction
-    fidelity: fixed_maximum
-    budget: 170
-    reference_cost: 0.0009455680847167969
-    legacy_minimization_reference: -0.9990544319152832
-  - task_id: yahpo/so/rbv2_xgboost/40499/None
-    scenario: rbv2_xgboost
-    instance: "40499"
-    target: acc
-    objective_transform: one_minus_accuracy
-    accuracy_scale: fraction
-    fidelity: fixed_maximum
-    budget: 170
-    reference_cost: 0.0
-    legacy_minimization_reference: -1.0
+- task_id: yahpo/so/lcbench/167168/None
+  scenario: lcbench
+  instance: '167168'
+  target: val_accuracy
+  objective_transform: one_minus_accuracy
+  accuracy_scale: percent
+  fidelity: fixed_maximum
+  budget: 126
+  reference_cost: 0.0
+  legacy_minimization_reference: -100.0
+  runtime_reference: -100.0
+  reference_kind: best_known
+  reference_basis: assumed_metric_upper_bound
+- task_id: yahpo/so/lcbench/189873/None
+  scenario: lcbench
+  instance: '189873'
+  target: val_accuracy
+  objective_transform: one_minus_accuracy
+  accuracy_scale: percent
+  fidelity: fixed_maximum
+  budget: 126
+  reference_cost: 0.0
+  legacy_minimization_reference: -100.0
+  runtime_reference: -100.0
+  reference_kind: best_known
+  reference_basis: assumed_metric_upper_bound
+- task_id: yahpo/so/lcbench/189906/None
+  scenario: lcbench
+  instance: '189906'
+  target: val_accuracy
+  objective_transform: one_minus_accuracy
+  accuracy_scale: percent
+  fidelity: fixed_maximum
+  budget: 126
+  reference_cost: 0.0
+  legacy_minimization_reference: -100.0
+  runtime_reference: -100.0
+  reference_kind: best_known
+  reference_basis: assumed_metric_upper_bound
+- task_id: yahpo/so/nb301/CIFAR10/None
+  scenario: nb301
+  instance: CIFAR10
+  target: val_accuracy
+  objective_transform: one_minus_accuracy
+  accuracy_scale: percent
+  fidelity: fixed_maximum
+  budget: 254
+  reference_cost: 0.0
+  legacy_minimization_reference: -100.0
+  runtime_reference: -100.0
+  reference_kind: best_known
+  reference_basis: assumed_metric_upper_bound
+- task_id: yahpo/so/rbv2_glmnet/375/None
+  scenario: rbv2_glmnet
+  instance: '375'
+  target: acc
+  objective_transform: one_minus_accuracy
+  accuracy_scale: fraction
+  fidelity: fixed_maximum
+  budget: 90
+  reference_cost: 0.0
+  legacy_minimization_reference: -1.0
+  runtime_reference: -1.0
+  reference_kind: best_known
+  reference_basis: assumed_metric_upper_bound
+- task_id: yahpo/so/rbv2_glmnet/458/None
+  scenario: rbv2_glmnet
+  instance: '458'
+  target: acc
+  objective_transform: one_minus_accuracy
+  accuracy_scale: fraction
+  fidelity: fixed_maximum
+  budget: 90
+  reference_cost: 0.0
+  legacy_minimization_reference: -1.0
+  runtime_reference: -1.0
+  reference_kind: best_known
+  reference_basis: assumed_metric_upper_bound
+- task_id: yahpo/so/rbv2_ranger/16/None
+  scenario: rbv2_ranger
+  instance: '16'
+  target: acc
+  objective_transform: one_minus_accuracy
+  accuracy_scale: fraction
+  fidelity: fixed_maximum
+  budget: 134
+  reference_cost: 0.0
+  legacy_minimization_reference: -1.0
+  runtime_reference: -1.0
+  reference_kind: best_known
+  reference_basis: assumed_metric_upper_bound
+- task_id: yahpo/so/rbv2_ranger/42/None
+  scenario: rbv2_ranger
+  instance: '42'
+  target: acc
+  objective_transform: one_minus_accuracy
+  accuracy_scale: fraction
+  fidelity: fixed_maximum
+  budget: 134
+  reference_cost: 0.0
+  legacy_minimization_reference: -1.0
+  runtime_reference: -1.0
+  reference_kind: best_known
+  reference_basis: assumed_metric_upper_bound
+- task_id: yahpo/so/rbv2_rpart/14/None
+  scenario: rbv2_rpart
+  instance: '14'
+  target: acc
+  objective_transform: one_minus_accuracy
+  accuracy_scale: fraction
+  fidelity: fixed_maximum
+  budget: 110
+  reference_cost: 0.0
+  legacy_minimization_reference: -1.0
+  runtime_reference: -1.0
+  reference_kind: best_known
+  reference_basis: assumed_metric_upper_bound
+- task_id: yahpo/so/rbv2_rpart/40499/None
+  scenario: rbv2_rpart
+  instance: '40499'
+  target: acc
+  objective_transform: one_minus_accuracy
+  accuracy_scale: fraction
+  fidelity: fixed_maximum
+  budget: 110
+  reference_cost: 0.0
+  legacy_minimization_reference: -1.0
+  runtime_reference: -1.0
+  reference_kind: best_known
+  reference_basis: assumed_metric_upper_bound
+- task_id: yahpo/so/rbv2_super/1053/None
+  scenario: rbv2_super
+  instance: '1053'
+  target: acc
+  objective_transform: one_minus_accuracy
+  accuracy_scale: fraction
+  fidelity: fixed_maximum
+  budget: 267
+  reference_cost: 0.0
+  legacy_minimization_reference: -1.0
+  runtime_reference: -1.0
+  reference_kind: best_known
+  reference_basis: assumed_metric_upper_bound
+- task_id: yahpo/so/rbv2_super/1457/None
+  scenario: rbv2_super
+  instance: '1457'
+  target: acc
+  objective_transform: one_minus_accuracy
+  accuracy_scale: fraction
+  fidelity: fixed_maximum
+  budget: 267
+  reference_cost: 0.0
+  legacy_minimization_reference: -1.0
+  runtime_reference: -1.0
+  reference_kind: best_known
+  reference_basis: assumed_metric_upper_bound
+- task_id: yahpo/so/rbv2_super/1063/None
+  scenario: rbv2_super
+  instance: '1063'
+  target: acc
+  objective_transform: one_minus_accuracy
+  accuracy_scale: fraction
+  fidelity: fixed_maximum
+  budget: 267
+  reference_cost: 0.0
+  legacy_minimization_reference: -1.0
+  runtime_reference: -1.0
+  reference_kind: best_known
+  reference_basis: assumed_metric_upper_bound
+- task_id: yahpo/so/rbv2_super/1479/None
+  scenario: rbv2_super
+  instance: '1479'
+  target: acc
+  objective_transform: one_minus_accuracy
+  accuracy_scale: fraction
+  fidelity: fixed_maximum
+  budget: 267
+  reference_cost: 0.0
+  legacy_minimization_reference: -1.0
+  runtime_reference: -1.0
+  reference_kind: best_known
+  reference_basis: assumed_metric_upper_bound
+- task_id: yahpo/so/rbv2_super/15/None
+  scenario: rbv2_super
+  instance: '15'
+  target: acc
+  objective_transform: one_minus_accuracy
+  accuracy_scale: fraction
+  fidelity: fixed_maximum
+  budget: 267
+  reference_cost: 0.0
+  legacy_minimization_reference: -1.0
+  runtime_reference: -1.0
+  reference_kind: best_known
+  reference_basis: assumed_metric_upper_bound
+- task_id: yahpo/so/rbv2_super/1468/None
+  scenario: rbv2_super
+  instance: '1468'
+  target: acc
+  objective_transform: one_minus_accuracy
+  accuracy_scale: fraction
+  fidelity: fixed_maximum
+  budget: 267
+  reference_cost: 0.0
+  legacy_minimization_reference: -1.0
+  runtime_reference: -1.0
+  reference_kind: best_known
+  reference_basis: assumed_metric_upper_bound
+- task_id: yahpo/so/rbv2_xgboost/12/None
+  scenario: rbv2_xgboost
+  instance: '12'
+  target: acc
+  objective_transform: one_minus_accuracy
+  accuracy_scale: fraction
+  fidelity: fixed_maximum
+  budget: 170
+  reference_cost: 0.0
+  legacy_minimization_reference: -1.0
+  runtime_reference: -1.0
+  reference_kind: best_known
+  reference_basis: assumed_metric_upper_bound
+- task_id: yahpo/so/rbv2_xgboost/1501/None
+  scenario: rbv2_xgboost
+  instance: '1501'
+  target: acc
+  objective_transform: one_minus_accuracy
+  accuracy_scale: fraction
+  fidelity: fixed_maximum
+  budget: 170
+  reference_cost: 0.0
+  legacy_minimization_reference: -1.0
+  runtime_reference: -1.0
+  reference_kind: best_known
+  reference_basis: assumed_metric_upper_bound
+- task_id: yahpo/so/rbv2_xgboost/16/None
+  scenario: rbv2_xgboost
+  instance: '16'
+  target: acc
+  objective_transform: one_minus_accuracy
+  accuracy_scale: fraction
+  fidelity: fixed_maximum
+  budget: 170
+  reference_cost: 0.0
+  legacy_minimization_reference: -1.0
+  runtime_reference: -1.0
+  reference_kind: best_known
+  reference_basis: assumed_metric_upper_bound
+- task_id: yahpo/so/rbv2_xgboost/40499/None
+  scenario: rbv2_xgboost
+  instance: '40499'
+  target: acc
+  objective_transform: one_minus_accuracy
+  accuracy_scale: fraction
+  fidelity: fixed_maximum
+  budget: 170
+  reference_cost: 0.0
+  legacy_minimization_reference: -1.0
+  runtime_reference: -1.0
+  reference_kind: best_known
+  reference_basis: assumed_metric_upper_bound
+objective_reference_table:
+  path: dacboenv/experiment/analysis/yahpo_best_known_references.json
+  sha256: d5b37cbb50d2e227dd794fd3ff0ad61089b10c163c1f09fb5b1689c1d5fece77

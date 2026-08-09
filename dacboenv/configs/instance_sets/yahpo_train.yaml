@@ -1,46 +1,116 @@
 schema_version: 1
-id: yahpo-train-unavailable-v1
+id: yahpo-train-v1
 domain: yahpo
 split: train
-status: blocked
-runnable: false
+status: ready
+runnable: true
 role: training
-manifest_hash: 9491fcbeadea02cea9d3cb55bbb8f513b86184cf385be90cea7bcf30e91b45dd
-blockers:
-  - the one checked non-test row is an explicitly provenance-incomplete engineering smoke; 0 of 92 required references are training-eligible
-  - per-scenario reference coverage cannot satisfy the exact requested train and validation counts
-  - task_ids deliberately remain empty so the sealed official test inventory can never fill a coverage shortage
-task_ids: []
-inner_seeds: [null]
+task_ids:
+- yahpo/so/lcbench/167200/None
+- yahpo/so/lcbench/189908/None
+- yahpo/so/lcbench/168868/None
+- yahpo/so/lcbench/167152/None
+- yahpo/so/lcbench/34539/None
+- yahpo/so/lcbench/167201/None
+- yahpo/so/lcbench/167161/None
+- yahpo/so/lcbench/167104/None
+- yahpo/so/lcbench/189354/None
+- yahpo/so/lcbench/168910/None
+- yahpo/so/lcbench/167185/None
+- yahpo/so/lcbench/146212/None
+- yahpo/so/rbv2_glmnet/1457/None
+- yahpo/so/rbv2_glmnet/188/None
+- yahpo/so/rbv2_glmnet/1494/None
+- yahpo/so/rbv2_glmnet/1501/None
+- yahpo/so/rbv2_glmnet/40966/None
+- yahpo/so/rbv2_glmnet/4135/None
+- yahpo/so/rbv2_glmnet/377/None
+- yahpo/so/rbv2_glmnet/22/None
+- yahpo/so/rbv2_glmnet/1068/None
+- yahpo/so/rbv2_glmnet/1478/None
+- yahpo/so/rbv2_glmnet/40498/None
+- yahpo/so/rbv2_glmnet/37/None
+- yahpo/so/rbv2_rpart/41159/None
+- yahpo/so/rbv2_rpart/377/None
+- yahpo/so/rbv2_rpart/40900/None
+- yahpo/so/rbv2_rpart/32/None
+- yahpo/so/rbv2_rpart/1590/None
+- yahpo/so/rbv2_rpart/1489/None
+- yahpo/so/rbv2_rpart/40966/None
+- yahpo/so/rbv2_rpart/40996/None
+- yahpo/so/rbv2_rpart/1515/None
+- yahpo/so/rbv2_rpart/4541/None
+- yahpo/so/rbv2_rpart/151/None
+- yahpo/so/rbv2_rpart/40975/None
+- yahpo/so/rbv2_ranger/458/None
+- yahpo/so/rbv2_ranger/32/None
+- yahpo/so/rbv2_ranger/1493/None
+- yahpo/so/rbv2_ranger/554/None
+- yahpo/so/rbv2_ranger/1056/None
+- yahpo/so/rbv2_ranger/4135/None
+- yahpo/so/rbv2_ranger/31/None
+- yahpo/so/rbv2_ranger/41166/None
+- yahpo/so/rbv2_ranger/50/None
+- yahpo/so/rbv2_ranger/1494/None
+- yahpo/so/rbv2_ranger/312/None
+- yahpo/so/rbv2_ranger/3/None
+- yahpo/so/rbv2_xgboost/41216/None
+- yahpo/so/rbv2_xgboost/1462/None
+- yahpo/so/rbv2_xgboost/300/None
+- yahpo/so/rbv2_xgboost/1489/None
+- yahpo/so/rbv2_xgboost/41138/None
+- yahpo/so/rbv2_xgboost/1479/None
+- yahpo/so/rbv2_xgboost/1220/None
+- yahpo/so/rbv2_xgboost/4538/None
+- yahpo/so/rbv2_xgboost/1457/None
+- yahpo/so/rbv2_xgboost/4541/None
+- yahpo/so/rbv2_xgboost/41162/None
+- yahpo/so/rbv2_xgboost/37/None
+- yahpo/so/rbv2_super/42/None
+- yahpo/so/rbv2_super/1487/None
+- yahpo/so/rbv2_super/188/None
+- yahpo/so/rbv2_super/1464/None
+- yahpo/so/rbv2_super/1590/None
+- yahpo/so/rbv2_super/375/None
+- yahpo/so/rbv2_super/41157/None
+- yahpo/so/rbv2_super/470/None
+inner_seeds:
+- null
 reference_coverage:
   table_path: dacboenv/experiment/analysis/yahpo_best_known_references.json
-  table_sha256: 9fa1f6a6bf6cedaa7e3efb0262811900130b4cc43c3eb443896560bd5ac8593d
-  provenance_complete_non_test_count: 0
+  table_sha256: d5b37cbb50d2e227dd794fd3ff0ad61089b10c163c1f09fb5b1689c1d5fece77
+  reference_basis: assumed_metric_upper_bound
+  provenance_complete_non_test_count: 588
   required_train_count: 68
   required_validation_count: 24
   required_total_before_split: 92
-  selected_task_count: 0
-  smoke_only_task_ids:
-    - yahpo/so/lcbench/3945/None
+  selected_task_count: 68
 installed_benchmark:
+  official_so_final_test_only: true
+  fidelity: fixed_maximum
   yahpo_gym_version: 1.0.2
   yahpo_gym_source_commit: 93f5b151d4e2f44daa5314cd10533aafec37d630
   yahpo_data_version: 1.0.2
   yahpo_data_source_commit: efdab9072f63bd680396cd4b78b927c4a0caaad3
   yahpo_data_compatibility_patch_sha256: c6adb9d0449561770486cf71e6146d494559fefa44ff403358903d03ad58e155
   config_space_tree_sha256: 5e1b32fce2bfeeed3d6de19f44c2d5e672cde77353f1352e623aeb80130b0356
+  reference_status: empirical_best_known_not_exact
 selection_protocol:
   master_seed: 3670740481
   generator: per_scenario_numpy.random.SeedSequence
   official_test_instances_excluded: true
   sort_before_shuffle: true
-  required_counts:
+  scenario_counts:
     lcbench: 12
     rbv2_glmnet: 12
     rbv2_rpart: 12
     rbv2_ranger: 12
     rbv2_xgboost: 12
     rbv2_super: 8
-    nb301: 0
-training_budget_multipliers: [0.6, 0.8, 1.0]
+  nb301_instances: 0
+training_budget_multipliers:
+- 0.6
+- 0.8
+- 1.0
 default_training_budget_multiplier: 1.0
+manifest_hash: 4d82c9cece51176bb000299b33b0f3e3b3ed34b3401e3f7c25737436a1329b6e

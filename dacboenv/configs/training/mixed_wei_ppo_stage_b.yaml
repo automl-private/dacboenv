@@ -1,0 +1,55 @@
+# @package _global_
+defaults:
+  - structured_ppo_f1
+  - override /instance_sets@training_instances: mixed_train_60_40
+  - override /instance_sets@validation_instances: mixed_validation
+  - override /validation_panels@frequent_validation_panel: mixed_frequent
+  - override /validation_panels@full_validation_panel: mixed_full
+  - _self_
+
+reward_id: reference-regret-improvement
+
+dacboenv:
+  reward_keys:
+    - reference_regret_improvement
+  reference_provider:
+    _target_: dacboenv.reference.CompositeReferenceProvider
+    providers:
+      bbob:
+        _target_: dacboenv.reference.BBOBExactReferenceProvider
+      yahpo:
+        _target_: dacboenv.reference.ManifestReferenceProvider
+        source: ${oc.env:DACBO_YAHPO_REFERENCE_TABLE}
+        expected_runtime_objective_transform: negative_accuracy
+        expected_reporting_objective_transform: one_minus_accuracy
+        expected_fidelity: fixed_maximum
+  yahpo_training_budget_multiplier: 1.0
+
+experiment:
+  n_workers: 32
+  bo_evaluation_budget: 204800
+  checkpoint_bo_evaluations: 40960
+  progress_bar: false
+
+  training_sampler:
+    enabled: true
+    bbob_fraction: 0.6
+
+  final_evaluation:
+    enabled: false
+
+  validation:
+    enabled: true
+    eval_bo_evaluations: 40960
+    step_zero: true
+    full_enabled: true
+    full_top_k: 3
+    full_include_halfway: true
+    full_include_final: true
+
+optimizer:
+  n_steps: 128
+  batch_size: 512
+  n_epochs: 5
+
+baserundir: runs_stage_b_mixed_wei

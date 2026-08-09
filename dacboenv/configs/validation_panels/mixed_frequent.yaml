@@ -1,45 +1,79 @@
 schema_version: 1
-id: mixed-validation-frequent-unavailable-v1
+id: mixed-validation-frequent-v1
 domain: mixed
 split: validation
-status: blocked
-runnable: false
+status: ready
+runnable: true
 role: frequent_checkpoint_screening
-manifest_hash: 0a2abbec3e69f2006851a247395d27a8acfdd253d58afcaeedf07a5a6f3bf02d
-blockers:
-  - yahpo-validation-frequent-unavailable-v1 is blocked by insufficient provenance-complete non-test references
-  - partial BBOB-only execution under a mixed manifest is forbidden
-task_ids: []
-inner_seeds: [1349011988, 2024774586]
+task_ids:
+- bbob/4/2/1
+- bbob/4/7/1
+- bbob/4/11/1
+- bbob/4/16/1
+- bbob/4/20/1
+- bbob/8/2/1
+- bbob/8/7/1
+- bbob/8/11/1
+- bbob/8/16/1
+- bbob/8/20/1
+- yahpo/so/lcbench/126025/None
+- yahpo/so/lcbench/167184/None
+- yahpo/so/rbv2_glmnet/41216/None
+- yahpo/so/rbv2_glmnet/41157/None
+- yahpo/so/rbv2_rpart/470/None
+- yahpo/so/rbv2_rpart/29/None
+- yahpo/so/rbv2_ranger/377/None
+- yahpo/so/rbv2_ranger/1510/None
+- yahpo/so/rbv2_xgboost/41157/None
+- yahpo/so/rbv2_xgboost/6332/None
+- yahpo/so/rbv2_super/40966/None
+- yahpo/so/rbv2_super/23381/None
+inner_seeds:
+- 1349011988
+- 2024774586
 panel:
   tier: frequent
-  target_episode_count: 44
-  selected_episode_count: 0
+  episode_count: 44
   checkpoint_selection_eligible: false
+  trained_checkpoints_only: false
 composition:
   bbob:
     manifest: bbob-validation-frequent-v1
-    source_manifest_hash: 36ed3fb56ddc141069b1efad21f4f2ee51d98fed5a0ebaf8c1cdc0d3fcfec196
     task_ids:
-      - bbob/4/2/1
-      - bbob/4/7/1
-      - bbob/4/11/1
-      - bbob/4/16/1
-      - bbob/4/20/1
-      - bbob/8/2/1
-      - bbob/8/7/1
-      - bbob/8/11/1
-      - bbob/8/16/1
-      - bbob/8/20/1
-    inner_seeds: [1349011988, 2024774586]
+    - bbob/4/2/1
+    - bbob/4/7/1
+    - bbob/4/11/1
+    - bbob/4/16/1
+    - bbob/4/20/1
+    - bbob/8/2/1
+    - bbob/8/7/1
+    - bbob/8/11/1
+    - bbob/8/16/1
+    - bbob/8/20/1
+    inner_seeds:
+    - 1349011988
+    - 2024774586
     episode_count: 20
-    status: ready
   yahpo:
-    manifest: yahpo-validation-frequent-unavailable-v1
-    task_ids: []
-    target_episode_count: 24
-    selected_episode_count: 0
-    status: blocked
+    manifest: yahpo-validation-frequent-v1
+    task_ids:
+    - yahpo/so/lcbench/126025/None
+    - yahpo/so/lcbench/167184/None
+    - yahpo/so/rbv2_glmnet/41216/None
+    - yahpo/so/rbv2_glmnet/41157/None
+    - yahpo/so/rbv2_rpart/470/None
+    - yahpo/so/rbv2_rpart/29/None
+    - yahpo/so/rbv2_ranger/377/None
+    - yahpo/so/rbv2_ranger/1510/None
+    - yahpo/so/rbv2_xgboost/41157/None
+    - yahpo/so/rbv2_xgboost/6332/None
+    - yahpo/so/rbv2_super/40966/None
+    - yahpo/so/rbv2_super/23381/None
+    inner_seeds:
+    - 1349011988
+    - 2024774586
+    episode_count: 24
   balanced_score_weights:
     bbob: 0.5
     yahpo: 0.5
+manifest_hash: 0a921aa00599ac51522d5ab9d18ea540bba80cf7f75925ae2bd6b46b0a995f24

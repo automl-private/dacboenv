@@ -1,34 +1,59 @@
 schema_version: 1
-id: yahpo-validation-unavailable-v1
+id: yahpo-validation-v1
 domain: yahpo
 split: validation
-status: blocked
-runnable: false
+status: ready
+runnable: true
 role: checkpoint_selection
-manifest_hash: c0c73e19ce1b38b81d3be73f9e321f2b7648cfca88567c0f783ef5d5391e9ffe
-blockers:
-  - the one checked non-test row is an explicitly provenance-incomplete engineering smoke; 0 of 92 required references are training-eligible
-  - per-scenario reference coverage cannot supply 4 frozen validation instances for each of the 6 seen scenarios
-  - task_ids deliberately remain empty so the sealed official test inventory can never fill a coverage shortage
-task_ids: []
-inner_seeds: [1349011988, 2024774586, 595161999, 1294824964]
+task_ids:
+- yahpo/so/lcbench/126025/None
+- yahpo/so/lcbench/167184/None
+- yahpo/so/lcbench/189909/None
+- yahpo/so/lcbench/189905/None
+- yahpo/so/rbv2_glmnet/41216/None
+- yahpo/so/rbv2_glmnet/41157/None
+- yahpo/so/rbv2_glmnet/469/None
+- yahpo/so/rbv2_glmnet/12/None
+- yahpo/so/rbv2_rpart/470/None
+- yahpo/so/rbv2_rpart/29/None
+- yahpo/so/rbv2_rpart/1050/None
+- yahpo/so/rbv2_rpart/42/None
+- yahpo/so/rbv2_ranger/377/None
+- yahpo/so/rbv2_ranger/1510/None
+- yahpo/so/rbv2_ranger/4134/None
+- yahpo/so/rbv2_ranger/1053/None
+- yahpo/so/rbv2_xgboost/41157/None
+- yahpo/so/rbv2_xgboost/6332/None
+- yahpo/so/rbv2_xgboost/60/None
+- yahpo/so/rbv2_xgboost/23517/None
+- yahpo/so/rbv2_super/40966/None
+- yahpo/so/rbv2_super/23381/None
+- yahpo/so/rbv2_super/40900/None
+- yahpo/so/rbv2_super/41146/None
+inner_seeds:
+- 1349011988
+- 2024774586
+- 595161999
+- 1294824964
 reference_coverage:
   table_path: dacboenv/experiment/analysis/yahpo_best_known_references.json
-  table_sha256: 9fa1f6a6bf6cedaa7e3efb0262811900130b4cc43c3eb443896560bd5ac8593d
-  provenance_complete_non_test_count: 0
+  table_sha256: d5b37cbb50d2e227dd794fd3ff0ad61089b10c163c1f09fb5b1689c1d5fece77
+  reference_basis: assumed_metric_upper_bound
+  provenance_complete_non_test_count: 588
   required_train_count: 68
   required_validation_count: 24
   required_total_before_split: 92
-  selected_task_count: 0
-  smoke_only_task_ids:
-    - yahpo/so/lcbench/3945/None
+  selected_task_count: 24
 installed_benchmark:
+  official_so_final_test_only: true
+  fidelity: fixed_maximum
   yahpo_gym_version: 1.0.2
   yahpo_gym_source_commit: 93f5b151d4e2f44daa5314cd10533aafec37d630
   yahpo_data_version: 1.0.2
   yahpo_data_source_commit: efdab9072f63bd680396cd4b78b927c4a0caaad3
   yahpo_data_compatibility_patch_sha256: c6adb9d0449561770486cf71e6146d494559fefa44ff403358903d03ad58e155
   config_space_tree_sha256: 5e1b32fce2bfeeed3d6de19f44c2d5e672cde77353f1352e623aeb80130b0356
+  reference_status: empirical_best_known_not_exact
 seed_protocol:
   kind: frozen
   generator: numpy.random.SeedSequence.generate_state
@@ -38,6 +63,25 @@ seed_protocol:
 selection_protocol:
   master_seed: 3670740481
   official_test_instances_excluded: true
-  validation_instances_per_scenario: 4
-  nb301_instances: 0
+  scenario_counts:
+    lcbench: 4
+    rbv2_glmnet: 4
+    rbv2_rpart: 4
+    rbv2_ranger: 4
+    rbv2_xgboost: 4
+    rbv2_super: 4
   full_native_budget: true
+  nb301_instances: 0
+aggregation:
+  order:
+  - inner_seed
+  - dataset_instance
+  - scenario
+  scenario_weights:
+    lcbench: 0.16666666666666666
+    rbv2_glmnet: 0.16666666666666666
+    rbv2_rpart: 0.16666666666666666
+    rbv2_ranger: 0.16666666666666666
+    rbv2_xgboost: 0.16666666666666666
+    rbv2_super: 0.16666666666666666
+manifest_hash: bf9171ab1e9061b2474e2aa2849e718a49d2350bf82214e6cc4b18867f705d9f

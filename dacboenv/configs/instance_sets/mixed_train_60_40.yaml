@@ -1,27 +1,110 @@
 schema_version: 1
-id: mixed-train-60-40-unavailable-v1
+id: mixed-train-60-40-v1
 domain: mixed
 split: train
-status: blocked
-runnable: false
+status: ready
+runnable: true
 role: training
-manifest_hash: 8a76dd321d337b3dcd289187cd626e7fec3481d34d81fd28a8d3627d826609aa
-blockers:
-  - yahpo-train-unavailable-v1 is empty because 0 of 92 required non-test provenance-complete YAHPO references exist
-  - partial BBOB-only execution under a mixed manifest is forbidden
-task_ids: []
-inner_seeds: [null]
+task_ids:
+- bbob/2/3/0
+- bbob/2/6/0
+- bbob/2/8/0
+- bbob/2/13/0
+- bbob/2/17/0
+- bbob/2/21/0
+- bbob/4/3/0
+- bbob/4/6/0
+- bbob/4/8/0
+- bbob/4/13/0
+- bbob/4/17/0
+- bbob/4/21/0
+- yahpo/so/lcbench/167200/None
+- yahpo/so/lcbench/189908/None
+- yahpo/so/lcbench/168868/None
+- yahpo/so/lcbench/167152/None
+- yahpo/so/lcbench/34539/None
+- yahpo/so/lcbench/167201/None
+- yahpo/so/lcbench/167161/None
+- yahpo/so/lcbench/167104/None
+- yahpo/so/lcbench/189354/None
+- yahpo/so/lcbench/168910/None
+- yahpo/so/lcbench/167185/None
+- yahpo/so/lcbench/146212/None
+- yahpo/so/rbv2_glmnet/1457/None
+- yahpo/so/rbv2_glmnet/188/None
+- yahpo/so/rbv2_glmnet/1494/None
+- yahpo/so/rbv2_glmnet/1501/None
+- yahpo/so/rbv2_glmnet/40966/None
+- yahpo/so/rbv2_glmnet/4135/None
+- yahpo/so/rbv2_glmnet/377/None
+- yahpo/so/rbv2_glmnet/22/None
+- yahpo/so/rbv2_glmnet/1068/None
+- yahpo/so/rbv2_glmnet/1478/None
+- yahpo/so/rbv2_glmnet/40498/None
+- yahpo/so/rbv2_glmnet/37/None
+- yahpo/so/rbv2_rpart/41159/None
+- yahpo/so/rbv2_rpart/377/None
+- yahpo/so/rbv2_rpart/40900/None
+- yahpo/so/rbv2_rpart/32/None
+- yahpo/so/rbv2_rpart/1590/None
+- yahpo/so/rbv2_rpart/1489/None
+- yahpo/so/rbv2_rpart/40966/None
+- yahpo/so/rbv2_rpart/40996/None
+- yahpo/so/rbv2_rpart/1515/None
+- yahpo/so/rbv2_rpart/4541/None
+- yahpo/so/rbv2_rpart/151/None
+- yahpo/so/rbv2_rpart/40975/None
+- yahpo/so/rbv2_ranger/458/None
+- yahpo/so/rbv2_ranger/32/None
+- yahpo/so/rbv2_ranger/1493/None
+- yahpo/so/rbv2_ranger/554/None
+- yahpo/so/rbv2_ranger/1056/None
+- yahpo/so/rbv2_ranger/4135/None
+- yahpo/so/rbv2_ranger/31/None
+- yahpo/so/rbv2_ranger/41166/None
+- yahpo/so/rbv2_ranger/50/None
+- yahpo/so/rbv2_ranger/1494/None
+- yahpo/so/rbv2_ranger/312/None
+- yahpo/so/rbv2_ranger/3/None
+- yahpo/so/rbv2_xgboost/41216/None
+- yahpo/so/rbv2_xgboost/1462/None
+- yahpo/so/rbv2_xgboost/300/None
+- yahpo/so/rbv2_xgboost/1489/None
+- yahpo/so/rbv2_xgboost/41138/None
+- yahpo/so/rbv2_xgboost/1479/None
+- yahpo/so/rbv2_xgboost/1220/None
+- yahpo/so/rbv2_xgboost/4538/None
+- yahpo/so/rbv2_xgboost/1457/None
+- yahpo/so/rbv2_xgboost/4541/None
+- yahpo/so/rbv2_xgboost/41162/None
+- yahpo/so/rbv2_xgboost/37/None
+- yahpo/so/rbv2_super/42/None
+- yahpo/so/rbv2_super/1487/None
+- yahpo/so/rbv2_super/188/None
+- yahpo/so/rbv2_super/1464/None
+- yahpo/so/rbv2_super/1590/None
+- yahpo/so/rbv2_super/375/None
+- yahpo/so/rbv2_super/41157/None
+- yahpo/so/rbv2_super/470/None
+inner_seeds:
+- null
 reference_coverage:
   table_path: dacboenv/experiment/analysis/yahpo_best_known_references.json
-  table_sha256: 9fa1f6a6bf6cedaa7e3efb0262811900130b4cc43c3eb443896560bd5ac8593d
-  provenance_complete_non_test_count: 0
+  table_sha256: d5b37cbb50d2e227dd794fd3ff0ad61089b10c163c1f09fb5b1689c1d5fece77
+  reference_basis: assumed_metric_upper_bound
+  provenance_complete_non_test_count: 588
+  required_train_count: 68
+  required_validation_count: 24
   required_total_before_split: 92
-  selected_yahpo_task_count: 0
+  selected_task_count: 68
 composition:
   bbob_manifest: bbob-train-v1
   bbob_manifest_hash: 50dda02f306a2cad36af36dfae05962b6a3c0955d8a1404254896ae155a44152
-  yahpo_manifest: yahpo-train-unavailable-v1
-  yahpo_manifest_hash: 9491fcbeadea02cea9d3cb55bbb8f513b86184cf385be90cea7bcf30e91b45dd
+  yahpo_manifest: yahpo-train-v1
+  yahpo_manifest_hash: 4d82c9cece51176bb000299b33b0f3e3b3ed34b3401e3f7c25737436a1329b6e
+  balanced_score_weights:
+    bbob: 0.5
+    yahpo: 0.5
   target_transition_weights:
     bbob: 0.6
     yahpo: 0.4
@@ -33,8 +116,8 @@ composition:
     bbob: 0.625
     yahpo: 0.375
   bbob_dimension_workers:
-    "2": 10
-    "4": 10
+    '2': 10
+    '4': 10
   yahpo_scenario_workers:
     lcbench: 2
     rbv2_glmnet: 2
@@ -42,3 +125,4 @@ composition:
     rbv2_ranger: 2
     rbv2_xgboost: 2
     rbv2_super: 2
+manifest_hash: 04a2833d8fdf016c204811c744f3d47c1d60aeef351f0ddd2d358b8c86c5e7f4

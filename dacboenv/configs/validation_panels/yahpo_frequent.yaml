@@ -1,31 +1,55 @@
 schema_version: 1
-id: yahpo-validation-frequent-unavailable-v1
 domain: yahpo
 split: validation
-status: blocked
-runnable: false
-role: frequent_checkpoint_screening
-manifest_hash: bb0c5a63e171db3a931b4829962ebb74cb0a3012a76f0ebb644e795c77db8085
-blockers:
-  - provenance-complete non-test best-known references cannot yet supply 2 frozen validation instances per seen scenario
-  - task_ids remain empty; official YAHPO-SO test instances may never fill a validation coverage shortage
-task_ids: []
-inner_seeds: [1349011988, 2024774586]
-source_manifest:
-  id: yahpo-validation-unavailable-v1
-  required_status: ready
+status: ready
+runnable: true
 scenarios:
-  - lcbench
-  - rbv2_glmnet
-  - rbv2_rpart
-  - rbv2_ranger
-  - rbv2_xgboost
-  - rbv2_super
+- lcbench
+- rbv2_glmnet
+- rbv2_rpart
+- rbv2_ranger
+- rbv2_xgboost
+- rbv2_super
+source_manifest:
+  id: yahpo-validation-v1
+  hash: bf9171ab1e9061b2474e2aa2849e718a49d2350bf82214e6cc4b18867f705d9f
+aggregation:
+  order:
+  - inner_seed
+  - dataset_instance
+  - scenario
+  scenario_weights:
+    lcbench: 0.16666666666666666
+    rbv2_glmnet: 0.16666666666666666
+    rbv2_rpart: 0.16666666666666666
+    rbv2_ranger: 0.16666666666666666
+    rbv2_xgboost: 0.16666666666666666
+    rbv2_super: 0.16666666666666666
+id: yahpo-validation-frequent-v1
+role: frequent_checkpoint_screening
+task_ids:
+- yahpo/so/lcbench/126025/None
+- yahpo/so/lcbench/167184/None
+- yahpo/so/rbv2_glmnet/41216/None
+- yahpo/so/rbv2_glmnet/41157/None
+- yahpo/so/rbv2_rpart/470/None
+- yahpo/so/rbv2_rpart/29/None
+- yahpo/so/rbv2_ranger/377/None
+- yahpo/so/rbv2_ranger/1510/None
+- yahpo/so/rbv2_xgboost/41157/None
+- yahpo/so/rbv2_xgboost/6332/None
+- yahpo/so/rbv2_super/40966/None
+- yahpo/so/rbv2_super/23381/None
+inner_seeds:
+- 1349011988
+- 2024774586
 panel:
   tier: frequent
   instances_per_scenario: 2
   inner_seeds_per_instance: 2
-  target_episode_count: 24
-  selected_episode_count: 0
+  episode_count: 24
   full_native_budget: true
   official_test_instances_excluded: true
+  checkpoint_selection_eligible: false
+  step_zero_namespace: step_zero
+manifest_hash: 85919709f9f6ee6dc42ad583f83640bed5906bcacbfbd1cc95cd660be2a75c76

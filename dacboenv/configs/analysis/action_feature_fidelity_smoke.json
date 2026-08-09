@@ -1,0 +1,30 @@
+[
+  {
+    "action_history": [],
+    "action_space": "wei",
+    "history_policy": "initial_design_only",
+    "inner_seed": 123,
+    "task_id": "bbob/2/3/0"
+  },
+  {
+    "action_history": [],
+    "action_space": "lcb_quantile",
+    "history_policy": "initial_design_only",
+    "inner_seed": 123,
+    "task_id": "bbob/2/3/0"
+  },
+  {
+    "action_history": [],
+    "action_space": "ucb_quantile",
+    "history_policy": "initial_design_only",
+    "inner_seed": 123,
+    "task_id": "bbob/2/3/0"
+  },
+  {
+    "action_history": [],
+    "action_space": "af_selection",
+    "history_policy": "initial_design_only",
+    "inner_seed": 123,
+    "task_id": "bbob/2/3/0"
+  }
+]

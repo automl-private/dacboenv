@@ -18,7 +18,7 @@ dacboenv:
       bbob:
         _target_: dacboenv.reference.BBOBExactReferenceProvider
       yahpo:
-        _target_: dacboenv.reference.ferenceProvider
+        _target_: dacboenv.reference.ManifestReferenceProvider
         source: ${oc.env:DACBO_YAHPO_REFERENCE_TABLE}
         expected_runtime_objective_transform: negative_accuracy
         expected_reporting_objective_transform: one_minus_accuracy

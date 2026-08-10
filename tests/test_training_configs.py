@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -30,6 +31,7 @@ from omegaconf import DictConfig, OmegaConf
 from smac.acquisition.function.expected_improvement import EI
 from smac.facade.blackbox_facade import BlackBoxFacade
 from stable_baselines3 import PPO
+from stable_baselines3.common.logger import configure
 from stable_baselines3.common.policies import MultiInputActorCriticPolicy
 from stable_baselines3.common.vec_env import VecNormalize
 from torch import nn
@@ -721,6 +723,7 @@ def test_fixed_manifest_validation_repeats_identically_and_saves_protocol_bests(
     cfg.experiment.checkpoint_freq = 2
     cfg.experiment.progress_bar = False
     cfg.experiment.training_sampler.enabled = False
+    cfg.experiment.vecnormalize = True
     cfg.experiment.validation.enabled = True
     cfg.experiment.validation.task_ids = ["bbob/4/2/1", "bbob/8/7/1"]
     cfg.experiment.validation.inner_seeds = [1234, 5678]
@@ -754,11 +757,55 @@ def test_fixed_manifest_validation_repeats_identically_and_saves_protocol_bests(
     )
     assert (tmp_path / "validation" / "frequent" / "checkpoints" / "step_2_model.zip").is_file()
     assert (tmp_path / "validation" / "frequent" / "checkpoints" / "step_4_model.zip").is_file()
+    assert (tmp_path / "validation" / "frequent" / "checkpoints" / "step_2_vecnormalize.pkl").is_file()
+    assert (tmp_path / "validation" / "frequent" / "checkpoints" / "step_4_vecnormalize.pkl").is_file()
+    history = json.loads((tmp_path / "validation" / "frequent" / "history.json").read_text())
+    assert [entry["training_step"] for entry in history["checkpoints"]] == [2, 4]
+    assert all(entry["normalization_path"] for entry in history["checkpoints"])
     assert (tmp_path / "validation" / "full" / "selection.json").is_file()
     assert (tmp_path / "validation" / "best_model.zip").is_file()
     assert (tmp_path / "validation" / "best_balanced_model.zip").is_file()
     assert (tmp_path / "validation" / "best_bbob_model.zip").is_file()
     assert not (tmp_path / "validation" / "best_yahpo_model.zip").exists()
+
+
+def test_validation_logger_preserves_long_yahpo_keys_without_stdout_collision(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Long per-context keys bypass truncating writers but remain lossless in CSV."""
+    logger = configure(str(tmp_path), format_strings=["stdout", "csv"])
+    callback = object.__new__(ppo_module.ProtocolEvalCallback)
+    callback.model = SimpleNamespace(logger=logger)
+    shared_prefix = "yahpo-so/rbv2_glmnet/this-is-a-deliberately-long-instance-prefix-"
+    task_ids = [f"{shared_prefix}first", f"{shared_prefix}second"]
+    scores = ppo_module.ValidationScores(
+        balanced_score=0.25,
+        bbob_score=None,
+        yahpo_score=0.25,
+        worst_domain_score=0.25,
+        per_task={task_ids[0]: 0.1, task_ids[1]: 0.4},
+        per_scenario={
+            "rbv2_glmnet_with_a_deliberately_long_scenario_metric_name_a": 0.2,
+            "rbv2_glmnet_with_a_deliberately_long_scenario_metric_name_b": 0.3,
+        },
+        per_dimension={},
+    )
+
+    callback._record_validation_scores(scores)
+    logger.dump(step=1)
+
+    stdout = capsys.readouterr().out
+    assert "balanced_score" in stdout
+    assert "yahpo_score" in stdout
+    assert "per_task" not in stdout
+    expected_task_keys = {f"eval/per_task/{callback._metric_tag(task_id)}" for task_id in task_ids}
+    with (tmp_path / "progress.csv").open(newline="", encoding="utf-8") as csv_file:
+        rows = list(csv.DictReader(csv_file))
+    assert len(rows) == 1
+    assert expected_task_keys <= rows[0].keys()
+    assert {float(rows[0][key]) for key in expected_task_keys} == {0.1, 0.4}
+    assert sum(key.startswith("eval/per_scenario/") for key in rows[0]) == 2
 
 
 def test_full_validation_nominates_top_three_halfway_and_final_without_step_zero(tmp_path: Path) -> None:

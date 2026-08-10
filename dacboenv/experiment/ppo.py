@@ -379,6 +379,31 @@ class ProtocolEvalCallback(EvalCallback):
     def _metric_tag(value: str) -> str:
         return value.replace("/", "_").replace(" ", "_")
 
+    def _record_validation_scores(self, scores: ValidationScores) -> None:
+        """Record aggregates everywhere and high-cardinality metrics losslessly."""
+        self.logger.record("eval/balanced_score", scores.balanced_score)
+        self.logger.record("eval/worst_domain_score", scores.worst_domain_score)
+        if scores.bbob_score is not None:
+            self.logger.record("eval/bbob_score", scores.bbob_score)
+        if scores.yahpo_score is not None:
+            self.logger.record("eval/yahpo_score", scores.yahpo_score)
+
+        # SB3's human-readable writers truncate keys and reject collisions.
+        # CSV and TensorBoard retain these complete stable metric names.
+        machine_readable_only = ("stdout", "log")
+        for task_id, score in scores.per_task.items():
+            self.logger.record(
+                f"eval/per_task/{self._metric_tag(task_id)}",
+                score,
+                exclude=machine_readable_only,
+            )
+        for scenario, score in scores.per_scenario.items():
+            self.logger.record(
+                f"eval/per_scenario/{self._metric_tag(scenario)}",
+                score,
+                exclude=machine_readable_only,
+            )
+
     def _on_step(self) -> bool:
         if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
             # ``evaluate_policy`` explicitly resets, while DummyVecEnv also
@@ -397,16 +422,7 @@ class ProtocolEvalCallback(EvalCallback):
             self._manifest_inner_seeds,
             rewards,
         )
-        self.logger.record("eval/balanced_score", scores.balanced_score)
-        self.logger.record("eval/worst_domain_score", scores.worst_domain_score)
-        if scores.bbob_score is not None:
-            self.logger.record("eval/bbob_score", scores.bbob_score)
-        if scores.yahpo_score is not None:
-            self.logger.record("eval/yahpo_score", scores.yahpo_score)
-        for task_id, score in scores.per_task.items():
-            self.logger.record(f"eval/per_task/{self._metric_tag(task_id)}", score)
-        for scenario, score in scores.per_scenario.items():
-            self.logger.record(f"eval/per_scenario/{self._metric_tag(scenario)}", score)
+        self._record_validation_scores(scores)
 
         checkpoint_scores = {
             "balanced": scores.balanced_score,

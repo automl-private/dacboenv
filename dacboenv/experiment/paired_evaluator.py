@@ -18,6 +18,7 @@ from typing import Any, Literal
 
 import numpy as np
 
+from dacboenv.experiment.evaluation_determinism import canonical_sha256
 from dacboenv.experiment.protocol import (
     require_runnable_manifest,
     validate_manifest_structure,
@@ -125,6 +126,8 @@ class ContextKey:
     objective_transform: str
     manifest_hash: str
     interaction_frequency: int = 1
+    manifest_id: str = "legacy_manifest_id_unavailable"
+    evaluation_protocol_version: str = "evaluation_protocol_v2_deterministic"
 
     def sort_key(self) -> tuple[Any, ...]:
         """Return a total ordering that also handles YAHPO's null dimension."""
@@ -141,6 +144,8 @@ class ContextKey:
             self.objective_transform,
             self.manifest_hash,
             self.interaction_frequency,
+            self.manifest_id,
+            self.evaluation_protocol_version,
         )
 
 
@@ -189,6 +194,13 @@ class EvaluationContext:
     objective_transform: str
     manifest_hash: str
     interaction_frequency: int = 1
+    manifest_id: str = "legacy_manifest_id_unavailable"
+    evaluation_protocol_version: str = "evaluation_protocol_v2_deterministic"
+
+    @property
+    def context_hash(self) -> str:
+        """Return a canonical hash independent of method and outer PPO seed."""
+        return canonical_sha256(asdict(self))
 
     @property
     def key(self) -> ContextKey:
@@ -211,6 +223,12 @@ class EvaluationContext:
             objective_transform=record.objective_transform,
             manifest_hash=record.manifest_hash,
             interaction_frequency=record.interaction_frequency,
+            manifest_id=getattr(record, "manifest_id", "legacy_manifest_id_unavailable"),
+            evaluation_protocol_version=getattr(
+                record,
+                "evaluation_protocol_version",
+                "evaluation_protocol_v2_deterministic",
+            ),
         )
 
 
@@ -244,6 +262,8 @@ class EvaluationRecord:
     manifest_hash: str
     code_commit: str
     interaction_frequency: int = 1
+    manifest_id: str = "legacy_manifest_id_unavailable"
+    evaluation_protocol_version: str = "evaluation_protocol_v2_deterministic"
 
     def __post_init__(self) -> None:  # noqa: C901, PLR0912
         """Reject malformed rows before they can enter paired statistics."""
@@ -423,6 +443,15 @@ def validate_contexts_against_manifest(
     )
     if stale_hashes:
         raise PairingError(f"Contexts carry manifest hashes {stale_hashes}, expected {manifest['manifest_hash']}.")
+    stale_ids = sorted(
+        {
+            context.manifest_id
+            for context in contexts
+            if context.manifest_id not in {"legacy_manifest_id_unavailable", manifest["id"]}
+        }
+    )
+    if stale_ids:
+        raise PairingError(f"Contexts carry manifest IDs {stale_ids}, expected {manifest['id']}.")
 
 
 def evaluate_registered_methods(

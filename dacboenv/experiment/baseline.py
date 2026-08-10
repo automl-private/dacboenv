@@ -2,14 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["NUMEXPR_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-
-
 import csv
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -23,6 +15,7 @@ from omegaconf import DictConfig, OmegaConf, open_dict
 
 # Register OmegaConf resolvers.
 import dacboenv  # noqa: F401
+from dacboenv.experiment.evaluation_determinism import require_process_determinism
 from dacboenv.experiment.protocol import (
     require_runnable_manifest,
     validate_manifest_structure,
@@ -53,6 +46,7 @@ def _make_policy(cfg: DictConfig, env: Any) -> AbstractPolicy:
 @hydra.main(version_base=None, config_path="../configs")  # type: ignore[misc]
 def main(cfg: DictConfig) -> None:
     """Run one complete baseline pass over the configured context set."""
+    require_process_determinism()
     logger.info(OmegaConf.to_yaml(cfg))
     manifest = OmegaConf.to_container(cfg.evaluation_instances, resolve=True)
     if not isinstance(manifest, dict):

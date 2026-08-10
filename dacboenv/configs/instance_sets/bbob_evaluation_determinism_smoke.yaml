@@ -1,0 +1,20 @@
+# @package evaluation_instances
+
+schema_version: 1
+id: bbob-evaluation-determinism-smoke-v1
+domain: bbob
+split: validation
+status: ready
+runnable: true
+sealed: false
+task_ids:
+  - bbob/2/3/0
+  - bbob/2/6/0
+inner_seeds:
+  - 2868838687
+  - 293850335
+protocol:
+  purpose: bounded_non_test_evaluation_determinism_smoke
+  source_manifest: bbob-train-v1
+blockers: []
+manifest_hash: cc5d70bcb8c17a813ca0cd8d40805f322dda54850e45c36a7fb61b1f9164e956

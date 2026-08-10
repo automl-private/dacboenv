@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import os
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -20,6 +21,12 @@ import numpy as np
 
 from dacboenv.env.reward import TRUE_REGRET_EPSILON, normalized_reference_regret_potential
 from dacboenv.experiment.default_smac import run_default_smac_episode
+from dacboenv.experiment.evaluation_determinism import (
+    PROCESS_DETERMINISM_CONTRACT,
+    canonical_sha256,
+    derive_policy_seed,
+    runhistory_fingerprints,
+)
 from dacboenv.experiment.paired_evaluator import (
     EvaluationContext,
     EvaluationMethod,
@@ -27,6 +34,7 @@ from dacboenv.experiment.paired_evaluator import (
     MethodRunner,
 )
 from dacboenv.experiment.source_provenance import current_source_revision
+from dacboenv.utils.seeding import episode_component_seeds
 
 if TYPE_CHECKING:
     from dacboenv.reference import ObjectiveReference
@@ -51,6 +59,7 @@ class EpisodeTrace:
     actions: tuple[Any, ...]
     incumbent_trajectory: tuple[float, ...]
     policy_metadata: Mapping[str, Any]
+    fingerprints: Mapping[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-compatible representation."""
@@ -59,6 +68,7 @@ class EpisodeTrace:
             "actions": [_json_value(action) for action in self.actions],
             "incumbent_trajectory": list(self.incumbent_trajectory),
             "policy_metadata": _json_value(self.policy_metadata),
+            "fingerprints": _json_value(self.fingerprints),
         }
 
 
@@ -188,7 +198,7 @@ def current_commit(repository: Path | None = None) -> str:
     return current_source_revision(repository)
 
 
-def run_dacbo_episode(  # noqa: C901, PLR0915
+def run_dacbo_episode(  # noqa: C901, PLR0912, PLR0915
     context: EvaluationContext,
     method: EvaluationMethod,
     *,
@@ -296,16 +306,48 @@ def run_dacbo_episode(  # noqa: C901, PLR0915
             manifest_hash=context.manifest_hash,
             code_commit=code_commit,
             interaction_frequency=context.interaction_frequency,
+            manifest_id=context.manifest_id,
+            evaluation_protocol_version=context.evaluation_protocol_version,
         )
         metadata = dict(policy_metadata or {})
         history = getattr(policy, "_history", None)
         if history is not None:
             metadata.setdefault("native_policy_history", history)
+        scenario = getattr(env._smac_instance, "_scenario", None)
+        if scenario is not None and getattr(scenario, "configspace", None) is not None:
+            fingerprints = runhistory_fingerprints(
+                env._smac_instance.runhistory,
+                scenario.configspace,
+                initial_design_size,
+            )
+            fingerprints["fingerprint_status"] = "complete"
+        else:
+            # Lightweight synthetic adapters used by unit tests do not model
+            # configurations. Production CARP-S/SMAC environments always do.
+            fingerprints = {
+                "fingerprint_status": "configuration_space_unavailable",
+                "initial_design_hash": canonical_sha256(trajectory[:initial_design_size]),
+                "incumbent_trajectory_hash": canonical_sha256(trajectory),
+            }
+        fingerprints.update(
+            {
+                "evaluation_context_hash": context.context_hash,
+                "action_trajectory_hash": canonical_sha256(actions),
+                "environment_inner_seed": context.inner_seed,
+                "policy_seed": policy_seed,
+                "optimizer_component_seeds": episode_component_seeds(context.inner_seed),
+                "selector_class": type(getattr(env, "instance_selector", env)).__name__,
+                "process_determinism_environment": {
+                    name: os.environ.get(name) for name in PROCESS_DETERMINISM_CONTRACT
+                },
+            }
+        )
         return EpisodeTrace(
             record=record,
             actions=tuple(actions),
             incumbent_trajectory=trajectory,
             policy_metadata=metadata,
+            fingerprints=fingerprints,
         )
     finally:
         close = getattr(env, "close", None)
@@ -329,6 +371,12 @@ def make_dacbo_method_runner(
     commit = code_commit or current_commit()
 
     def runner(context: EvaluationContext, method: EvaluationMethod) -> EvaluationRecord:
+        effective_policy_seed = derive_policy_seed(
+            0 if policy_seed is None else policy_seed,
+            method.name,
+            context.context_hash,
+            outer_ppo_seed=outer_ppo_seed,
+        )
         trace = run_dacbo_episode(
             context,
             method,
@@ -338,7 +386,7 @@ def make_dacbo_method_runner(
             checkpoint_type=checkpoint_type,
             outer_ppo_seed=outer_ppo_seed,
             code_commit=commit,
-            policy_seed=policy_seed,
+            policy_seed=effective_policy_seed,
             policy_metadata=policy_metadata,
         )
         trace_directory.mkdir(parents=True, exist_ok=True)
@@ -427,6 +475,8 @@ def make_default_smac_method_runner(
             manifest_hash=context.manifest_hash,
             code_commit=commit,
             interaction_frequency=context.interaction_frequency,
+            manifest_id=context.manifest_id,
+            evaluation_protocol_version=context.evaluation_protocol_version,
         )
         trace_directory.mkdir(parents=True, exist_ok=True)
         trace_path = trace_directory / (
@@ -441,6 +491,18 @@ def make_default_smac_method_runner(
                     "policy_metadata": {
                         "native_default_smac": True,
                         "external_action_interface": False,
+                    },
+                    "fingerprints": {
+                        **result.fingerprints,
+                        "evaluation_context_hash": context.context_hash,
+                        "action_trajectory_hash": canonical_sha256([]),
+                        "environment_inner_seed": context.inner_seed,
+                        "policy_seed": None,
+                        "optimizer_component_seeds": episode_component_seeds(context.inner_seed),
+                        "selector_class": "ExactSingleEvaluationContext",
+                        "process_determinism_environment": {
+                            name: os.environ.get(name) for name in PROCESS_DETERMINISM_CONTRACT
+                        },
                     },
                 },
                 indent=2,

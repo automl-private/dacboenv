@@ -192,6 +192,12 @@ def create_ppo_eval_configs(
         _normalize_smac_logging_path(eval_conf.dacboenv)
         eval_conf.dacboenv.task_ids = ["${task.name}"]
         eval_conf.dacboenv.inner_seeds = ["${seed}"]
+        # Never carry the training sampler into evaluation. A generated CARP-S
+        # cell represents one explicit task/inner-seed context.
+        eval_conf.dacboenv.instance_selector_class = {
+            "_target_": "dacboenv.env.instance.RoundRobinInstanceSelector",
+            "_partial_": True,
+        }
         # Structured potential-reward policies must see exactly the MDP used
         # in training: consume the initial design before the first decision
         # and keep the per-step potential difference active. Legacy

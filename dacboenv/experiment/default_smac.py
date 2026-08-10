@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import csv
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +16,7 @@ from carps.utils.loggingutils import get_logger
 from omegaconf import DictConfig, OmegaConf
 
 from dacboenv.env.reward import TRUE_REGRET_EPSILON
+from dacboenv.experiment.evaluation_determinism import require_process_determinism, runhistory_fingerprints
 from dacboenv.experiment.protocol import (
     require_runnable_manifest,
     validate_manifest_structure,
@@ -28,7 +29,8 @@ from dacboenv.reference import (
     ReferenceBreachContext,
     reference_regret,
 )
-from dacboenv.utils.carps_optimizer import build_carps_optimizer
+from dacboenv.utils.carps_optimizer import build_carps_optimizer, load_optimizer_config
+from dacboenv.utils.seeding import episode_component_seeds
 
 logger = get_logger("DefaultSMAC")
 
@@ -50,6 +52,7 @@ class DefaultSMACResult:
     bo_evaluations: int
     runtime_seconds: float
     incumbent_trajectory: tuple[float, ...]
+    fingerprints: dict[str, Any] = field(default_factory=dict)
 
 
 def _scalar_cost(cost: Any) -> float:
@@ -85,10 +88,27 @@ def run_default_smac_episode(
     streams, as they do in every other protocol cell.
     """
     started = time.perf_counter()
+    optimizer_cfg = load_optimizer_config("SMAC3-BlackBoxFacade")
+    component_seeds = episode_component_seeds(inner_seed)
+    # Pair native default SMAC to the DACBO methods' initial-design protocol;
+    # only the post-design acquisition controller is method-specific.
+    OmegaConf.update(
+        optimizer_cfg,
+        "optimizer.smac_cfg.smac_kwargs.initial_design",
+        {
+            "_target_": "smac.initial_design.sobol_design.SobolInitialDesign",
+            "_partial_": True,
+            "n_configs": None,
+            "n_configs_per_hyperparameter": 8,
+            "max_ratio": 0.2,
+            "seed": component_seeds["initial_design"],
+        },
+        force_add=True,
+    )
     optimizer = build_carps_optimizer(
         task_id,
         inner_seed,
-        optimizer_id="SMAC3-BlackBoxFacade",
+        optimizer_cfg=optimizer_cfg,
         output_directory=output_directory,
         context_split=context_split,
     )
@@ -147,6 +167,11 @@ def run_default_smac_episode(
     normalized_final_regret = final_regret / regret_scale
     normalized_trajectory = np.maximum(np.asarray(incumbent_trajectory) - reference_value, 0.0) / regret_scale
     telescoping_return = normalized_telescoping_return(initial_regret, final_regret)
+    fingerprints = runhistory_fingerprints(
+        solver.runhistory,
+        solver.scenario.configspace,
+        initial_design_size,
+    )
     return DefaultSMACResult(
         task_id=task_id,
         inner_seed=inner_seed,
@@ -161,12 +186,14 @@ def run_default_smac_episode(
         bo_evaluations=int(solver.runhistory.finished),
         runtime_seconds=float(time.perf_counter() - started),
         incumbent_trajectory=tuple(incumbent_trajectory),
+        fingerprints=fingerprints,
     )
 
 
 @hydra.main(version_base=None, config_path="../configs")  # type: ignore[misc]
 def main(cfg: DictConfig) -> None:
     """Evaluate native default SMAC on every fixed manifest context."""
+    require_process_determinism()
     logger.info(OmegaConf.to_yaml(cfg))
     manifest = OmegaConf.to_container(cfg.evaluation_instances, resolve=True)
     if not isinstance(manifest, dict):

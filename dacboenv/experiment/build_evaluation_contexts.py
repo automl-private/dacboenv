@@ -10,6 +10,10 @@ from typing import Any
 
 from carps.utils.running import make_task
 
+from dacboenv.experiment.evaluation_determinism import (
+    EVALUATION_PROTOCOL_VERSION,
+    context_inventory_hash,
+)
 from dacboenv.experiment.paired_evaluator import EvaluationContext, authorize_manifest_execution
 from dacboenv.experiment.protocol import load_manifest
 from dacboenv.experiment.source_provenance import current_source_revision
@@ -92,6 +96,8 @@ def build_evaluation_contexts(
             objective_transform=task_metadata[task_id][0].runtime_objective_transform,
             manifest_hash=str(manifest["manifest_hash"]),
             interaction_frequency=interaction_frequency,
+            manifest_id=str(manifest["id"]),
+            evaluation_protocol_version=EVALUATION_PROTOCOL_VERSION,
         )
         for seed in manifest["inner_seeds"]
         for task_id in (str(value) for value in manifest["task_ids"])
@@ -115,12 +121,15 @@ def main() -> None:
         reference_table=args.reference_table,
         allow_sealed_test=args.allow_sealed_test,
     )
+    serialized_contexts = [asdict(context) for context in contexts]
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
+        "evaluation_protocol_version": EVALUATION_PROTOCOL_VERSION,
         "manifest_id": manifest["id"],
         "manifest_hash": manifest["manifest_hash"],
         "source_revision": current_source_revision(),
-        "contexts": [asdict(context) for context in contexts],
+        "context_inventory_hash": context_inventory_hash(serialized_contexts),
+        "contexts": serialized_contexts,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")

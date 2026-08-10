@@ -22,6 +22,14 @@ from omegaconf import OmegaConf
 from stable_baselines3 import PPO
 
 from dacboenv.experiment.collect_snapshots import configured_structured_action_space
+from dacboenv.experiment.evaluation_determinism import (
+    EVALUATION_PROTOCOL_VERSION,
+    PROCESS_DETERMINISM_CONTRACT,
+    canonical_sha256,
+    context_inventory_hash,
+    file_sha256,
+    require_process_determinism,
+)
 from dacboenv.experiment.evaluation_runner import (
     make_dacbo_method_runner,
     make_default_smac_method_runner,
@@ -90,6 +98,8 @@ class StageARunArtifacts:
     vecnormalize: bool
     action_family: str
     interaction_frequency: int
+    training_source_revision: str
+    hydra_config_sha256: str
 
 
 def _existing_first(paths: Sequence[Path]) -> Path | None:
@@ -108,6 +118,9 @@ def inspect_stage_a_run(run_root: Path) -> StageARunArtifacts:
     vecnormalize = bool(cfg.experiment.get("vecnormalize", False))
     action_family = configured_structured_action_space(cfg)
     interaction_frequency = int(OmegaConf.select(cfg, "dacboenv.interaction_frequency"))
+    training_source_revision = str(
+        OmegaConf.select(cfg, "protocol_metadata.scientific_source_revision", default="not_recorded_by_stage_a")
+    )
     if interaction_frequency not in {1, 5, 10}:
         raise ValueError(f"Unsupported Stage-A interaction frequency {interaction_frequency!r}.")
 
@@ -146,6 +159,8 @@ def inspect_stage_a_run(run_root: Path) -> StageARunArtifacts:
         vecnormalize=vecnormalize,
         action_family=action_family,
         interaction_frequency=interaction_frequency,
+        training_source_revision=training_source_revision,
+        hydra_config_sha256=file_sha256(config_path),
     )
 
 
@@ -155,6 +170,12 @@ def load_evaluation_contexts(path: Path) -> list[EvaluationContext]:
     rows = payload.get("contexts") if isinstance(payload, dict) else payload
     if not isinstance(rows, list) or not rows:
         raise ValueError("Context JSON must be a non-empty list or {'contexts': [...]} mapping.")
+    if isinstance(payload, dict):
+        if payload.get("evaluation_protocol_version") != EVALUATION_PROTOCOL_VERSION:
+            raise ValueError("Context inventory does not use evaluation_protocol_v2_deterministic.")
+        expected_hash = context_inventory_hash(rows)
+        if payload.get("context_inventory_hash") != expected_hash:
+            raise ValueError("Context inventory hash is missing or does not match its canonical rows.")
     return [EvaluationContext(**row) for row in rows]
 
 
@@ -473,7 +494,13 @@ def build_production_registry(  # noqa: C901, PLR0913
                 ),
                 checkpoint_type=checkpoint,
                 outer_seed=artifacts.outer_seed,
-                metadata={"run_root": str(artifacts.run_root), "checkpoint": checkpoint},
+                metadata={
+                    "run_root": str(artifacts.run_root),
+                    "checkpoint": checkpoint,
+                    "policy_model_sha256": file_sha256(model_path),
+                    "policy_training_source_revision": artifacts.training_source_revision,
+                    "hydra_config_sha256": artifacts.hydra_config_sha256,
+                },
             )
         elif method in {MODAL_STATIC_CLONE, MARGINAL_RANDOM_CONTROL}:
             assert controls is not None
@@ -602,7 +629,7 @@ def _persist_validation_derived_controls(
     return artifacts
 
 
-def main() -> None:
+def main() -> None:  # noqa: PLR0915
     """Execute one explicit manifest/run-root evaluation cell."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, required=True)
@@ -626,6 +653,15 @@ def main() -> None:
     parser.add_argument("--allow-sealed-test", action="store_true")
     args = parser.parse_args()
 
+    try:
+        process_contract = require_process_determinism()
+    except RuntimeError as error:
+        raise SystemExit(str(error)) from error
+    if args.output_dir.exists() and any(args.output_dir.iterdir()):
+        raise SystemExit(
+            "Refusing to overwrite a populated evaluation directory. Use a fresh "
+            f"{EVALUATION_PROTOCOL_VERSION} output root: {args.output_dir}"
+        )
     args.output_dir.mkdir(parents=True, exist_ok=True)
     readiness_path = args.output_dir / "production_readiness.json"
     manifest = load_manifest(args.manifest)
@@ -692,6 +728,10 @@ def main() -> None:
                 "ready": True,
                 "requested_methods": args.methods,
                 "explicitly_unimplemented": _UNAVAILABLE_METHOD_REASONS,
+                "evaluation_protocol_version": EVALUATION_PROTOCOL_VERSION,
+                "process_determinism_contract": process_contract,
+                "required_process_determinism_contract": PROCESS_DETERMINISM_CONTRACT,
+                "context_inventory_hash": canonical_sha256([asdict(context) for context in contexts]),
             },
             indent=2,
             sort_keys=True,

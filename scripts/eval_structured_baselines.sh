@@ -2,9 +2,12 @@
 
 set -euo pipefail
 
+script_directory="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=scripts/evaluation_determinism_env.sh
+source "${script_directory}/evaluation_determinism_env.sh"
+
 export HYDRA_FULL_ERROR=1
 
-script_directory="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 repository_root="$(cd -- "${script_directory}/.." && pwd -P)"
 python_bin="${DACBO_PYTHON:-${repository_root}/.env/bin/python}"
 if [[ ! -x "${python_bin}" ]]; then

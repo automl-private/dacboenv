@@ -163,6 +163,10 @@ def test_gather_can_select_last_model_instead_of_validation_best(
     assert unresolved["dacboenv"]["optimizer_cfg"]["smac_cfg"]["smac_kwargs"]["logging_level"]["_args_"] == [
         "dacboenv/configs/logging/smac_internal.yaml"
     ]
+    assert unresolved["dacboenv"]["instance_selector_class"] == {
+        "_target_": "dacboenv.env.instance.RoundRobinInstanceSelector",
+        "_partial_": True,
+    }
 
 
 def test_gather_rejects_unknown_model_selection(tmp_path: Path) -> None:

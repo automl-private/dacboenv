@@ -1,3 +1,10 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+script_directory="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=scripts/evaluation_determinism_env.sh
+source "${script_directory}/evaluation_determinism_env.sh"
+
 BASE="carps.run hydra.searchpath=[pkg://dacboenv/configs]"
 SEED="seed=range(1,6)"
 TASK1="+task/BBOB=cfg_2_1_0"

@@ -17,69 +17,91 @@ fi
 cd -- "${repository_root}"
 
 evaluation_set="${DACBO_EVALUATION_SET:-bbob_validation}"
-baseline_run_dir="${DACBO_BASELINE_RUN_DIR:-${repository_root}/runs_structured_baselines}"
+manifest_path="${repository_root}/dacboenv/configs/instance_sets/${evaluation_set}.yaml"
+baseline_run_dir="${DACBO_BASELINE_RUN_DIR:-${repository_root}/runs_structured_baselines_carps}"
+dry_run="${DACBO_BASELINE_DRY_RUN:-0}"
 
-sealed_override=()
-if [[ "${evaluation_set}" == *test* ]]; then
-    if [[ "${DACBO_ALLOW_SEALED_TEST:-0}" != "1" ]]; then
-        echo "Refusing sealed test manifest '${evaluation_set}'." >&2
-        echo "Set DACBO_ALLOW_SEALED_TEST=1 only for an authorized final report." >&2
-        exit 2
-    fi
-    sealed_override+=("experiment.allow_sealed_test=true")
+if [[ ! -f "${manifest_path}" ]]; then
+    echo "Unknown evaluation manifest: ${manifest_path}" >&2
+    exit 2
+fi
+if [[ "${evaluation_set}" == *test* && "${DACBO_ALLOW_SEALED_TEST:-0}" != "1" ]]; then
+    echo "Refusing sealed test manifest '${evaluation_set}'." >&2
+    echo "Set DACBO_ALLOW_SEALED_TEST=1 only for an authorized final report." >&2
+    exit 2
+fi
+if [[ "${dry_run}" != "0" && "${dry_run}" != "1" ]]; then
+    echo "DACBO_BASELINE_DRY_RUN must be 0 or 1, got: ${dry_run}" >&2
+    exit 2
 fi
 
-launcher_args=("baserundir=${baseline_run_dir}")
-if [[ "${DACBO_BASELINE_JOBS:-1}" -gt 1 ]]; then
-    launcher_args+=(
-        "hydra/launcher=joblib"
-        "hydra.launcher.n_jobs=${DACBO_BASELINE_JOBS}"
+launch_carps() {
+    local label="$1"
+    shift
+    local -a command=(
+        "${python_bin}"
+        -m carps.run
+        --multirun
+        "hydra.searchpath=[pkg://dacboenv/configs]"
+        "+task/BBOB=glob(cfg_2_*)"
+        "seed=${evaluation_seeds}"
+        "+eval=base"
+        "$@"
+        "dacboenv.context_split=${context_split}"
+        "dacboenv.instance_selector_class._target_=dacboenv.env.instance.RoundRobinInstanceSelector"
+        "dacboenv.instance_selector_class._partial_=true"
+        "+dacboenv.instance_selector_class.offset=0"
+        "dacboenv.evaluation_mode=false"
+        "dacboenv.terminate_after_reference_performance_reached=false"
+        "baserundir=${baseline_run_dir}"
     )
-fi
 
-controller_tasks=(
-    dacboenv_structured_reference_free
-    dacboenv_structured_lcb_quantile
-    dacboenv_structured_ucb_quantile
-    dacboenv_structured_af_selection
-)
+    if [[ "${dry_run}" == "1" ]]; then
+        printf '%q ' "${command[@]}"
+        printf '\n'
+    else
+        "${command[@]}"
+    fi
+}
 
-for controller_task in "${controller_tasks[@]}"; do
-    # Uniform random actions: identical contexts, ten independent policy RNGs.
-    "${python_bin}" -m dacboenv.experiment.baseline \
-        +baseline=structured_random \
-        "task=${controller_task}" \
+echo "CARP-S baseline protocol: deterministic-v2"
+echo "Manifest: ${evaluation_set} (${manifest_hash})"
+echo "Contexts: ${task_configs} x seeds ${evaluation_seeds}"
+echo "Result root: ${baseline_run_dir}"
+
+action_families=(wei_alpha_discrete lcb_quantile_discrete ucb_quantile_discrete af_selection_discrete)
+observation_families=(structured structured_quantile structured_quantile structured_af_selection)
+
+for index in "${!action_families[@]}"; do
+    action_family="${action_families[index]}"
+    observation_family="${observation_families[index]}"
+
+    launch_carps "random-${action_family}" \
+        +env=base \
+        +env/opt=base \
+        "+env/action=${action_family}" \
+        +env/interaction_freq=f1 \
+        "+env/obs=${observation_family}" \
         +env/reward=true_regret_improvement \
-        "+env/interaction_freq=f1,f5,f10" \
-        "instance_sets@evaluation_instances=${evaluation_set}" \
-        "${sealed_override[@]}" \
-        "seed=range(0,10)" \
-        "+cluster=cpu_noctua" \
-        "${launcher_args[@]}" \
-        --multirun &
+        +policy=random
 
-    # Every exact static action for the same controller and context manifest.
-    "${python_bin}" -m dacboenv.experiment.baseline \
-        +baseline=structured_static_action \
-        "task=${controller_task}" \
+    launch_carps "static-${action_family}" \
+        +env=base \
+        +env/opt=base \
+        "+env/action=${action_family}" \
+        +env/interaction_freq=f1,f5,f10 \
+        "+env/obs=${observation_family}" \
         +env/reward=true_regret_improvement \
-        "+env/interaction_freq=f1,f5,f10" \
-        "instance_sets@evaluation_instances=${evaluation_set}" \
-        "${sealed_override[@]}" \
-        "policy/static/discrete_action=action_0,action_1,action_2,action_3,action_4" \
-        "seed=0" \
-        "+cluster=cpu_noctua" \
-        "${launcher_args[@]}" \
-        --multirun &
+        +policy/static/discrete_action=action_0,action_1,action_2,action_3,action_4
 done
 
-# Exact native BlackBoxFacade defaults, evaluated once per paired context.
-"${python_bin}" -m dacboenv.experiment.default_smac \
-    +baseline=default_smac \
-    "instance_sets@evaluation_instances=${evaluation_set}" \
-    "${sealed_override[@]}" \
-    +cluster=cpu_noctua \
-    "${launcher_args[@]}" \
-    --multirun
-
-wait
+# The native no-op controller preserves the configured SMAC acquisition and
+# consumes the same CARP-S task/seed contexts as every action-based baseline.
+launch_carps default-smac \
+    +env=base \
+    +env/opt=base \
+    +env/action=wei_alpha_discrete \
+    +env/interaction_freq=f1 \
+    +env/obs=structured \
+    +env/reward=true_regret_improvement \
+    +policy=defaultaction

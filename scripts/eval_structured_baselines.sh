@@ -9,7 +9,7 @@ source "${script_directory}/evaluation_determinism_env.sh"
 export HYDRA_FULL_ERROR=1
 
 repository_root="$(cd -- "${script_directory}/.." && pwd -P)"
-python_bin="${DACBO_PYTHON:-${repository_root}/.env/bin/python}"
+python_bin="${DACBO_PYTHON:-${repository_root}/.venv/bin/python}"
 if [[ ! -x "${python_bin}" ]]; then
     echo "Python environment is missing or not executable: ${python_bin}" >&2
     exit 2
@@ -43,16 +43,18 @@ launch_carps() {
         -m carps.run
         --multirun
         "hydra.searchpath=[pkg://dacboenv/configs]"
-        "+task/BBOB=glob(cfg_2_*)"
-        "seed=${evaluation_seeds}"
+        "seed=range(0,11)"
         "+eval=base"
+        "+cluster=cpu_noctua"
+        "+env/reward=reference_free_improvement"
         "$@"
-        "dacboenv.context_split=${context_split}"
+        "dacboenv.context_split=validation"
         "dacboenv.instance_selector_class._target_=dacboenv.env.instance.RoundRobinInstanceSelector"
         "dacboenv.instance_selector_class._partial_=true"
         "+dacboenv.instance_selector_class.offset=0"
-        "dacboenv.evaluation_mode=false"
+        "dacboenv.evaluation_mode=true"
         "dacboenv.terminate_after_reference_performance_reached=false"
+        "++optimizer_id=${label}"
         "baserundir=${baseline_run_dir}"
     )
 
@@ -60,48 +62,52 @@ launch_carps() {
         printf '%q ' "${command[@]}"
         printf '\n'
     else
-        "${command[@]}"
+        "${command[@]}" &
     fi
 }
 
-echo "CARP-S baseline protocol: deterministic-v2"
-echo "Manifest: ${evaluation_set} (${manifest_hash})"
-echo "Contexts: ${task_configs} x seeds ${evaluation_seeds}"
-echo "Result root: ${baseline_run_dir}"
-
 action_families=(wei_alpha_discrete lcb_quantile_discrete ucb_quantile_discrete af_selection_discrete)
 observation_families=(structured structured_quantile structured_quantile structured_af_selection)
+tasks=('+task/BBOB=glob(cfg_2_*_0)' '+task/BBOB=glob(cfg_8_*_0)' '+task/YAHPO/SO=glob(*)')
 
-for index in "${!action_families[@]}"; do
-    action_family="${action_families[index]}"
-    observation_family="${observation_families[index]}"
+for task in "${tasks[@]}"; do
+    for index in "${!action_families[@]}"; do
+        action_family="${action_families[index]}"
+        observation_family="${observation_families[index]}"
 
-    launch_carps "random-${action_family}" \
+        launch_carps "random-${action_family}" \
+            "$task" \
+            +env=base \
+            +env/opt=base \
+            "+env/action=${action_family}" \
+            +env/interaction_freq=f1 \
+            "+env/obs=${observation_family}" \
+            +policy=random
+
+        for freq in f1 f5 f10; do
+            for action in 0 1 2 3 4; do
+                launch_carps "static-${action_family}-action${action}-${freq}" \
+                    "$task" \
+                    +env=base \
+                    +env/opt=base \
+                    "+env/action=${action_family}" \
+                    "+env/interaction_freq=${freq}" \
+                    "+env/obs=${observation_family}" \
+                    "+policy/static/discrete_action=action_${action}"
+            done
+        done
+    done
+
+    # The native no-op controller preserves the configured SMAC acquisition and
+    # consumes the same CARP-S task/seed contexts as every action-based baseline.
+    launch_carps default-smac \
+        "$task" \
         +env=base \
         +env/opt=base \
-        "+env/action=${action_family}" \
+        +env/action=wei_alpha_discrete \
         +env/interaction_freq=f1 \
-        "+env/obs=${observation_family}" \
-        +env/reward=true_regret_improvement \
-        +policy=random
-
-    launch_carps "static-${action_family}" \
-        +env=base \
-        +env/opt=base \
-        "+env/action=${action_family}" \
-        +env/interaction_freq=f1,f5,f10 \
-        "+env/obs=${observation_family}" \
-        +env/reward=true_regret_improvement \
-        +policy/static/discrete_action=action_0,action_1,action_2,action_3,action_4
+        +env/obs=structured \
+        +policy=defaultaction
 done
 
-# The native no-op controller preserves the configured SMAC acquisition and
-# consumes the same CARP-S task/seed contexts as every action-based baseline.
-launch_carps default-smac \
-    +env=base \
-    +env/opt=base \
-    +env/action=wei_alpha_discrete \
-    +env/interaction_freq=f1 \
-    +env/obs=structured \
-    +env/reward=true_regret_improvement \
-    +policy=defaultaction
+wait

@@ -268,11 +268,9 @@ done
 #                                  (default: 1 for Slurm, 0 for local)
 #   DACBO_OVERWRITE_EVAL_RESULTS=1 allow running into populated optimizer roots
 #   DACBO_SLURM_PARTITION=normal
-#   DACBO_SLURM_ARRAY_PARALLELISM=64
 #   DACBO_SLURM_TIMEOUT_MIN=360
 #   DACBO_SLURM_MEM_PER_CPU=8G
 #   Slurm starts every selected method/suite Hydra launcher before waiting.
-#   Array parallelism is per launcher, not a global concurrency cap.
 #
 # The exact training tasks are dimensions 2 and 4, functions
 # 3,6,8,13,17,21, BBOB instance 0. Ten default evaluation seeds include the
@@ -547,7 +545,6 @@ launch_carps_sweep() {
             "hydra.launcher.cpus_per_task=1"
             "hydra.launcher.mem_per_cpu=${DACBO_SLURM_MEM_PER_CPU:-8G}"
             "hydra.launcher.timeout_min=${DACBO_SLURM_TIMEOUT_MIN:-360}"
-            "hydra.launcher.array_parallelism=${DACBO_SLURM_ARRAY_PARALLELISM:-64}"
             "hydra.launcher.name=dacbo-carps-eval"
         )
     fi

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
 from functools import lru_cache
 from pathlib import Path
@@ -213,6 +214,37 @@ def real_structured_mixed_env(
     raise ValueError(f"Unsupported mixed-evaluation task namespace: {task_id!r}.")
 
 
+def _headroom_reference_table() -> str:
+    table = os.environ.get("DACBO_YAHPO_REFERENCE_TABLE")
+    if not table:
+        raise RuntimeError("YAHPO headroom replay requires DACBO_YAHPO_REFERENCE_TABLE before Python starts.")
+    return table
+
+
+def real_headroom_train_env(task_id: str, inner_seed: int, action_space: str = "wei"):
+    """Create a fixed non-test training context for the headroom campaign."""
+    reference_table = _headroom_reference_table() if task_id.lower().startswith("yahpo/") else None
+    return real_structured_mixed_env(
+        task_id,
+        inner_seed,
+        action_space,
+        context_split="train",
+        reference_table=reference_table,
+    )
+
+
+def real_headroom_validation_env(task_id: str, inner_seed: int, action_space: str = "wei"):
+    """Create a fixed non-test validation context for the headroom campaign."""
+    reference_table = _headroom_reference_table() if task_id.lower().startswith("yahpo/") else None
+    return real_structured_mixed_env(
+        task_id,
+        inner_seed,
+        action_space,
+        context_split="validation",
+        reference_table=reference_table,
+    )
+
+
 def real_sawei_env(
     task_id: str,
     inner_seed: int,
@@ -314,6 +346,8 @@ def real_sawei_bbob_env(
 
 
 __all__ = [
+    "real_headroom_train_env",
+    "real_headroom_validation_env",
     "real_sawei_bbob_env",
     "real_sawei_env",
     "real_structured_bbob_env",

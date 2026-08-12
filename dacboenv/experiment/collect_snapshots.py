@@ -27,11 +27,12 @@ from dacboenv.experiment.snapshot_branch import (
     CompletedBOEvaluation,
     SnapshotReplayError,
     assert_snapshot_action_space,
+    replay_process_environment,
     replay_snapshot,
     require_deterministic_replay_process_environment,
 )
 from dacboenv.experiment.source_provenance import current_source_revision
-from dacboenv.reference import BBOBExactReferenceProvider
+from dacboenv.reference import BBOBExactReferenceProvider, ManifestReferenceProvider
 
 
 class SnapshotPolicy(Protocol):
@@ -162,6 +163,33 @@ def observation_digest(observation: Any) -> str:
 
     payload = json.dumps(canonical(observation), allow_nan=False, separators=(",", ":"), sort_keys=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def portable_observation_json(observation: Any) -> str:
+    """Serialize the exact policy-visible observation without privileged metadata."""
+
+    def canonical(value: Any) -> Any:
+        if isinstance(value, Mapping):
+            return {str(key): canonical(item) for key, item in sorted(value.items())}
+        array = np.asarray(value)
+        return {"dtype": str(array.dtype), "shape": list(array.shape), "values": array.tolist()}
+
+    return json.dumps(canonical(observation), allow_nan=False, separators=(",", ":"), sort_keys=True)
+
+
+def _task_metadata(task_id: str) -> dict[str, Any]:
+    parts = task_id.split("/")
+    if task_id.startswith("bbob/") and len(parts) == 4:  # noqa: PLR2004
+        return {"domain": "bbob", "dimension": int(parts[1]), "native_instance": parts[3], "scenario": ""}
+    if task_id.lower().startswith("yahpo/so/") and len(parts) == 6:  # noqa: PLR2004
+        return {"domain": "yahpo", "dimension": None, "native_instance": parts[4], "scenario": parts[2]}
+    return {"domain": "", "dimension": None, "native_instance": "", "scenario": ""}
+
+
+def _initial_design_hash(evaluations: Sequence[CompletedBOEvaluation], initial_design_size: int) -> str:
+    rows = [asdict(evaluation) for evaluation in evaluations[:initial_design_size]]
+    payload = json.dumps(rows, allow_nan=False, separators=(",", ":"), sort_keys=True).encode()
+    return hashlib.sha256(payload).hexdigest()
 
 
 def current_git_commit(repository: Path | None = None) -> str:
@@ -390,6 +418,14 @@ def collect_context_snapshots(  # noqa: C901, PLR0912, PLR0913
                     raise RuntimeError(f"Episode ended before requested snapshot budget fraction {target}.")
 
             budget_fraction = float(env.get_n_finished_trials()) / float(env._n_trials)
+            evaluations = completed_evaluations(env)
+            metadata = _task_metadata(task_id)
+            initial_design_size = len(env._smac_instance.intensifier.config_selector._initial_design_configs)
+            snapshot_id = hashlib.sha256(
+                (
+                    f"{source_manifest}|{task_id}|{inner_seed}|{action_space_name}|{policy.name}|{budget_fraction:.17g}"
+                ).encode()
+            ).hexdigest()
             snapshots.append(
                 BOSnapshot(
                     task_id=task_id,
@@ -397,7 +433,7 @@ def collect_context_snapshots(  # noqa: C901, PLR0912, PLR0913
                     action_history=tuple(actions),
                     action_space=action_space_name,
                     interaction_frequency=int(env.interaction_frequency),
-                    completed_evaluations=completed_evaluations(env),
+                    completed_evaluations=evaluations,
                     budget_fraction=budget_fraction,
                     history_policy=policy.name,
                     outer_policy_seed=policy.outer_seed,
@@ -405,6 +441,15 @@ def collect_context_snapshots(  # noqa: C901, PLR0912, PLR0913
                     source_manifest_hash=source_manifest_hash,
                     code_commit=code_commit or current_git_commit(),
                     observation_hash=observation_digest(observation),
+                    observation_json=portable_observation_json(observation),
+                    snapshot_id=snapshot_id,
+                    history_seed=policy.outer_seed,
+                    total_budget=int(env._n_trials),
+                    initial_design_hash=_initial_design_hash(evaluations, initial_design_size),
+                    deterministic_environment_json=json.dumps(
+                        replay_process_environment(), separators=(",", ":"), sort_keys=True
+                    ),
+                    **metadata,
                     incumbent=float(env.get_incumbent_cost()),
                     initial_design_incumbent=initial_incumbent,
                     **_reference_fields(reference),
@@ -580,7 +625,7 @@ def _checkpoint_model(run_root: Path, checkpoint: str) -> tuple[Any, int | None,
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--manifest", type=Path, help="Frozen runnable BBOB train/validation manifest.")
+    parser.add_argument("--manifest", type=Path, help="Frozen runnable BBOB/YAHPO train/validation manifest.")
     parser.add_argument("--forbidden-task-ids", type=Path, help="Sealed task manifest rejected before factory use.")
     parser.add_argument(
         "--factory",
@@ -599,11 +644,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--policy-seed", type=int, default=0)
     parser.add_argument("--run-root", type=Path)
     parser.add_argument("--checkpoint", choices=("best", "final"), default="best")
+    parser.add_argument("--reference-table", type=Path, help="Required provenance-complete YAHPO reference table.")
     parser.add_argument("--dry-run", action="store_true")
     return parser
 
 
-def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901
+def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901, PLR0912
     """Collect an explicitly guarded BBOB train/validation snapshot panel.
 
     The CLI never guesses a manifest, factory, or learned run. A missing or
@@ -639,9 +685,9 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901
         raise SystemExit("Real collection requires at least one explicit --budget-fraction.")
     manifest = load_manifest(args.manifest)
     require_runnable_manifest(manifest)
-    if manifest["domain"] != "bbob" or manifest["split"] not in {"train", "validation"}:
+    if manifest["domain"] not in {"bbob", "yahpo"} or manifest["split"] not in {"train", "validation"}:
         raise PermissionError(
-            f"Snapshot CLI accepts only runnable BBOB train/validation manifests, got "
+            f"Snapshot CLI accepts only runnable BBOB/YAHPO train/validation manifests, got "
             f"domain={manifest['domain']!r}, split={manifest['split']!r}."
         )
     forbidden_manifest = load_manifest(args.forbidden_task_ids)
@@ -677,6 +723,18 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901
         assert model is not None
         return SB3SnapshotPolicy(model, checkpoint=args.checkpoint, outer_seed=outer_seed)
 
+    if manifest["domain"] == "bbob":
+        reference_provider: Any = BBOBExactReferenceProvider()
+    else:
+        if args.reference_table is None:
+            raise SystemExit("YAHPO snapshot collection requires --reference-table.")
+        reference_provider = ManifestReferenceProvider(
+            args.reference_table,
+            expected_runtime_objective_transform="negative_accuracy",
+            expected_reporting_objective_transform="one_minus_accuracy",
+            expected_fidelity="fixed_maximum",
+        )
+
     snapshots = collect_snapshot_panel(
         contexts,
         env_factory=factory,
@@ -686,7 +744,7 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901
         source_manifest=str(manifest["id"]),
         source_manifest_hash=str(manifest["manifest_hash"]),
         forbidden_task_ids=set(forbidden_manifest["task_ids"]),
-        reference_provider=BBOBExactReferenceProvider(),
+        reference_provider=reference_provider,
     )
     write_snapshots(args.output, snapshots)
     print(

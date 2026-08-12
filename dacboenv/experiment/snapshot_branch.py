@@ -101,8 +101,18 @@ class BOSnapshot:
     reference_tolerance: float | None = None
     reference_benchmark_code_version: str = ""
     reference_benchmark_data_version: str = ""
+    snapshot_id: str = ""
+    domain: str = ""
+    native_instance: str = ""
+    scenario: str = ""
+    dimension: int | None = None
+    history_seed: int | None = None
+    total_budget: int | None = None
+    observation_json: str = ""
+    initial_design_hash: str = ""
+    deterministic_environment_json: str = ""
 
-    def __post_init__(self) -> None:  # noqa: C901
+    def __post_init__(self) -> None:  # noqa: C901, PLR0912
         """Normalize and validate the portable snapshot representation."""
         if not isinstance(self.task_id, str) or not self.task_id:
             raise ValueError("A snapshot task_id must be a non-empty string.")
@@ -142,6 +152,10 @@ class BOSnapshot:
             raise ValueError("Snapshot reference_tolerance must be non-negative when supplied.")
         if self.reference_kind not in {"", "exact", "best_known"}:
             raise ValueError("Snapshot reference_kind must be '', 'exact', or 'best_known'.")
+        if self.dimension is not None and int(self.dimension) <= 0:
+            raise ValueError("Snapshot dimension must be positive when supplied.")
+        if self.total_budget is not None and int(self.total_budget) <= 0:
+            raise ValueError("Snapshot total_budget must be positive when supplied.")
 
 
 def snapshot_record_digest(snapshot: BOSnapshot) -> str:

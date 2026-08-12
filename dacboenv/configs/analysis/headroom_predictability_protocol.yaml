@@ -1,0 +1,88 @@
+protocol_version: headroom-predictability-v1
+frozen_at_utc: 2026-08-11T02:20:00Z
+source:
+  code_commit: 2357b7185b450b21ca6f586ad1bbacee074eeabb
+  working_tree_status_sha256_before_protocol: 7bf221d5c74047a629dcf58ceb9890ce6923212e10275a1fa2b75caa6e19f1f5
+  working_tree_clean: false
+manifests:
+  bbob_train: 50dda02f306a2cad36af36dfae05962b6a3c0955d8a1404254896ae155a44152
+  bbob_validation: 36ed3fb56ddc141069b1efad21f4f2ee51d98fed5a0ebaf8c1cdc0d3fcfec196
+  yahpo_train: 4d82c9cece51176bb000299b33b0f3e3b3ed34b3401e3f7c25737436a1329b6e
+  yahpo_validation: bf9171ab1e9061b2474e2aa2849e718a49d2350bf82214e6cc4b18867f705d9f
+references:
+  table: dacboenv/experiment/analysis/yahpo_best_known_references.json
+  sha256: d5b37cbb50d2e227dd794fd3ff0ad61089b10c163c1f09fb5b1689c1d5fece77
+schemas:
+  observation_source_sha256: d6adb5e99e6e71d85bcb4ff40c990034d95d7da6bd5959f5fda8499533dcd5b7
+  action_source_sha256: 01cd589cd90d5665ac017c88a47419286c3ad5076e6dc56190e09e6ae488b858
+  policy_observation_keys: [global_state, action_features]
+deterministic_process_contract:
+  PYTHONHASHSEED: "0"
+  OMP_NUM_THREADS: "1"
+  MKL_NUM_THREADS: "1"
+  NUMEXPR_NUM_THREADS: "1"
+  OPENBLAS_NUM_THREADS: "1"
+action_families: [wei, af_selection]
+interaction_frequency: 1
+branch_horizons: [1, 5, 10]
+branch_execution: one_branch_per_action_with_prefix_measurements
+deterministic_action_replicates: 1
+stochastic_action_replicates: 3
+history_generators:
+  - default_smac
+  - sawei
+  - uniform_random
+  - family_static
+family_static_actions:
+  wei: [3, 4]
+  af_selection: [0]
+budget_phases:
+  early: 0.25
+  middle: 0.50
+  late: 0.75
+snapshot_counts_per_action_family:
+  train: 240
+  validation: 120
+domain_fraction_per_split:
+  bbob: 0.5
+  yahpo: 0.5
+split_definitions:
+  fit: frozen_training_manifests_only
+  final_analysis: frozen_validation_manifests_only
+  early_stopping_group: complete_task_inner_seed_history_trajectory
+  official_test_tasks_forbidden: true
+tie_tolerances: [0.0, 0.0001, 0.001]
+bootstrap:
+  resamples: 2000
+  seed: 671103
+  bbob_hierarchy: [function_group, task, inner_seed, snapshot]
+  yahpo_hierarchy: [scenario, dataset_instance, inner_seed, snapshot]
+  domain_weights: {bbob: 0.5, yahpo: 0.5}
+models:
+  constant_action: {selection: train_mean_advantage}
+  static_context: {kind: ridge, alpha: 1.0}
+  phase_only: {kind: ridge, alpha: 1.0}
+  static_context_phase: {kind: ridge, alpha: 1.0}
+  flat_mlp:
+    hidden_layers: [64, 64]
+    learning_rate: 0.001
+    weight_decay: 0.0001
+    max_epochs: 200
+    patience: 20
+  shared_action_scorer:
+    global_hidden: 32
+    action_hidden: 32
+    scorer_hidden: 32
+    learning_rate: 0.001
+    weight_decay: 0.0001
+    robust_loss: smooth_l1
+    pairwise_ranking_weight: 0.1
+    max_epochs: 200
+    patience: 20
+model_seeds: [1103, 2207, 3301]
+selection_fallback_minimum_support: 2
+epsilon: 1.0e-12
+campaign_seed: 904211
+development_group_seed: 904212
+static_vbs_bootstrap_seed: 904213
+negative_control_seed: 904214

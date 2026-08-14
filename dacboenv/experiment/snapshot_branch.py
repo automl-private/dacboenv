@@ -222,6 +222,8 @@ class SnapshotBranchResult:
     initial_potential: float
     final_potential: float
     normalized_potential_improvement: float
+    reward_sum: float
+    reward_telescoping_error: float
     policy_steps: int
     terminated: bool
     truncated: bool
@@ -375,12 +377,15 @@ def _incumbent_cost(env: ReplayableBOEnv) -> float:
     return incumbent
 
 
-def _step(env: ReplayableBOEnv, action: int) -> tuple[bool, bool]:
+def _step(env: ReplayableBOEnv, action: int) -> tuple[bool, bool, float]:
     result = env.step(action)
     if not isinstance(result, tuple) or len(result) != _STEP_RESULT_SIZE:
         raise SnapshotReplayError("Environment step() must return the Gymnasium five-tuple.")
-    _observation, _reward, terminated, truncated, _info = result
-    return bool(terminated), bool(truncated)
+    _observation, reward, terminated, truncated, _info = result
+    reward_value = float(reward)
+    if not np.isfinite(reward_value):
+        raise SnapshotReplayError(f"Environment step() returned non-finite reward {reward!r}.")
+    return bool(terminated), bool(truncated), reward_value
 
 
 def replay_snapshot(
@@ -410,7 +415,7 @@ def replay_snapshot(
                     f"Snapshot action {action} at history index {history_index} is not in {actions!r}."
                 )
             before = _finished_trials(env)
-            terminated, truncated = _step(env, action)
+            terminated, truncated, _reward = _step(env, action)
             after = _finished_trials(env)
             if after <= before:
                 raise SnapshotReplayError(
@@ -477,6 +482,7 @@ def _branch_one_action(
     policy_steps = 0
     terminated = False
     truncated = False
+    reward_sum = 0.0
 
     def configuration_trace() -> tuple[str, ...]:
         smac = getattr(env, "_smac_instance", None)
@@ -499,7 +505,8 @@ def _branch_one_action(
                     f"Task {snapshot.task_id!r}, action {action} terminated before the requested horizon {horizon}."
                 )
             before = _finished_trials(env)
-            terminated, truncated = _step(env, action)
+            terminated, truncated, reward = _step(env, action)
+            reward_sum += reward
             policy_steps += 1
             after = _finished_trials(env)
             if after <= before:
@@ -520,6 +527,17 @@ def _branch_one_action(
             reference_value,
             episode_initial_incumbent,
         )
+        potential_improvement = final_potential - initial_potential
+        telescoping_error = reward_sum - potential_improvement
+        reward_keys = {str(key) for key in getattr(env, "_reward_keys", ())}
+        reward_is_reference_potential = bool(
+            reward_keys.intersection({"reference_regret_improvement", "true_regret_improvement"})
+        )
+        if reward_is_reference_potential and not np.isclose(reward_sum, potential_improvement, rtol=0.0, atol=1e-10):
+            raise SnapshotReplayError(
+                "Branch rewards do not telescope to the normalized reference-potential change: "
+                f"sum={reward_sum}, potential={potential_improvement}, error={telescoping_error}."
+            )
         results.append(
             SnapshotBranchResult(
                 snapshot_index=snapshot_index,
@@ -534,7 +552,9 @@ def _branch_one_action(
                 regret_improvement=initial_regret - final_regret,
                 initial_potential=initial_potential,
                 final_potential=final_potential,
-                normalized_potential_improvement=final_potential - initial_potential,
+                normalized_potential_improvement=potential_improvement,
+                reward_sum=reward_sum,
+                reward_telescoping_error=telescoping_error,
                 policy_steps=policy_steps,
                 terminated=terminated,
                 truncated=truncated,

@@ -1,0 +1,48 @@
+protocol_version: headroom-predictability-v3
+frozen_at_utc: 2026-08-12T12:30:00Z
+source_revision: 2f0804e75e67b67fc0f775c30c49a4daef70b97a
+working_tree_clean: false
+working_tree_status_sha256: 73384b877dd755c7b8b76aa397b5f0c64d53aa91c3d0ee80593eceffd5387b63
+inputs:
+  train_snapshots_sha256: d8c64c0c449226cc66228b990dd75c99de1244bbd3a6aacecef2e6d03e1ec9a5
+  validation_snapshots_sha256: 3893fff1dfa7962a433a5eb7a5c0121dbc0550714f5d91a2620f6693e85391e5
+  branch_results_sha256: 1f48e71a0ba03bec57344abea7956c692b220f70e4ae10b4950d93bfb47f9fd3
+  v2_features_sha256: 6b6937acd30eb9ef9f5a2e7d817c4e40bccc8467df30e4161a67997887c7ab39
+  v2_predictions_sha256: faf285314369435fa2ab45dec98c7c8146bd7f421fc44d5b7e2aae9980bffcd3
+  reference_table_sha256: 399d94d67b2b5646687752f604f3c316f99ba66d522881942d9b33357feb3f99
+  observation_schema_sha256: d6adb5e99e6e71d85bcb4ff40c990034d95d7da6bd5959f5fda8499533dcd5b7
+  action_schema_sha256: 01cd589cd90d5665ac017c88a47419286c3ad5076e6dc56190e09e6ae488b858
+manifests:
+  bbob_train: 50dda02f306a2cad36af36dfae05962b6a3c0955d8a1404254896ae155a44152
+  bbob_validation: 36ed3fb56ddc141069b1efad21f4f2ee51d98fed5a0ebaf8c1cdc0d3fcfec196
+  yahpo_train: 4d82c9cece51176bb000299b33b0f3e3b3ed34b3401e3f7c25737436a1329b6e
+  yahpo_validation: bf9171ab1e9061b2474e2aa2849e718a49d2350bf82214e6cc4b18867f705d9f
+scenario_parser_version: canonical-task-metadata-v1
+expected_yahpo_scenarios: [lcbench, rbv2_glmnet, rbv2_ranger, rbv2_rpart, rbv2_super, rbv2_xgboost]
+subgroups: [all, bbob, yahpo, yahpo_scenario, yahpo_without_xgboost, yahpo_leave_one_scenario_out, bbob_dimension, bbob_function_group_privileged, budget_phase, history_generator, gap_gt_1e-3, gap_gt_1e-2]
+nonfeedback_selection: frozen_grouped_training_development_deployable_only
+tie_tolerances: [0.0, 0.0001, 0.001]
+captured_headroom_epsilon: 1.0e-12
+history_length: 10
+history_replay: exact_portable_action_prefix
+static_vbs_panel:
+  target_train_contexts: 60
+  target_validation_contexts: 40
+  wei_alphas: [0.0, 0.25, 0.5, 0.75, 1.0]
+  context_selection: deterministic_domain_dimension_scenario_stratified
+bootstrap:
+  resamples: 2000
+  seed: 881203
+  yahpo_hierarchy: [scenario, dataset_instance, trajectory, snapshot]
+predictors: [global_static, training_selected_nonfeedback, extra_trees, histogram_gradient_boosting, pairwise_logistic, flat_mlp, shared_action_scorer, true_history_gru]
+model_seeds: [1103, 2207, 3301]
+development_seed: 904212
+negative_control_seed: 904214
+sealed_exclusions: [strict_bbob_test, full_bbob_test, official_yahpo_so_test, nb301]
+deterministic_process_contract:
+  PYTHONHASHSEED: "0"
+  OMP_NUM_THREADS: "1"
+  MKL_NUM_THREADS: "1"
+  NUMEXPR_NUM_THREADS: "1"
+  OPENBLAS_NUM_THREADS: "1"
+output_namespace: artifacts/headroom_predictability_v3

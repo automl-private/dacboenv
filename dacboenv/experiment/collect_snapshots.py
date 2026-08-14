@@ -32,6 +32,7 @@ from dacboenv.experiment.snapshot_branch import (
     require_deterministic_replay_process_environment,
 )
 from dacboenv.experiment.source_provenance import current_source_revision
+from dacboenv.experiment.task_metadata import parse_task_metadata
 from dacboenv.reference import BBOBExactReferenceProvider, ManifestReferenceProvider
 
 
@@ -178,12 +179,21 @@ def portable_observation_json(observation: Any) -> str:
 
 
 def _task_metadata(task_id: str) -> dict[str, Any]:
-    parts = task_id.split("/")
-    if task_id.startswith("bbob/") and len(parts) == 4:  # noqa: PLR2004
-        return {"domain": "bbob", "dimension": int(parts[1]), "native_instance": parts[3], "scenario": ""}
-    if task_id.lower().startswith("yahpo/so/") and len(parts) == 6:  # noqa: PLR2004
-        return {"domain": "yahpo", "dimension": None, "native_instance": parts[4], "scenario": parts[2]}
-    return {"domain": "", "dimension": None, "native_instance": "", "scenario": ""}
+    try:
+        metadata = parse_task_metadata(task_id)
+    except ValueError:
+        # Portable replay is also used with synthetic unit-test/task-factory IDs.
+        # Never reinterpret a malformed benchmark namespace, but preserve the
+        # historical neutral metadata for explicitly non-benchmark identifiers.
+        if task_id.startswith(("bbob/", "yahpo/")):
+            raise
+        return {"domain": "", "dimension": None, "native_instance": "", "scenario": ""}
+    return {
+        "domain": metadata.domain,
+        "dimension": metadata.dimension,
+        "native_instance": metadata.native_instance,
+        "scenario": "" if metadata.scenario is None else metadata.scenario,
+    }
 
 
 def _initial_design_hash(evaluations: Sequence[CompletedBOEvaluation], initial_design_size: int) -> str:

@@ -27,6 +27,7 @@ from dacboenv.experiment.evaluation_determinism import (
     derive_policy_seed,
     runhistory_fingerprints,
 )
+from dacboenv.experiment.evaluation_status import atomic_json, episode_status
 from dacboenv.experiment.paired_evaluator import (
     EvaluationContext,
     EvaluationMethod,
@@ -377,23 +378,38 @@ def make_dacbo_method_runner(
             context.context_hash,
             outer_ppo_seed=outer_ppo_seed,
         )
-        trace = run_dacbo_episode(
-            context,
-            method,
-            env_factory=env_factory,
-            policy_factory=policy_factory,
-            action_family=action_family,
-            checkpoint_type=checkpoint_type,
-            outer_ppo_seed=outer_ppo_seed,
-            code_commit=commit,
-            policy_seed=effective_policy_seed,
-            policy_metadata=policy_metadata,
-        )
         trace_directory.mkdir(parents=True, exist_ok=True)
         safe_task = context.task_id.replace("/", "__")
         path = trace_directory / f"{method.name}__{safe_task}__seed{context.inner_seed}.json"
-        path.write_text(json.dumps(trace.to_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        return trace.record
+        status_path = path.with_suffix(".status.json")
+        cell = {
+            "method_id": method.name,
+            "task_id": context.task_id,
+            "evaluation_seed": context.inner_seed,
+            "checkpoint_mode": checkpoint_type,
+            "model_sha256": None if policy_metadata is None else policy_metadata.get("policy_model_sha256"),
+        }
+        with episode_status(
+            status_path,
+            cell=cell,
+            context_hash=context.context_hash,
+            result_path=path,
+        ) as status:
+            trace = run_dacbo_episode(
+                context,
+                method,
+                env_factory=env_factory,
+                policy_factory=policy_factory,
+                action_family=action_family,
+                checkpoint_type=checkpoint_type,
+                outer_ppo_seed=outer_ppo_seed,
+                code_commit=commit,
+                policy_seed=effective_policy_seed,
+                policy_metadata=policy_metadata,
+            )
+            status["objective_evaluations_completed"] = trace.record.evaluation_budget
+            atomic_json(path, trace.to_dict())
+            return trace.record
 
     return runner
 

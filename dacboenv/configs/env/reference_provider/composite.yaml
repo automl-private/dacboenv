@@ -1,0 +1,12 @@
+# @package dacboenv.reference_provider
+
+_target_: dacboenv.reference.CompositeReferenceProvider
+providers:
+  bbob:
+    _target_: dacboenv.reference.BBOBExactReferenceProvider
+  yahpo:
+    _target_: dacboenv.reference.ManifestReferenceProvider
+    source: ${oc.env:DACBO_YAHPO_REFERENCE_TABLE}
+    expected_runtime_objective_transform: negative_accuracy
+    expected_reporting_objective_transform: one_minus_accuracy
+    expected_fidelity: fixed_maximum

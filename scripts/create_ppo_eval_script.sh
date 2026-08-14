@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 # Discover every completed PPO run below one root and create a concrete CARP-S
-# evaluation launcher. Trained models are selected from the authoritative
-# validation/frequent/history.json files; step-zero artifacts are never used.
+# evaluation launcher. Final checkpoints are selected at the exact configured
+# terminal timestep; step-zero artifacts are never used.
 
 set -euo pipefail
 
@@ -13,24 +13,29 @@ source "${script_directory}/evaluation_determinism_env.sh"
 usage() {
     cat <<'EOF'
 Usage:
-  bash scripts/create_ppo_eval_script.sh PPO_RESULTS_DIR
+  bash scripts/create_ppo_eval_script.sh PPO_RESULTS_DIR \
+    [--output DIR] [--checkpoint MODE] [--explicit-model PATH] \
+    [--explicit-normalizer PATH] [--overwrite]
 
 Arguments:
   PPO_RESULTS_DIR   Any directory containing completed Hydra PPO runs. Every
-                    descendant run with `.hydra/config.yaml` and a nonempty
-                    `validation/frequent/history.json` is discovered.
+                    descendant complete run is discovered.
 
-Generation-time environment variables:
-  DACBO_POLICY_MODEL        `best` (default) selects the highest balanced score
-                            in frequent history; `last` selects its largest
-                            positive training step.
-  DACBO_EVAL_RESULTS_DIR    Defaults to `<PPO_RESULTS_DIR>_carps_eval`.
-  DACBO_EVAL_RUN_SCRIPT     Defaults to
-                            `<DACBO_EVAL_RESULTS_DIR>/run_carps_eval.sh`.
+Options:
+  --checkpoint MODE         final (default), full_best, frequent_best, or
+                            explicit. Deprecated aliases: best=full_best,
+                            last=final.
+  --output DIR              Evaluation bundle root. Default:
+                            `<PPO_RESULTS_DIR>_carps_eval`.
+  --explicit-model PATH     Required with --checkpoint explicit.
+  --explicit-normalizer PATH  Matching optional normalization state.
+  --overwrite               Replace an existing generated run script.
+
+Deprecated environment compatibility:
+  DACBO_POLICY_MODEL, DACBO_EVAL_RESULTS_DIR, DACBO_EVAL_RUN_SCRIPT,
+  DACBO_OVERWRITE_RUN_SCRIPT. Command-line arguments take precedence.
   DACBO_PYTHON              Python executable. Default: .env/bin/python when
                             present, otherwise python from PATH.
-  DACBO_OVERWRITE_RUN_SCRIPT=1
-                            Replace an existing generated RUN_SCRIPT.
 
 The generated script accepts `training`, `bbob_2d_8d`, or `both` (default),
 plus `ppo` (default), `baselines`, `all`, or a comma-separated method subset.
@@ -40,7 +45,7 @@ evaluated with independently configured CARP-S seeds.
 EOF
 }
 
-if (( $# != 1 )); then
+if (( $# < 1 )); then
     usage >&2
     exit 2
 fi
@@ -49,13 +54,30 @@ repository_root="$(cd "${script_directory}/.." && pwd -P)"
 cd "${repository_root}"
 
 ppo_results_input="$1"
+shift
+checkpoint="${DACBO_POLICY_MODEL:-final}"
+eval_results_input="${DACBO_EVAL_RESULTS_DIR:-}"
+explicit_model=""
+explicit_normalizer=""
+overwrite="${DACBO_OVERWRITE_RUN_SCRIPT:-0}"
+while (( $# )); do
+    case "$1" in
+        --checkpoint) checkpoint="${2:?--checkpoint requires a value}"; shift 2 ;;
+        --output) eval_results_input="${2:?--output requires a value}"; shift 2 ;;
+        --explicit-model) explicit_model="${2:?--explicit-model requires a value}"; shift 2 ;;
+        --explicit-normalizer) explicit_normalizer="${2:?--explicit-normalizer requires a value}"; shift 2 ;;
+        --overwrite) overwrite=1; shift ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
+    esac
+done
 if [[ ! -d "${ppo_results_input}" ]]; then
     echo "PPO results directory does not exist: ${ppo_results_input}" >&2
     exit 1
 fi
 ppo_results="$(cd "${ppo_results_input}" && pwd -P)"
 
-eval_results_input="${DACBO_EVAL_RESULTS_DIR:-${ppo_results}_carps_eval}"
+eval_results_input="${eval_results_input:-${ppo_results}_carps_eval}"
 mkdir -p "${eval_results_input}"
 eval_results="$(cd "${eval_results_input}" && pwd -P)"
 generated_config_root="${eval_results}/config"
@@ -66,7 +88,7 @@ run_script="${DACBO_EVAL_RUN_SCRIPT:-${eval_results}/run_carps_eval.sh}"
 mkdir -p "$(dirname "${run_script}")"
 run_script_directory="$(cd "$(dirname "${run_script}")" && pwd -P)"
 run_script="${run_script_directory}/$(basename "${run_script}")"
-if [[ -e "${run_script}" && "${DACBO_OVERWRITE_RUN_SCRIPT:-0}" != "1" ]]; then
+if [[ -e "${run_script}" && "${overwrite}" != "1" ]]; then
     echo "Run script already exists: ${run_script}" >&2
     echo "Set DACBO_OVERWRITE_RUN_SCRIPT=1 to replace it." >&2
     exit 1
@@ -88,27 +110,33 @@ if [[ ! -x "${python_bin}" ]]; then
 fi
 python_bin="$(cd "$(dirname "${python_bin}")" && pwd -P)/$(basename "${python_bin}")"
 
-policy_model="${DACBO_POLICY_MODEL:-best}"
+policy_model="${checkpoint}"
 case "${policy_model}" in
-    best|last) ;;
+    final|full_best|frequent_best|explicit|best|last) ;;
     *)
         echo "Unknown DACBO_POLICY_MODEL=${policy_model}." >&2
-        echo "Expected best or last." >&2
+        echo "Expected final, full_best, frequent_best, explicit, best, or last." >&2
         exit 2
         ;;
 esac
 optimizer_group="PPO-Structured-MLP"
 inventory_path="${generated_config_root}/ppo_inventory.json"
 
-# This creates the CARP-S policy bridge inside the evaluation bundle. It copies
-# each training MDP definition and stores an absolute selected-model path in
-# the generated policy YAML.
-"${python_bin}" -m dacboenv.experiment.collect_ppo \
-    "${ppo_results}" "${generated_policy_root}" "${policy_model}" "${inventory_path}"
+# Create domain-neutral CARP-S policy bundles. Evaluation environments are
+# composed later from each evaluation task, never copied from training.
+collector_args=(
+    "${ppo_results}"
+    --configs-path="${generated_policy_root}"
+    --model-selection="${policy_model}"
+    --inventory-path="${inventory_path}"
+)
+if [[ -n "${explicit_model}" ]]; then collector_args+=(--explicit-model="${explicit_model}"); fi
+if [[ -n "${explicit_normalizer}" ]]; then collector_args+=(--explicit-normalizer="${explicit_normalizer}"); fi
+"${python_bin}" -m dacboenv.experiment.collect_ppo "${collector_args[@]}"
 
 inventory_tsv="${generated_config_root}/ppo_inventory.tsv"
 "${python_bin}" -c \
-    'import json,sys; p=json.load(open(sys.argv[1])); [print("{}|{}|{}|{}".format(r["frequency"],r["seed"],r["task_id"],r["model_path"])) for r in p["policies"]]' \
+    'import json,sys; p=json.load(open(sys.argv[1])); [print("{}|{}|{}|{}|{}".format(r["frequency"],r["seed"],r["task_id"],r["model_path"],r["action_family"])) for r in p["policies"]]' \
     "${inventory_path}" > "${inventory_tsv}"
 mapfile -t selected_entries < "${inventory_tsv}"
 if (( ${#selected_entries[@]} == 0 )); then
@@ -117,7 +145,7 @@ if (( ${#selected_entries[@]} == 0 )); then
 fi
 
 for entry in "${selected_entries[@]}"; do
-    IFS="|" read -r frequency policy_seed task_id model_path <<< "${entry}"
+    IFS="|" read -r frequency policy_seed task_id model_path action_family <<< "${entry}"
     policy_config="${generated_policy_root}/${optimizer_group}/${task_id}/seed${policy_seed}.yaml"
     if [[ ! -s "${policy_config}" ]]; then
         echo "Collector did not create the expected CARP-S policy config: ${policy_config}" >&2
@@ -145,7 +173,7 @@ done
 # PPO results: ${ppo_results}
 # CARP-S results: ${eval_results}
 # PPO runs discovered: ${#selected_entries[@]}
-# PPO model selection: ${policy_model} from validation/frequent/history.json
+# PPO checkpoint mode: ${policy_model}
 #
 # Usage:
 #   bash ${run_script} [training|bbob_2d_8d|both] [METHODS]
@@ -344,7 +372,7 @@ selected_optimizer_ids=()
 if [[ "${run_ppo}" == "1" ]]; then
     n_optimizer_configs=$((n_optimizer_configs + n_policies))
     for entry in "${policy_entries[@]}"; do
-        IFS="|" read -r frequency policy_seed task_id model_path <<< "${entry}"
+        IFS="|" read -r frequency policy_seed task_id model_path action_family <<< "${entry}"
         selected_optimizer_ids+=("PPO-Structured-MLP--${task_id}--seed${policy_seed}")
     done
 fi
@@ -473,7 +501,8 @@ run_ppo_configs() {
         local policy_seed
         local task_id
         local model_path
-        IFS="|" read -r frequency policy_seed task_id model_path <<< "${entry}"
+        local action_family
+        IFS="|" read -r frequency policy_seed task_id model_path action_family <<< "${entry}"
 
         if [[ ! -s "${model_path}" ]]; then
             echo "Selected model is missing or empty: ${model_path}" >&2
@@ -482,12 +511,27 @@ run_ppo_configs() {
 
         local policy_group="PPO-Structured-MLP/${task_id}"
         local optimizer_id="PPO-Structured-MLP--${task_id}--seed${policy_seed}"
+        local action_config
+        local observation_config
+        case "${action_family}" in
+            wei) action_config="wei_alpha_discrete"; observation_config="structured" ;;
+            af_selection) action_config="af_selection_discrete"; observation_config="structured_af_selection" ;;
+            lcb_quantile) action_config="lcb_quantile_discrete"; observation_config="structured_quantile" ;;
+            ucb_quantile) action_config="ucb_quantile_discrete"; observation_config="structured_quantile" ;;
+            *) echo "Unsupported learned-policy action family: ${action_family}" >&2; exit 1 ;;
+        esac
         launch_carps_sweep \
             "ppo-f${frequency}-seed${policy_seed}" \
             "${suite_id}" \
             "${optimizer_id}" \
             "${task_configs}" \
             "+eval=base" \
+            "+env=base" \
+            "+env/opt=base" \
+            "+env/action=${action_config}" \
+            "+env/interaction_freq=f${frequency}" \
+            "+env/obs=${observation_config}" \
+            "+env/reward=${evaluation_reward_config}" \
             "+policy/optimized/${policy_group}=seed${policy_seed}"
     done
 }
@@ -626,7 +670,7 @@ echo
 echo "Created CARP-S evaluation launcher:"
 echo "  ${run_script}"
 echo
-echo "It contains ${#selected_entries[@]} discovered learned policies and their absolute frequent-checkpoint paths."
+echo "It contains ${#selected_entries[@]} learned policies selected by checkpoint mode ${policy_model}."
 echo "Review learned policies plus all baselines without submitting:"
 echo "  DACBO_DRY_RUN=1 bash ${run_script} both all"
 echo "Submit learned policies plus all baselines to Otus Slurm:"

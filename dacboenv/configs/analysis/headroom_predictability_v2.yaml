@@ -1,0 +1,76 @@
+protocol_version: headroom-predictability-v2
+frozen_at_utc: 2026-08-11T16:10:00Z
+source:
+  code_commit: 2357b7185b450b21ca6f586ad1bbacee074eeabb
+  working_tree_clean: false
+  working_tree_status_sha256: 552812bc11d1c6fce5cd9a54dfc538446bb5b4cbaf2d6ea6d29411902cbc5de9
+inputs:
+  train_snapshots_sha256: d8c64c0c449226cc66228b990dd75c99de1244bbd3a6aacecef2e6d03e1ec9a5
+  validation_snapshots_sha256: 3893fff1dfa7962a433a5eb7a5c0121dbc0550714f5d91a2620f6693e85391e5
+  branch_results_sha256: 1f48e71a0ba03bec57344abea7956c692b220f70e4ae10b4950d93bfb47f9fd3
+  train_manifest_sha256: 28abd64b272ae37bc47abbb26b312095479866d9f34ed5b3cabf751b3e153a6f
+  validation_manifest_sha256: 3610839be0e5e470898cd8a820dd14658f6aedef9d996ce01848c88a589d5533
+  reference_table_sha256: d5b37cbb50d2e227dd794fd3ff0ad61089b10c163c1f09fb5b1689c1d5fece77
+  observation_schema_sha256: d6adb5e99e6e71d85bcb4ff40c990034d95d7da6bd5959f5fda8499533dcd5b7
+  action_schema_sha256: 01cd589cd90d5665ac017c88a47419286c3ad5076e6dc56190e09e6ae488b858
+splits:
+  fit: headroom_train_only
+  final_evaluation: headroom_validation_once
+  development_group: complete_task_inner_seed_history_trajectory
+  development_fraction: 0.2
+features:
+  compact: [global_state, action_features]
+  static_deployable: [domain, scenario, dimension, native_budget, initial_design_size, initial_design_fraction, surrogate_family]
+  bbob_privileged: [function_group]
+  search_space: [variable_type_counts, variable_type_fractions, condition_counts, active_count_moments, cardinality, log_scaled, bounded_numeric, remaining_budget, budget_per_effective_dimension]
+  short_history_windows: [5, 10]
+  sequence_length: 10
+  missing_value_policy: sentinel_minus_one_plus_availability_mask
+targets: [within_state_action_advantage, residual_to_context_static]
+predictors:
+  - flat_mlp
+  - shared_action_scorer
+  - extra_trees
+  - histogram_gradient_boosting
+  - pairwise_logistic_ranking
+  - short_history_gru
+  - scenario_experts
+  - sparse_residual_controller
+nonfeedback_selectors:
+  - global_static
+  - domain_static
+  - context_dimension_deployable
+  - context_dimension_function_group_privileged
+  - phase_three_bin
+  - phase_five_bin
+  - context_phase_three_bin
+  - context_phase_five_bin
+selection: grouped_training_development_then_refit_all_training
+validation_envelope_label: analysis_only_nonfeedback_selector_oracle
+tie_tolerances: [0.0, 0.0001, 0.001]
+gap_bins: [0.0, 0.0001, 0.001, 0.01, 0.05]
+bootstrap:
+  resamples: 2000
+  seed: 771103
+  conditional_validation: true
+  full_protocol_refit: true
+  bbob_hierarchy: [function_group, function_task, inner_seed_trajectory, snapshot]
+  yahpo_hierarchy: [scenario, dataset_instance, inner_seed_trajectory, snapshot]
+  mixed_domain_weights: {bbob: 0.5, yahpo: 0.5}
+random_seeds:
+  development: 904212
+  models: [1103, 2207, 3301]
+  negative_controls: 904214
+  bootstrap: 771103
+deterministic_process_contract:
+  PYTHONHASHSEED: "0"
+  OMP_NUM_THREADS: "1"
+  MKL_NUM_THREADS: "1"
+  NUMEXPR_NUM_THREADS: "1"
+  OPENBLAS_NUM_THREADS: "1"
+exclusions:
+  strict_bbob_test: forbidden
+  full_bbob_test: forbidden
+  official_yahpo_so_test: forbidden
+  nb301: forbidden
+output_namespace: artifacts/headroom_predictability_v2

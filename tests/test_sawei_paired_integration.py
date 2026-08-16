@@ -104,9 +104,11 @@ def test_real_sawei_and_static_share_exact_reduced_bbob_context(tmp_path, monkey
     assert all(record.context_key == context.key for record in records)
     assert all(0.0 <= record.episode_return <= 1.0 for record in records)
     assert {record.method for record in records} == {static_method, SAWEI}
-    assert len(list((tmp_path / "traces").glob("*.json"))) == 2
-    traces = [json.loads(path.read_text(encoding="utf-8")) for path in (tmp_path / "traces").glob("*.json")]
-    assert len({tuple(trace["incumbent_trajectory"][:2]) for trace in traces}) == 1
+    traces = [path for path in (tmp_path / "traces").glob("*.json") if not path.name.endswith(".status.json")]
+    assert len(traces) == 2
+    assert len(list((tmp_path / "traces").glob("*.status.json"))) == 2
+    trace_payloads = [json.loads(path.read_text(encoding="utf-8")) for path in traces]
+    assert len({tuple(trace["incumbent_trajectory"][:2]) for trace in trace_payloads}) == 1
     static_record = next(record for record in records if record.method == static_method)
     sawei_record = next(record for record in records if record.method == SAWEI)
     assert len(static_record.action_histogram) == 5

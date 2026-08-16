@@ -1,309 +1,158 @@
-"""Regression tests for selecting and exporting trained PPO policies."""
+"""Checkpoint selection and domain-neutral PPO bundle regression tests."""
 
 from __future__ import annotations
 
+import json
+import warnings
 from pathlib import Path
-from typing import Any
 
-import numpy as np
 import pytest
-from dacboenv.experiment.collect_ppo import (
-    _uses_structured_reference_free_mdp,
-    _uses_structured_training_mdp,
-    create_ppo_eval_configs,
-    gather_trained_ppo,
-)
-from dacboenv.policy.sb3_model import ModelPolicy
-from gymnasium import Env
-from gymnasium.spaces import Box, Dict, Discrete
-from hydra.utils import instantiate
-from omegaconf import DictConfig, OmegaConf
-from stable_baselines3 import PPO
+from dacboenv.experiment.checkpoint_selection import canonical_checkpoint_mode, select_checkpoint
+from dacboenv.experiment.collect_ppo import create_ppo_eval_configs, gather_trained_ppo
+from dacboenv.experiment.evaluation_determinism import file_sha256
+from omegaconf import OmegaConf
 
 
-class TinyPolicyEnv(Env):
-    """Minimal structured environment for testing the SB3-to-CARPS handoff."""
-
-    def __init__(self) -> None:
-        self.observation_space = Dict(
-            {
-                "global_state": Box(-1.0, 1.0, shape=(13,), dtype=np.float32),
-                "action_features": Box(
-                    -1.0,
-                    1.0,
-                    shape=(5, 4),
-                    dtype=np.float32,
-                ),
-            }
-        )
-        self.action_space = Discrete(5)
-
-    def _observation(self) -> dict[str, np.ndarray]:
-        """Return one valid structured observation."""
-        return {
-            "global_state": np.zeros(13, dtype=np.float32),
-            "action_features": np.zeros((5, 4), dtype=np.float32),
-        }
-
-    def reset(
-        self,
-        *,
-        seed: int | None = None,
-        options: dict[str, Any] | None = None,  # noqa: ARG002
-    ) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
-        """Reset the one-step environment."""
-        super().reset(seed=seed)
-        return self._observation(), {}
-
-    def step(
-        self,
-        action: int,  # noqa: ARG002
-    ) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
-        """Finish the one-step environment."""
-        return self._observation(), 0.0, True, False, {}
-
-
-def _write_run_config(
-    run_directory: Path,
-    *,
-    structured: bool = True,
-    vecnormalize: bool = False,
-    true_regret: bool = False,
-    legacy_logging_interpolation: bool = False,
-) -> DictConfig:
-    """Create the minimal saved Hydra config consumed by the collector."""
-    structured_reward_id = "true-regret-improvement" if true_regret else "reference-free-improvement"
-    structured_reward_key = "true_regret_improvement" if true_regret else "reference_free_improvement"
+def _run(tmp_path: Path, *, final: int = 60, vecnormalize: bool = False) -> Path:
+    root = tmp_path / "run"
     cfg = OmegaConf.create(
         {
             "optimizer_id": "PPO-Structured-MLP",
-            "task_id": "structured-task",
-            "seed": 7,
-            "observation_space_id": "structured" if structured else "sawei",
-            "reward_id": (structured_reward_id if structured or true_regret else "symlogregret-reference"),
-            "experiment": {"vecnormalize": vecnormalize},
+            "task_id": "YAHPO-only-WEI-f1",
+            "seed": 2,
+            "action_space_id": "wei-discrete-5",
+            "observation_space_id": "structured",
+            "experiment": {
+                "total_timesteps": final,
+                "vecnormalize": vecnormalize,
+                "validation": {"full_manifest_hash": "full-panel-hash"},
+            },
             "dacboenv": {
-                "task_ids": ["training-task"],
-                "inner_seeds": [0],
-                "reward_keys": ([structured_reward_key] if structured or true_regret else ["symlogregret"]),
+                "interaction_frequency": 1,
+                "task_ids": ["yahpo/so/lcbench/126025/None"],
+                "instance_selector_class": {"_target_": "dacboenv.env.instance.RandomInstanceSelector"},
+                "reference_provider": {"_target_": "dacboenv.reference.ManifestReferenceProvider"},
+                "reward_keys": ["reference_regret_improvement"],
             },
         }
     )
-    config_path = run_directory / ".hydra" / "config.yaml"
-    if legacy_logging_interpolation:
-        cfg.dacboenv.optimizer_cfg = {
-            "smac_cfg": {
-                "smac_kwargs": {
-                    "logging_level": {
-                        "_target_": "pathlib.Path",
-                        "_args_": ["${dacboenv_config:logging/smac_internal.yaml}"],
-                    }
-                }
+    config = root / ".hydra" / "config.yaml"
+    config.parent.mkdir(parents=True)
+    OmegaConf.save(cfg, config)
+    directory = root / "validation" / "frequent" / "checkpoints"
+    directory.mkdir(parents=True)
+    entries = []
+    for step, score in ((20, 0.8), (60, 0.4)):
+        model = directory / f"step_{step}_model.zip"
+        model.write_bytes(f"model-{step}".encode())
+        normalizer = None
+        if vecnormalize:
+            normalizer = directory / f"step_{step}_vecnormalize.pkl"
+            normalizer.write_bytes(f"normalizer-{step}".encode())
+        entries.append(
+            {
+                "training_step": step,
+                "model_path": str(model),
+                "normalization_path": None if normalizer is None else str(normalizer),
+                "scores": {"balanced": score},
             }
-        }
-    config_path.parent.mkdir(parents=True)
-    OmegaConf.save(cfg, config_path)
-    return cfg
-
-
-def test_gather_prefers_validation_model_with_legacy_fallbacks(
-    tmp_path: Path,
-) -> None:
-    """Each run contributes its validation best, final, or newest checkpoint."""
-    best_run = tmp_path / "PPO" / "DACBO" / "best-task" / "1"
-    _write_run_config(best_run)
-    (best_run / "validation").mkdir()
-    (best_run / "validation" / "best_model.zip").touch()
-    (best_run / "model.zip").touch()
-    (best_run / "rl_model_200_steps.zip").touch()
-
-    final_run = tmp_path / "PPO" / "DACBO" / "final-task" / "2"
-    _write_run_config(final_run)
-    (final_run / "model.zip").touch()
-    (final_run / "rl_model_300_steps.zip").touch()
-
-    checkpoint_run = tmp_path / "PPO" / "DACBO" / "checkpoint-task" / "3"
-    _write_run_config(checkpoint_run)
-    (checkpoint_run / "rl_model_100_steps.zip").touch()
-    (checkpoint_run / "rl_model_900_steps.zip").touch()
-    (checkpoint_run / "rl_model_invalid_steps.zip").touch()
-
-    # A zip outside a Hydra run is not a trained run and must not be exported.
-    stray_model = tmp_path / "unrelated" / "validation" / "best_model.zip"
-    stray_model.parent.mkdir(parents=True)
-    stray_model.touch()
-
-    assert set(gather_trained_ppo(tmp_path)) == {
-        (best_run / "validation" / "best_model.zip").resolve(),
-        (final_run / "model.zip").resolve(),
-        (checkpoint_run / "rl_model_900_steps.zip").resolve(),
-    }
-
-
-def test_gather_can_select_last_model_instead_of_validation_best(
-    tmp_path: Path,
-) -> None:
-    """Last-model selection exports the final state saved after learning."""
-    run_directory = tmp_path / "PPO" / "DACBO" / "task" / "1"
-    _write_run_config(run_directory, legacy_logging_interpolation=True)
-    best_model = run_directory / "validation" / "best_model.zip"
-    best_model.parent.mkdir()
-    best_model.touch()
-    final_model = run_directory / "model.zip"
-    final_model.touch()
-
-    assert gather_trained_ppo(tmp_path, model_selection="last") == [final_model.resolve()]
-
-    configs_path = tmp_path / "policy-configs"
-    create_ppo_eval_configs(tmp_path, configs_path=configs_path, model_selection="last")
-    generated = OmegaConf.load(configs_path / "PPO-Structured-MLP" / "structured-task" / "seed7.yaml")
-    assert generated.optimizer.policy_kwargs.model == str(final_model.resolve())
-    unresolved = OmegaConf.to_container(generated, resolve=False)
-    assert isinstance(unresolved, dict)
-    assert unresolved["dacboenv"]["optimizer_cfg"]["smac_cfg"]["smac_kwargs"]["logging_level"]["_args_"] == [
-        "dacboenv/configs/logging/smac_internal.yaml"
-    ]
-    assert unresolved["dacboenv"]["instance_selector_class"] == {
-        "_target_": "dacboenv.env.instance.RoundRobinInstanceSelector",
-        "_partial_": True,
-    }
-
-
-def test_gather_rejects_unknown_model_selection(tmp_path: Path) -> None:
-    """Invalid selection modes fail before silently choosing an artifact."""
-    with pytest.raises(ValueError, match="expected 'best' or 'last'"):
-        gather_trained_ppo(tmp_path, model_selection="newest")
-
-
-@pytest.mark.parametrize(
-    ("structured", "true_regret"),
-    [(True, False), (True, True), (False, True)],
-)
-def test_create_eval_config_uses_best_model_and_training_mdp_semantics(
-    tmp_path: Path,
-    structured: bool,
-    true_regret: bool,
-) -> None:
-    """Potential rewards export without changing training MDP timing."""
-    run_directory = tmp_path / "runs" / "PPO" / "DACBO" / "task" / "7"
-    _write_run_config(
-        run_directory,
-        structured=structured,
-        vecnormalize=True,
-        true_regret=true_regret,
+        )
+    (directory.parent / "history.json").write_text(json.dumps({"checkpoints": entries}), encoding="utf-8")
+    step_zero = root / "validation" / "step_zero"
+    step_zero.mkdir()
+    (step_zero / "history.json").write_text(
+        json.dumps({"checkpoints": [{"training_step": 0, "scores": {"balanced": 99.0}}]}),
+        encoding="utf-8",
     )
-    best_model = run_directory / "validation" / "best_model.zip"
-    best_model.parent.mkdir()
-    best_model.touch()
-    normalization_wrapper = run_directory / "vecnormalize.pkl"
-    normalization_wrapper.touch()
-
-    configs_path = tmp_path / "policy-configs"
-    create_ppo_eval_configs(tmp_path / "runs", configs_path=configs_path)
-
-    generated_path = configs_path / "PPO-Structured-MLP" / "structured-task" / "seed7.yaml"
-    generated = OmegaConf.load(generated_path)
-    unresolved = OmegaConf.to_container(generated, resolve=False)
-    assert isinstance(unresolved, dict)
-
-    assert generated.optimizer.policy_kwargs.model == str(best_model.resolve())
-    assert generated.optimizer.policy_kwargs.normalization_wrapper == str(normalization_wrapper)
-    assert unresolved["dacboenv"]["inner_seeds"] == ["${seed}"]
-    assert generated.dacboenv.evaluation_mode is False
-    assert generated.dacboenv.terminate_after_reference_performance_reached is False
+    return root
 
 
-def test_best_model_uses_its_checkpoint_specific_normalization(
-    tmp_path: Path,
-) -> None:
-    """Balanced-best export cannot silently use final normalization state."""
-    run_directory = tmp_path / "runs" / "PPO" / "DACBO" / "task" / "7"
-    _write_run_config(run_directory, vecnormalize=True)
-    validation_directory = run_directory / "validation"
-    validation_directory.mkdir()
-    best_model = validation_directory / "best_model.zip"
-    best_model.touch()
-    best_normalization = validation_directory / "best_balanced_vecnormalize.pkl"
-    best_normalization.touch()
-    (run_directory / "vecnormalize.pkl").touch()
-
-    configs_path = tmp_path / "policy-configs"
-    create_ppo_eval_configs(tmp_path / "runs", configs_path=configs_path)
-    generated = OmegaConf.load(configs_path / "PPO-Structured-MLP" / "structured-task" / "seed7.yaml")
-
-    assert generated.optimizer.policy_kwargs.model == str(best_model.resolve())
-    assert generated.optimizer.policy_kwargs.normalization_wrapper == str(best_normalization)
+def test_final_is_exact_configured_step_not_filename_order(tmp_path: Path) -> None:
+    root = _run(tmp_path)
+    selected = select_checkpoint(root, "final")
+    assert selected.training_step == 60
+    assert selected.model_path.name == "step_60_model.zip"
+    assert selected.selection_metric == "configured_final_training_step"
 
 
-def test_generated_policy_config_loads_through_carps_policy_factory(
-    tmp_path: Path,
-) -> None:
-    """The exported artifact loads via the factory used by DACBOEnvOptimizer."""
-    run_directory = tmp_path / "runs" / "PPO" / "DACBO" / "task" / "7"
-    _write_run_config(run_directory)
-    best_model = run_directory / "validation" / "best_model.zip"
-    best_model.parent.mkdir()
+def test_frequent_best_is_explicit_and_best_never_means_frequent(tmp_path: Path) -> None:
+    root = _run(tmp_path)
+    selected = select_checkpoint(root, "frequent_best")
+    assert selected.training_step == 20
+    with pytest.raises(FileNotFoundError, match="full_best requires"):
+        select_checkpoint(root, "best")
 
-    training_env = TinyPolicyEnv()
-    model = PPO(
-        "MultiInputPolicy",
-        training_env,
-        n_steps=2,
-        batch_size=2,
-        n_epochs=1,
-        policy_kwargs={"net_arch": {"pi": [4], "vf": [4]}},
+
+def test_last_is_deprecated_final_alias(tmp_path: Path) -> None:
+    root = _run(tmp_path)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        selected = select_checkpoint(root, "last")
+    assert selected.mode == "final"
+    assert any("deprecated" in str(item.message) for item in caught)
+    assert canonical_checkpoint_mode("best") == "full_best"
+
+
+def test_full_best_requires_authoritative_full_panel_selection(tmp_path: Path) -> None:
+    root = _run(tmp_path)
+    frequent = root / "validation" / "frequent" / "checkpoints"
+    model = frequent / "step_20_model.zip"
+    full = root / "validation" / "full"
+    full.mkdir()
+    (full / "selection.json").write_text(
+        json.dumps(
+            {
+                "trained_checkpoints_only": True,
+                "manifest_id": "mixed-validation-full-v1",
+                "manifest_hash": "full-panel-hash",
+                "selections": {"balanced": {"candidate_id": "step20", "training_step": 20, "score": 0.9}},
+                "results": [
+                    {
+                        "candidate_id": "step20",
+                        "training_step": 20,
+                        "model_path": str(model),
+                        "normalization_path": None,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
     )
-    model.save(best_model)
-    training_env.close()
-
-    configs_path = tmp_path / "policy-configs"
-    create_ppo_eval_configs(tmp_path / "runs", configs_path=configs_path)
-    generated = OmegaConf.load(configs_path / "PPO-Structured-MLP" / "structured-task" / "seed7.yaml")
-
-    policy_factory = instantiate(generated.optimizer.policy_class)
-    policy_kwargs = OmegaConf.to_container(
-        generated.optimizer.policy_kwargs,
-        resolve=True,
-    )
-    assert isinstance(policy_kwargs, dict)
-
-    evaluation_env = TinyPolicyEnv()
-    policy = policy_factory(env=evaluation_env, **policy_kwargs)
-    observation, _ = evaluation_env.reset()
-    action = policy(observation)
-
-    assert isinstance(policy, ModelPolicy)
-    assert evaluation_env.action_space.contains(action)
-    policy._vec_env.close()
+    selected = select_checkpoint(root, "full_best")
+    assert selected.training_step == 20
+    assert selected.panel_hash == "full-panel-hash"
 
 
-@pytest.mark.parametrize(
-    ("observation_space_id", "reward_keys", "expected"),
-    [
-        ("structured", ["reference_free_improvement"], True),
-        ("structured-quantile", ["reference_free_improvement"], True),
-        ("structured-af-selection", ["reference_free_improvement"], True),
-        ("structured", ["true_regret_improvement"], True),
-        ("structured-quantile", ["true_regret_improvement"], True),
-        ("structured-af-selection", ["true_regret_improvement"], True),
-        ("structured", ["symlogregret"], False),
-        ("sawei", ["reference_free_improvement"], False),
-        ("sawei", ["true_regret_improvement"], True),
-    ],
-)
-def test_structured_training_mdp_detection_is_narrow(
-    observation_space_id: str,
-    reward_keys: list[str],
-    expected: bool,
-) -> None:
-    """Legacy reference-based policies retain their established eval mode."""
-    cfg = DictConfig(
-        {
-            "observation_space_id": observation_space_id,
-            "reward_id": "other",
-            "dacboenv": {"reward_keys": reward_keys},
-        }
+def test_checkpoint_specific_normalizer_and_hashes(tmp_path: Path) -> None:
+    root = _run(tmp_path, vecnormalize=True)
+    selected = select_checkpoint(root, "final")
+    assert selected.normalization_path is not None
+    assert selected.normalization_path.name == "step_60_vecnormalize.pkl"
+    assert selected.normalization_sha256 == file_sha256(selected.normalization_path)
+
+
+def test_final_fails_when_exact_terminal_checkpoint_is_missing(tmp_path: Path) -> None:
+    root = _run(tmp_path, final=80)
+    with pytest.raises(FileNotFoundError, match="configured final step 80"):
+        select_checkpoint(root, "final")
+
+
+def test_exported_policy_bundle_is_domain_neutral(tmp_path: Path) -> None:
+    root = _run(tmp_path)
+    destination = tmp_path / "policies"
+    inventory = tmp_path / "inventory.json"
+    create_ppo_eval_configs(root.parent, destination, "final", inventory)
+    generated = OmegaConf.load(destination / "PPO-Structured-MLP" / "YAHPO-only-WEI-f1" / "seed2.yaml")
+    assert "dacboenv" not in generated
+    assert "reference_provider" not in OmegaConf.to_yaml(generated)
+    assert "instance_selector" not in OmegaConf.to_yaml(generated)
+    assert generated.policy_bundle.checkpoint_mode == "final"
+    assert generated.policy_bundle.action_family == "wei"
+    assert generated.policy_bundle.model_sha256 == file_sha256(
+        root / "validation/frequent/checkpoints/step_60_model.zip"
     )
 
-    assert _uses_structured_training_mdp(cfg) is expected
-    assert _uses_structured_reference_free_mdp(cfg) is expected
+
+def test_gather_defaults_to_final(tmp_path: Path) -> None:
+    root = _run(tmp_path)
+    assert gather_trained_ppo(root.parent) == [(root / "validation/frequent/checkpoints/step_60_model.zip").resolve()]

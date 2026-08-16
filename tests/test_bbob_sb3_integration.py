@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import warnings
 from pathlib import Path
 from typing import Any
@@ -18,7 +19,7 @@ from dacboenv.utils.carps_optimizer import get_bbob_n_trials, get_task_config
 from dacboenv.utils.seeding import episode_component_seeds
 from hydra import compose, initialize_config_module
 from hydra.utils import instantiate
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf, open_dict
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.vec_env import DummyVecEnv
@@ -469,6 +470,25 @@ def test_real_bbob_environment_trains_and_runs_as_carps_optimizer(  # noqa: PLR0
 
         model_path = run_directory / "model"
         model.save(model_path)
+        final_step = int(cfg.experiment.total_timesteps)
+        final_checkpoint = run_directory / "validation" / "frequent" / "checkpoints" / f"step_{final_step}_model.zip"
+        final_checkpoint.parent.mkdir(parents=True)
+        model.save(final_checkpoint)
+        (final_checkpoint.parent.parent / "history.json").write_text(
+            json.dumps(
+                {
+                    "checkpoints": [
+                        {
+                            "training_step": final_step,
+                            "model_path": str(final_checkpoint),
+                            "normalization_path": None,
+                            "scores": {"balanced": 0.0},
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
         loaded = PPO.load(model_path, env=vec_env)
 
         observation = vec_env.reset()
@@ -503,9 +523,14 @@ def test_real_bbob_environment_trains_and_runs_as_carps_optimizer(  # noqa: PLR0
             },
             "seed": 0,
             "outdir": str(tmp_path / "carps-smac"),
+            "dacboenv": cfg.dacboenv,
         },
         exported,
     )
+    with open_dict(runtime.dacboenv):
+        runtime.dacboenv.task_ids = [task.name]
+        runtime.dacboenv.inner_seeds = [0]
+        runtime.dacboenv.evaluation_mode = False
     deployment_env = instantiate(runtime.dacboenv)
     policy_class = instantiate(runtime.optimizer.policy_class)
     policy_kwargs = OmegaConf.to_container(
@@ -515,7 +540,7 @@ def test_real_bbob_environment_trains_and_runs_as_carps_optimizer(  # noqa: PLR0
     assert isinstance(policy_kwargs, dict)
     assert list(runtime.dacboenv.reward_keys) == ["true_regret_improvement"]
     assert runtime.dacboenv.evaluation_mode is False
-    assert policy_kwargs["model"] == str((run_directory / "model.zip").resolve())
+    assert policy_kwargs["model"] == str(final_checkpoint.resolve())
 
     optimizer = DACBOEnvOptimizer(
         task=task,

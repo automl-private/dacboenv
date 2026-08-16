@@ -185,7 +185,9 @@ def test_static_and_sawei_callbacks_share_one_paired_execution_path(tmp_path) ->
     assert all(record.evaluation_budget == 6 for record in records)
     assert all(np.isfinite(record.anytime_auc) for record in records)
     assert all(env.closed for env in envs)
-    assert len(list((tmp_path / "traces").glob("*.json"))) == 2
+    trace_files = [path for path in (tmp_path / "traces").glob("*.json") if not path.name.endswith(".status.json")]
+    assert len(trace_files) == 2
+    assert len(list((tmp_path / "traces").glob("*.status.json"))) == 2
 
 
 def test_production_registry_executes_static_random_and_validation_controls(tmp_path) -> None:

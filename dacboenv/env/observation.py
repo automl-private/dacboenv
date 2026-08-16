@@ -38,6 +38,11 @@ from dacboenv.env.observations.acquisition_function import (
     acq_value_wei_explore_observation,
     acq_value_wei_observation,
 )
+from dacboenv.env.observations.gp_hyperparameters import (
+    GP_HP_OBSERVATION_NAMES,
+    GPHyperparameterFeatureProvider,
+    GPHyperparameterSettings,
+)
 from dacboenv.env.observations.types import MultiObservationType, ObservationType, ObsType
 from dacboenv.features.signal.modelfit import calculate_model_fit
 from dacboenv.features.signal.ubr import calculate_ubr, model_fitted
@@ -1639,6 +1644,7 @@ class ObservationSpace:
         smac_instance: SMBO,
         keys: list[str] | None = None,
         action_space: AbstractActionSpace | None = None,
+        gp_hyperparameters: dict[str, Any] | None = None,
     ) -> None:
         """Initialize the ObservationSpace.
 
@@ -1660,6 +1666,7 @@ class ObservationSpace:
         """
         self._smac_instance = smac_instance
         self._action_space = action_space
+        self._gp_provider = GPHyperparameterFeatureProvider(GPHyperparameterSettings.from_mapping(gp_hyperparameters))
 
         # Preserve the pre-structured-state default interface. New observations
         # are explicit opt-ins through their keys or the structured YAML group.
@@ -1675,6 +1682,7 @@ class ObservationSpace:
             set(self._keys)
             - set(ObservationSpace._OBSERVATION_MAP.keys())
             - set(ObservationSpace._MULTI_OBSERVATION_MAP.keys())
+            - GP_HP_OBSERVATION_NAMES
         )
         if invalid_keys:
             raise ValueError(f"Invalid observation keys: {invalid_keys}")
@@ -1689,6 +1697,19 @@ class ObservationSpace:
             if key in ObservationSpace._MULTI_OBSERVATION_MAP
             for space in ObservationSpace._MULTI_OBSERVATION_MAP[key].create(smac_instance)
         ]
+        gp_spaces = self._gp_provider.observation_spaces()
+        self._observation_types.extend(
+            ObservationType(
+                name=key,
+                space=gp_spaces[key],
+                compute=lambda smbo_, memory=None, key_=key: self._gp_provider.value(  # noqa: ARG005
+                    self._gp_provider.features(smbo_), key_
+                ),
+                default=np.zeros(gp_spaces[key].shape, dtype=np.float32),
+            )
+            for key in self._keys
+            if key in GP_HP_OBSERVATION_NAMES
+        )
         for obs in self._observation_types:
             if inspect.isclass(obs.compute):
                 obs.compute = obs.compute()
@@ -1707,6 +1728,7 @@ class ObservationSpace:
 
         selected_keys = set(self._keys)
         self._structured_selected = bool(selected_keys & STRUCTURED_OBSERVATION_NAMES)
+        self._gp_selected = bool(selected_keys & GP_HP_OBSERVATION_NAMES)
         if selected_keys & {"a_age", "global_state"}:
             if self._action_space is not None and hasattr(
                 self._action_space,
@@ -1826,6 +1848,22 @@ class ObservationSpace:
             "action_features/zero_consequence_row_fraction": float(np.mean(zero_rows)),
         }
 
+    def get_gp_hyperparameter_diagnostics(self) -> dict[str, Any]:
+        """Return extraction counters that never enter the policy state."""
+        diagnostics = self._gp_provider.diagnostics
+        return {
+            "gp_hp/extraction_calls": diagnostics.extraction_calls,
+            "gp_hp/cache_hits": diagnostics.cache_hits,
+            "gp_hp/extraction_failures": diagnostics.extraction_failures,
+            "gp_hp/non_gp_states": diagnostics.non_gp_states,
+            "gp_hp/unfitted_gp_states": diagnostics.unfitted_gp_states,
+            "gp_hp/fallback_bound_count": diagnostics.fallback_bound_count,
+            "gp_hp/clipping_count": diagnostics.clipping_count,
+            "gp_hp/truncation_count": diagnostics.truncation_count,
+            "gp_hp/original_parameter_count": diagnostics.original_parameter_count,
+            **{f"gp_hp/role_count/{role}": count for role, count in diagnostics.role_counts.items()},
+        }
+
     def get_observation(self) -> ObsType:
         """Compute the current observation values from the given optimizer.
 
@@ -1856,7 +1894,7 @@ class ObservationSpace:
         observation = {
             obs.name: self._compute_observation(obs)
             for obs in self._observation_types
-            if obs.name not in STRUCTURED_OBSERVATION_NAMES
+            if obs.name not in STRUCTURED_OBSERVATION_NAMES and obs.name not in GP_HP_OBSERVATION_NAMES
         }
         if self._structured_selected:
             _synchronize_model(self._smac_instance)
@@ -1865,6 +1903,15 @@ class ObservationSpace:
                     obs.name: self._compute_observation(obs)
                     for obs in self._observation_types
                     if obs.name in STRUCTURED_OBSERVATION_NAMES
+                }
+            )
+        if self._gp_selected:
+            bundle = self._gp_provider.features(self._smac_instance)
+            observation.update(
+                {
+                    obs.name: self._gp_provider.value(bundle, obs.name)
+                    for obs in self._observation_types
+                    if obs.name in GP_HP_OBSERVATION_NAMES
                 }
             )
 
@@ -1878,7 +1925,7 @@ class ObservationSpace:
         selected structured observations expose the already-consumed initial
         design and the surrogate fitted to it.
         """
-        if not self._structured_selected:
+        if not self._structured_selected and not self._gp_selected:
             return self._default_observation()
 
         current_trial = int(self._smac_instance.runhistory.finished)
@@ -1897,11 +1944,15 @@ class ObservationSpace:
             alpha = self._register_to_memory["alpha"](self._smac_instance)
             self._memory["alpha"].append(alpha)
 
-        _synchronize_model(self._smac_instance)
+        if self._structured_selected:
+            _synchronize_model(self._smac_instance)
+        gp_bundle = self._gp_provider.features(self._smac_instance) if self._gp_selected else None
         observation = {
             obs.name: (
                 self._compute_observation(obs)
                 if obs.name in STRUCTURED_OBSERVATION_NAMES
+                else self._gp_provider.value(gp_bundle, obs.name)
+                if obs.name in GP_HP_OBSERVATION_NAMES and gp_bundle is not None
                 else np.atleast_1d(obs.default).astype(np.float32)
             )
             for obs in self._observation_types
@@ -1940,6 +1991,7 @@ class ObservationSpace:
             values.clear()
         self._last_observation_trial = None
         self._cached_observation = None
+        self._gp_provider.reset()
         for obs in self._observation_types:
             if isinstance(obs.compute, GetAFandAcqValue):
                 obs.compute.reset()

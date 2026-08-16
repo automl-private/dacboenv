@@ -1,0 +1,14 @@
+# @package _global_
+defaults:
+  - mixed_60_40_ppo_pilot
+  - override /rl_algorithm: dqn
+  - _self_
+
+rl_algorithm:
+  hyperparameters:
+    learning_starts: 32
+    buffer_size: 512
+    batch_size: 32
+    target_update_interval: 64
+optimizer_id: DQN-Structured-Smoke
+baserundir: runs_smoke_mixed_dqn

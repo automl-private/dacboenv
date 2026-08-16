@@ -1,0 +1,38 @@
+# @package _global_
+
+# Conservative infrastructure defaults. They have not been tuned.
+rl_algorithm_id: dqn
+rl_algorithm:
+  algorithm_class: stable_baselines3.DQN
+  policy_class: MultiInputPolicy
+  policy_kwargs:
+    net_arch: [128, 128]
+  hyperparameters:
+    policy: MultiInputPolicy
+    verbose: 1
+    learning_rate: 1.0e-4
+    buffer_size: 200000
+    learning_starts: 10000
+    batch_size: 256
+    tau: 1.0
+    gamma: 1.0
+    train_freq: [1, step]
+    # SB3 uses one gradient step per collected transition when this is -1.
+    # With N envs and train_freq=1, one vector step inserts N transitions and
+    # triggers N gradient steps: update/transition ratio 1.
+    gradient_steps: -1
+    target_update_interval: 10000
+    exploration_fraction: 0.30
+    exploration_initial_eps: 1.0
+    exploration_final_eps: 0.05
+    max_grad_norm: 10.0
+    optimize_memory_usage: false
+    n_steps: 1
+    replay_buffer_kwargs: {}
+
+optimizer_id: DQN-Structured-MLP
+
+experiment:
+  save_replay_buffer:
+    final: true
+    periodic: false

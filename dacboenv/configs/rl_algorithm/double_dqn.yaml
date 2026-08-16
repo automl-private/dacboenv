@@ -1,0 +1,13 @@
+# @package _global_
+
+# Identical to the vanilla DQN infrastructure default except for the target
+# action-selection class.
+defaults:
+  - dqn
+
+rl_algorithm_id: double_dqn
+rl_algorithm:
+  algorithm_class: dacboenv.rl.double_dqn.DoubleDQN
+  policy_class: MultiInputPolicy
+
+optimizer_id: DoubleDQN-Structured-MLP

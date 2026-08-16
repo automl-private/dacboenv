@@ -1,0 +1,8 @@
+# @package _global_
+defaults:
+  - mixed_dqn_smoke
+  - override /rl_algorithm: double_dqn
+  - _self_
+
+optimizer_id: DoubleDQN-Structured-Smoke
+baserundir: runs_smoke_mixed_double_dqn

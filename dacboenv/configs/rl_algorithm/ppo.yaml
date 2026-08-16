@@ -1,0 +1,14 @@
+# @package _global_
+
+# Metadata-only group: the established opt/ppo configuration remains the
+# source of every PPO hyperparameter, preserving existing resolved semantics.
+rl_algorithm_id: ppo
+rl_algorithm:
+  algorithm_class: stable_baselines3.PPO
+  policy_class: MultiInputPolicy
+
+experiment:
+  save_replay_buffer:
+    final: false
+    periodic: false
+

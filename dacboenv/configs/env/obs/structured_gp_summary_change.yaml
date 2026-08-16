@@ -1,0 +1,12 @@
+# @package _global_
+
+observation_space_id: structured-gp-summary-change-v1
+dacboenv:
+  observation_keys:
+    - global_state
+    - action_features
+    - gp_hp_summary
+    - gp_hp_change
+  gp_hyperparameters:
+    enabled: true
+

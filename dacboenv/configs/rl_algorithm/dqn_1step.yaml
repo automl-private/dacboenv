@@ -1,0 +1,7 @@
+# @package _global_
+
+# Explicit one-step alias for ablation matrices.  The canonical algorithm ID
+# remains ``dqn`` and all settings come from the pinned vanilla-DQN config.
+defaults:
+  - dqn
+

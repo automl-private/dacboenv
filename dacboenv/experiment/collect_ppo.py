@@ -1,4 +1,4 @@
-"""Script for creating policy configs out of PPO training runs."""
+"""Compatibility wrapper for algorithm-neutral SB3 policy export."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from rich.progress import track
 from dacboenv.experiment.checkpoint_selection import SelectedCheckpoint, select_checkpoint
 from dacboenv.experiment.collect_snapshots import configured_structured_action_space
 from dacboenv.experiment.evaluation_determinism import canonical_sha256, file_sha256
+from dacboenv.experiment.sb3_algorithms import ALGORITHM_REGISTRY, resolve_rl_algorithm_id
 
 logger = get_logger("CollectPPO")
 
@@ -20,6 +21,9 @@ _STRUCTURED_OBSERVATION_IDS = {
     "structured",
     "structured-quantile",
     "structured-af-selection",
+    "structured-gp-summary-v1",
+    "structured-gp-summary-change-v1",
+    "structured-gp-raw64-v1",
 }
 _REFERENCE_FREE_REWARD_IDS = {"reference-free-improvement"}
 _REFERENCE_FREE_REWARD_KEYS = {"reference_free_improvement"}
@@ -117,7 +121,10 @@ def create_ppo_eval_configs(
 
     eval_conf = DictConfig({})
     eval_conf.optimizer = {}
-    eval_conf.optimizer.policy_class = {"_target_": "dacboenv.policy.sb3_model.ModelPolicy", "_partial_": True}  # type: ignore[attr-defined]
+    eval_conf.optimizer.policy_class = {  # type: ignore[attr-defined]
+        "_target_": "dacboenv.policy.sb3_model.SB3DiscretePolicy",
+        "_partial_": True,
+    }
 
     inventory: list[dict[str, object]] = []
     for selected in track(selections, description="Creating model config...", total=len(selections)):
@@ -128,12 +135,15 @@ def create_ppo_eval_configs(
         if not isinstance(loaded_cfg, DictConfig):
             raise TypeError(f"Expected mapping at {cfg_fn!s}, got {type(loaded_cfg).__name__}.")
         cfg = loaded_cfg
+        algorithm_id = resolve_rl_algorithm_id(cfg)
+        algorithm_spec = ALGORITHM_REGISTRY[algorithm_id]
         eval_conf.optimizer.policy_kwargs = {  # type: ignore[attr-defined]
             # Keep the exact absolute artifact path. SB3 also accepts a path
             # without ``.zip``, but an explicit existing file is safer when
             # CARPS evaluates from a different Hydra working directory.
             "model": str(model),
-            "model_class": "stable_baselines3.PPO",
+            "model_class": algorithm_spec.algorithm_class,
+            "algorithm_id": algorithm_id,
         }
         eval_conf.policy_id = f"{cfg.optimizer_id}--{cfg.task_id}--seed{cfg.seed}"
         eval_conf.optimizer_id = eval_conf.policy_id
@@ -153,19 +163,24 @@ def create_ppo_eval_configs(
             or OmegaConf.select(cfg, "protocol_metadata.scientific_source_revision", default="unavailable")
         )
         eval_conf.policy_bundle = {
-            "schema_version": "domain-neutral-policy-v1",
+            "schema_version": "domain-neutral-sb3-policy-v2",
+            "algorithm_id": algorithm_id,
+            "algorithm_class": algorithm_spec.algorithm_class,
+            "policy_class": algorithm_spec.policy_class,
             "checkpoint_mode": selected.mode,
             "training_step": selected.training_step,
             "action_family": action_family,
             "action_cardinality": 5,
             "action_order": [0, 1, 2, 3, 4],
             "interaction_frequency": frequency,
-            "outer_ppo_seed": int(cfg.seed),
+            "outer_training_seed": int(cfg.seed),
+            "outer_ppo_seed": int(cfg.seed) if algorithm_id == "ppo" else None,
             "observation_schema": str(cfg.get("observation_space_id", "structured")),
             "observation_schema_hash": canonical_sha256(
                 {
                     "observation_space_id": str(cfg.get("observation_space_id", "structured")),
                     "action_family": action_family,
+                    "algorithm_id": algorithm_id,
                 }
             ),
             "training_source_revision": training_source_revision,
@@ -185,6 +200,8 @@ def create_ppo_eval_configs(
                 "config_path": str(eval_cfg_fn.resolve()),
                 "frequency": frequency,
                 "action_family": action_family,
+                "algorithm_id": algorithm_id,
+                "algorithm_class": algorithm_spec.algorithm_class,
                 "checkpoint_mode": selected.mode,
                 "training_step": selected.training_step,
                 "model_path": str(model),

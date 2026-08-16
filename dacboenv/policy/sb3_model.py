@@ -16,8 +16,8 @@ if TYPE_CHECKING:
     from dacboenv.env.observations.types import ObsType
 
 
-class ModelPolicy(AbstractPolicy):
-    """Policy that uses a pre-trained RL model to select actions."""
+class SB3DiscretePolicy(AbstractPolicy):
+    """Policy bridge for a metadata-selected discrete SB3 algorithm."""
 
     def __init__(
         self,
@@ -25,6 +25,7 @@ class ModelPolicy(AbstractPolicy):
         model: BaseAlgorithm | str,
         model_class: type[BaseAlgorithm] | str | None = None,
         normalization_wrapper: str | None = None,
+        algorithm_id: str | None = None,
     ) -> None:
         """Initialize the model parameter policy.
 
@@ -38,6 +39,9 @@ class ModelPolicy(AbstractPolicy):
             The class of the RL model, required if loading from a path.
         normalization_wrapper : str | None, optional
             Path to a saved VecNormalize wrapper, if applicable.
+        algorithm_id : str | None, optional
+            Stable algorithm identifier. New bundles must provide it; legacy
+            PPO bundles may omit it.
         """
         super().__init__(env, model=model, model_class=model_class, normalization_wrapper=normalization_wrapper)
 
@@ -49,6 +53,25 @@ class ModelPolicy(AbstractPolicy):
             vec_env.norm_reward = False
 
         self._vec_env = vec_env
+
+        expected_classes = {
+            "ppo": "stable_baselines3.PPO",
+            "dqn": "stable_baselines3.DQN",
+            "double_dqn": "dacboenv.rl.double_dqn.DoubleDQN",
+        }
+        if algorithm_id is not None:
+            if algorithm_id not in expected_classes:
+                raise ValueError(f"Unknown SB3 policy algorithm metadata {algorithm_id!r}.")
+            expected_class = get_class(expected_classes[algorithm_id])
+            if model_class is None and not isinstance(model, str):
+                declared_class = type(model)
+            else:
+                declared_class = model_class if isinstance(model_class, type) else get_class(str(model_class))
+            if declared_class is not expected_class:
+                raise ValueError(
+                    f"Algorithm metadata {algorithm_id!r} requires {expected_classes[algorithm_id]}, "
+                    f"not {model_class!r}."
+                )
 
         if isinstance(model, str):
             assert model_class is not None, "If model is loaded from path, model_class must be provided."
@@ -84,3 +107,9 @@ class ModelPolicy(AbstractPolicy):
             Seed
         """
         self._model.set_random_seed(seed=seed)
+
+
+# Backward-compatible import used by existing PPO policy YAML files.
+ModelPolicy = SB3DiscretePolicy
+
+__all__ = ["ModelPolicy", "SB3DiscretePolicy"]

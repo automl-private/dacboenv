@@ -24,7 +24,6 @@ import torch as th
 from carps.loggers.file_logger import get_run_directory
 from carps.utils.loggingutils import get_logger
 from carps.utils.running import make_task
-from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf, open_dict
 from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback, EvalCallback
 from stable_baselines3.common.evaluation import evaluate_policy
@@ -52,6 +51,13 @@ from dacboenv.experiment.protocol import (
     require_runnable_manifest,
     validate_manifest_structure,
     validate_native_bbob_manifest,
+)
+from dacboenv.experiment.sb3_algorithms import (
+    DQNDiagnosticsCallback,
+    GPHyperparameterDiagnosticsCallback,
+    build_sb3_algorithm,
+    resolve_rl_algorithm_id,
+    write_algorithm_metadata,
 )
 from dacboenv.utils.carps_optimizer import get_task_config
 from dacboenv.utils.loggingutils import maybe_remove_logs
@@ -251,6 +257,8 @@ def run_step_zero_validation(
     if isinstance(eval_env, VecNormalize):
         eval_env.save(str(save_path / "vecnormalize.pkl"))
     payload = {
+        "rl_algorithm_id": str(getattr(model, "algorithm_id", type(model).__name__.lower())),
+        "algorithm_class": f"{type(model).__module__}.{type(model).__qualname__}",
         "selection_eligible": False,
         "panel_tier": "frequent",
         "panel_id": panel_id,
@@ -352,6 +360,8 @@ class ProtocolEvalCallback(EvalCallback):
             normalization_path = checkpoint_directory / f"step_{self.num_timesteps}_vecnormalize.pkl"
             vecnormalize.save(str(normalization_path))
         entry = {
+            "rl_algorithm_id": str(getattr(self.model, "algorithm_id", type(self.model).__name__.lower())),
+            "algorithm_class": f"{type(self.model).__module__}.{type(self.model).__qualname__}",
             "panel_id": self._panel_id,
             "panel_hash": self._panel_hash,
             "training_step": int(self.num_timesteps),
@@ -595,6 +605,8 @@ def run_full_panel_validation(
         finally:
             candidate_env.close()
         result = {
+            "rl_algorithm_id": str(getattr(model, "algorithm_id", type(model).__name__.lower())),
+            "algorithm_class": f"{type(model).__module__}.{type(model).__qualname__}",
             "candidate_id": candidate.candidate_id,
             "training_step": candidate.training_step,
             "model_path": str(candidate.model_path),
@@ -719,17 +731,26 @@ def assign_training_worker_context(  # noqa: C901
 def resolve_training_schedule(cfg: DictConfig) -> TrainingSchedule:
     """Resolve and validate the SB3 rollout schedule from configuration."""
     n_envs = int(cfg.experiment.n_workers)
-    n_steps = int(cfg.optimizer.n_steps)
-    batch_size = int(cfg.optimizer.batch_size)
+    algorithm_id = resolve_rl_algorithm_id(cfg)
+    if algorithm_id == "ppo":
+        n_steps = int(cfg.optimizer.n_steps)
+        batch_size = int(cfg.optimizer.batch_size)
+    else:
+        algorithm_hyperparameters = cfg.rl_algorithm.hyperparameters
+        train_freq = algorithm_hyperparameters.get("train_freq", [1, "step"])
+        n_steps = int(
+            train_freq[0] if isinstance(train_freq, Sequence) and not isinstance(train_freq, str) else train_freq
+        )
+        batch_size = int(algorithm_hyperparameters.batch_size)
     total_timesteps = int(cfg.experiment.total_timesteps)
 
     if n_envs <= 0 or n_steps <= 0 or batch_size <= 0 or total_timesteps <= 0:
         raise ValueError("n_workers, n_steps, batch_size, and total_timesteps must all be positive.")
 
     rollout_size = n_envs * n_steps
-    if batch_size > rollout_size:
+    if algorithm_id == "ppo" and batch_size > rollout_size:
         raise ValueError(f"batch_size ({batch_size}) exceeds rollout size ({rollout_size}).")
-    if rollout_size % batch_size:
+    if algorithm_id == "ppo" and rollout_size % batch_size:
         raise ValueError(
             "The rollout size must be divisible by batch_size to avoid a "
             f"truncated PPO minibatch, got {rollout_size} % {batch_size}."
@@ -754,6 +775,8 @@ def populate_legacy_schedule(cfg: DictConfig) -> None:
     configured CARPS task. Keeping that behavior here lets those module CLIs
     use the corrected shared runner without requiring config changes.
     """
+    if resolve_rl_algorithm_id(cfg) != "ppo":
+        return
     optimizer = cfg.optimizer
     experiment = cfg.experiment
     missing_n_steps = optimizer.get("n_steps") is None
@@ -1154,16 +1177,15 @@ def _write_policy_sensitivity(
 
 
 def run(cfg: DictConfig) -> None:  # noqa: C901, PLR0912, PLR0915
-    """Train and validate PPO on the configured BO-MDP."""
+    """Train and validate a configured SB3 algorithm on the BO-MDP."""
     logger.info(OmegaConf.to_yaml(cfg))
 
     rundir = Path(get_run_directory())
     maybe_remove_logs(directory=None, overwrite=True, logfile="model.zip", logger=logger)
     populate_legacy_schedule(cfg)
     schedule = resolve_training_schedule(cfg)
-    policy_kwargs, optimizer_cfg = _policy_kwargs_and_optimizer_cfg(cfg)
+    algorithm_id = resolve_rl_algorithm_id(cfg)
     seed_metadata = run_seed_metadata(int(cfg.seed), schedule.n_envs)
-    optimizer_cfg.seed = int(seed_metadata["policy_model_seed"])
     (rundir / "seed_streams.json").write_text(
         json.dumps(seed_metadata, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -1177,7 +1199,7 @@ def run(cfg: DictConfig) -> None:  # noqa: C901, PLR0912, PLR0915
     logger.info(f"Manifest protocol metadata: {protocol_metadata}")
 
     logger.info(
-        "PPO schedule: "
+        f"{algorithm_id} schedule: "
         f"{schedule.n_envs} envs x {schedule.n_steps} steps = "
         f"{schedule.rollout_size} transitions/update; "
         f"{schedule.n_updates} updates collect {schedule.collected_timesteps} "
@@ -1246,11 +1268,13 @@ def run(cfg: DictConfig) -> None:  # noqa: C901, PLR0912, PLR0915
                 norm_reward=False,
             )
 
-        model: BaseAlgorithm = instantiate(optimizer_cfg)(
-            env=vec_env,
-            policy_kwargs=policy_kwargs,
+        model: BaseAlgorithm = build_sb3_algorithm(
+            cfg,
+            vec_env,
             tensorboard_log=str(rundir / "tensorboard"),
+            model_seed=int(seed_metadata["policy_model_seed"]),
         )
+        algorithm_metadata = write_algorithm_metadata(cfg, vec_env, rundir / "rl_algorithm_metadata.json")
         staged_worker_seeds = stage_training_worker_seeds(vec_env, int(cfg.seed))
         logger.info(f"Staged training worker seeds: {staged_worker_seeds}")
         logger.info(f"Model: {model.policy}")
@@ -1267,9 +1291,13 @@ def run(cfg: DictConfig) -> None:  # noqa: C901, PLR0912, PLR0915
                 ),
                 save_path=str(rundir),
                 save_vecnormalize=bool(cfg.experiment.vecnormalize),
+                save_replay_buffer=bool(cfg.experiment.get("save_replay_buffer", {}).get("periodic", False)),
             ),
             action_logging_callback,
+            GPHyperparameterDiagnosticsCallback(),
         ]
+        if algorithm_id in {"dqn", "double_dqn"}:
+            callbacks.append(DQNDiagnosticsCallback())
 
         validation_cfg = cfg.experiment.get("validation", None)
         eval_callback: EvalCallback | None = None
@@ -1348,11 +1376,38 @@ def run(cfg: DictConfig) -> None:  # noqa: C901, PLR0912, PLR0915
             tb_log_name="tb_log",
             callback=callbacks,
         )
-        _write_policy_sensitivity(model, rundir, action_logging_callback)
+        if int(model.num_timesteps) != schedule.total_timesteps:
+            raise RuntimeError(
+                "SB3 training did not stop at the configured exact final timestep: "
+                f"expected {schedule.total_timesteps}, reached {model.num_timesteps}. "
+                "Choose a total_timesteps value divisible by the number of vector environments."
+            )
+        if algorithm_id == "ppo":
+            _write_policy_sensitivity(model, rundir, action_logging_callback)
         model.save(rundir / "model")
+        save_replay_buffer = bool(cfg.experiment.get("save_replay_buffer", {}).get("final", False))
+        if save_replay_buffer and hasattr(model, "save_replay_buffer"):
+            model.save_replay_buffer(rundir / "replay_buffer.pkl")
         if isinstance(vec_env, VecNormalize):
             vec_env.save(str(rundir / "vecnormalize.pkl"))
         logger.info("✅ Finished training.")
+        (rundir / "training_complete.json").write_text(
+            json.dumps(
+                {
+                    "complete": True,
+                    "rl_algorithm_id": algorithm_id,
+                    "algorithm_class": algorithm_metadata["algorithm_class"],
+                    "num_timesteps": int(model.num_timesteps),
+                    "expected_final_timesteps": int(schedule.total_timesteps),
+                    "model_path": str(rundir / "model.zip"),
+                    "replay_buffer_path": str(rundir / "replay_buffer.pkl") if save_replay_buffer else None,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
 
         full_validation_payload: dict[str, Any] | None = None
         if (

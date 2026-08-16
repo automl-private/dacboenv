@@ -5,6 +5,15 @@ dacboenv:
   task_ids: ???
   inner_seeds: ???
   observation_keys: ???
+  # GP hyperparameter observations are opt-in through env/obs variants. These
+  # settings do not alter global_state or action_features.
+  gp_hyperparameters:
+    enabled: false
+    max_raw_parameters: 64
+    overflow_policy: error
+    near_bound_fraction: 0.05
+    unsupported_model_policy: zeros
+    strict_kernel_validation: false
   action_space_class: ???
   action_space_kwargs: ???
   reward_keys: ???

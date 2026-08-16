@@ -1,0 +1,14 @@
+# @package _global_
+defaults:
+  - yahpo_ppo_pilot
+  - override /rl_algorithm: dqn
+  - _self_
+
+rl_algorithm:
+  hyperparameters:
+    learning_starts: 12
+    buffer_size: 256
+    batch_size: 12
+    target_update_interval: 24
+optimizer_id: DQN-Structured-Smoke
+baserundir: runs_smoke_yahpo_dqn

@@ -116,6 +116,7 @@ class DACBOEnv(gym.Env):
         task_ids: list[str],
         optimizer_cfg: DictConfig | None = None,
         observation_keys: list[str] | None = None,
+        gp_hyperparameters: dict[str, Any] | None = None,
         action_space_class: type[AbstractActionSpace] = AcqParameterActionSpace,
         action_space_kwargs: dict[str, Any] | None = None,
         reward_keys: list[str] | None = None,
@@ -202,6 +203,7 @@ class DACBOEnv(gym.Env):
         self._action_space_kwargs = action_space_kwargs
         self._action_space: AbstractActionSpace
         self._observation_keys = observation_keys
+        self._gp_hyperparameters = dict(gp_hyperparameters or {})
         self._reward_keys = reward_keys
         self._rho = rho
         if not isinstance(interaction_frequency, int) or isinstance(interaction_frequency, bool):
@@ -635,6 +637,17 @@ class DACBOEnv(gym.Env):
         obs = self._dacbo_observation_space.get_observation()
         return self.modify_obs(obs=obs)
 
+    def get_gp_hyperparameter_diagnostics(self) -> dict[str, int | float]:
+        """Return non-policy GP extraction counters for run-level logging."""
+        if not hasattr(self, "_dacbo_observation_space"):
+            return {}
+        diagnostics = getattr(
+            self._dacbo_observation_space,
+            "get_gp_hyperparameter_diagnostics",
+            None,
+        )
+        return diagnostics() if callable(diagnostics) else {}
+
     def get_reward(self) -> float:
         """Compute the current reward from the optimizer.
 
@@ -957,10 +970,13 @@ class DACBOEnv(gym.Env):
         self.last_action = None
 
         # Setup observation space
+        observation_kwargs: dict[str, Any] = {"action_space": self._action_space}
+        if self._gp_hyperparameters:
+            observation_kwargs["gp_hyperparameters"] = self._gp_hyperparameters
         self._dacbo_observation_space = ObservationSpace(
             self._smac_instance,
             self._observation_keys,
-            action_space=self._action_space,
+            **observation_kwargs,
         )
         self._dacbo_observation_space.reset()
         self.observation_space = self._dacbo_observation_space.space  # gym observation space
@@ -1010,6 +1026,9 @@ class DACBOEnv(gym.Env):
         diagnostics_fn = getattr(self._dacbo_observation_space, "get_action_feature_diagnostics", None)
         if callable(diagnostics_fn):
             info.update(diagnostics_fn())
+        gp_diagnostics_fn = getattr(self._dacbo_observation_space, "get_gp_hyperparameter_diagnostics", None)
+        if callable(gp_diagnostics_fn):
+            info.update(gp_diagnostics_fn())
         logger.info(f"Selected episode context: {info}")
         return initial_obs, info
 

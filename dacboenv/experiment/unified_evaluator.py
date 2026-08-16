@@ -14,12 +14,12 @@ import importlib
 import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 from omegaconf import OmegaConf
-from stable_baselines3 import PPO
 
 from dacboenv.experiment.collect_snapshots import configured_structured_action_space
 from dacboenv.experiment.evaluation_determinism import (
@@ -58,6 +58,7 @@ from dacboenv.experiment.paired_evaluator import (
     write_evaluation_records_csv,
 )
 from dacboenv.experiment.protocol import load_manifest
+from dacboenv.experiment.sb3_algorithms import ALGORITHM_REGISTRY, resolve_rl_algorithm_id
 from dacboenv.policy.random import MarginalRandomPolicy, RandomPolicy
 from dacboenv.policy.sawei import SAWEIPolicy
 from dacboenv.policy.sb3_model import ModelPolicy
@@ -91,6 +92,8 @@ class StageARunArtifacts:
 
     run_root: Path
     outer_seed: int
+    algorithm_id: str
+    algorithm_class: str
     best_model: Path
     best_normalization: Path | None
     final_model: Path
@@ -100,6 +103,26 @@ class StageARunArtifacts:
     interaction_frequency: int
     training_source_revision: str
     hydra_config_sha256: str
+
+
+def _make_learned_sb3_policy(
+    env: Any,
+    _context: EvaluationContext,
+    _method: Any,
+    *,
+    model_path: Path,
+    normalization: Path | None,
+    algorithm_class: str,
+    algorithm_id: str,
+) -> ModelPolicy:
+    """Construct one algorithm-metadata-checked learned policy."""
+    return ModelPolicy(
+        env,
+        model=str(model_path),
+        model_class=algorithm_class,
+        normalization_wrapper=None if normalization is None else str(normalization),
+        algorithm_id=algorithm_id,
+    )
 
 
 def _existing_first(paths: Sequence[Path]) -> Path | None:
@@ -114,6 +137,8 @@ def inspect_stage_a_run(run_root: Path) -> StageARunArtifacts:
     if not config_path.is_file():
         raise FileNotFoundError(f"Stage-A Hydra config is missing: {config_path}")
     cfg = OmegaConf.load(config_path)
+    algorithm_id = resolve_rl_algorithm_id(cfg)
+    algorithm_class = ALGORITHM_REGISTRY[algorithm_id].algorithm_class
     outer_seed = int(cfg.seed)
     vecnormalize = bool(cfg.experiment.get("vecnormalize", False))
     action_family = configured_structured_action_space(cfg)
@@ -152,6 +177,8 @@ def inspect_stage_a_run(run_root: Path) -> StageARunArtifacts:
     return StageARunArtifacts(
         run_root=run_root,
         outer_seed=outer_seed,
+        algorithm_id=algorithm_id,
+        algorithm_class=algorithm_class,
         best_model=best_model,
         best_normalization=best_normalization,
         final_model=final_model,
@@ -484,19 +511,24 @@ def build_production_registry(  # noqa: C901, PLR0913
             model_path = artifacts.best_model if is_best else artifacts.final_model
             normalization = artifacts.best_normalization if is_best else artifacts.final_normalization
             checkpoint = "best" if is_best else "final"
+            algorithm_id = artifacts.algorithm_id
+            algorithm_class = artifacts.algorithm_class
             register(
                 method,
-                lambda env, _context, _method, model_path=model_path, normalization=normalization: ModelPolicy(
-                    env,
-                    model=str(model_path),
-                    model_class=PPO,
-                    normalization_wrapper=None if normalization is None else str(normalization),
+                partial(
+                    _make_learned_sb3_policy,
+                    model_path=model_path,
+                    normalization=normalization,
+                    algorithm_class=algorithm_class,
+                    algorithm_id=algorithm_id,
                 ),
                 checkpoint_type=checkpoint,
                 outer_seed=artifacts.outer_seed,
                 metadata={
                     "run_root": str(artifacts.run_root),
                     "checkpoint": checkpoint,
+                    "algorithm_id": algorithm_id,
+                    "algorithm_class": algorithm_class,
                     "policy_model_sha256": file_sha256(model_path),
                     "policy_training_source_revision": artifacts.training_source_revision,
                     "hydra_config_sha256": artifacts.hydra_config_sha256,

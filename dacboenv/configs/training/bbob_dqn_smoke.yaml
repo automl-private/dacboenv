@@ -1,0 +1,17 @@
+# @package _global_
+defaults:
+  - bbob_ppo_pilot
+  - override /rl_algorithm: dqn
+  - _self_
+
+experiment:
+  total_timesteps: 32
+  checkpoint_freq: 16
+rl_algorithm:
+  hyperparameters:
+    learning_starts: 8
+    buffer_size: 256
+    batch_size: 8
+    target_update_interval: 16
+optimizer_id: DQN-Structured-Smoke
+baserundir: runs_smoke_bbob_dqn

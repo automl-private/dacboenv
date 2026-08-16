@@ -1,5 +1,6 @@
 # @package _global_
 defaults:
+  - /rl_algorithm: ppo
   - /task: dacboenv_structured_reference_free
   - /instance_sets@training_instances: bbob_train
   - /instance_sets@validation_instances: bbob_validation

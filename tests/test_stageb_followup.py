@@ -216,7 +216,7 @@ def test_discovers_exactly_twelve_final_stageb_runs(tmp_path: Path) -> None:
 def test_generated_followup_scripts_need_only_cli_flags_and_pass_bash_n(tmp_path: Path) -> None:
     followup = tmp_path / "followup"
     followup.mkdir()
-    _write_generated_scripts(Path.cwd(), Path(".env/bin/python").resolve(), followup)
+    _write_generated_scripts(Path.cwd(), Path(".venv/bin/python").resolve(), followup)
     for script in followup.glob("*.sh"):
         subprocess.run(["bash", "-n", str(script)], check=True)  # noqa: S603, S607
         text = script.read_text(encoding="utf-8")

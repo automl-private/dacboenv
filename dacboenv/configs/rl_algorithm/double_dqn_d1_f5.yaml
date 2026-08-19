@@ -1,0 +1,42 @@
+# @package _global_
+
+# D1 fixed-frequency-5 Double-DQN settings.
+#
+# One vector step adds `experiment.n_workers` block transitions. Each block
+# transition holds one WEI action for five underlying BO evaluations. The
+# dynamic expressions preserve the Stage-C replay update/data ratio (0.25), a
+# 64-vector-step replay warm-up, and a 64-vector-step target-network period for
+# both the 12-worker YAHPO-only and 24-worker balanced-mixed runs.
+defaults:
+  - double_dqn
+  - _self_
+
+rl_algorithm:
+  policy_kwargs:
+    net_arch: [128, 128]
+  hyperparameters:
+    policy: MultiInputPolicy
+    verbose: 1
+    learning_rate: 1.0e-4
+    buffer_size: 65536
+    learning_starts: ${multiply:${experiment.n_workers},64}
+    batch_size: 512
+    tau: 1.0
+    gamma: 1.0
+    train_freq: [1, step]
+    gradient_steps: ${divideint:${experiment.n_workers},4}
+    target_update_interval: ${multiply:${experiment.n_workers},64}
+    exploration_fraction: 0.30
+    exploration_initial_eps: 1.0
+    exploration_final_eps: 0.05
+    max_grad_norm: 10.0
+    optimize_memory_usage: false
+    n_steps: 1
+    replay_buffer_kwargs: {}
+
+optimizer_id: DoubleDQN-WEI-F5-D1
+
+experiment:
+  save_replay_buffer:
+    final: true
+    periodic: false

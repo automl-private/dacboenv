@@ -53,7 +53,7 @@ if [[ ! -f ${snapshots} || ! -f ${branches} ]]; then
     exit 0
 fi
 
-.env/bin/python -m dacboenv.experiment.analyze_snapshot_policy \
+.venv/bin/python -m dacboenv.experiment.analyze_snapshot_policy \
     --run-root "${run_root}" \
     --checkpoint "${checkpoint}" \
     --snapshots "${snapshots}" \

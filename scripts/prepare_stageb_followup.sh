@@ -11,6 +11,6 @@ script_directory="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=scripts/evaluation_determinism_env.sh
 source "${script_directory}/evaluation_determinism_env.sh"
 repository_root="$(cd -- "${script_directory}/.." && pwd -P)"
-python_bin="${repository_root}/.env/bin/python"
+python_bin="${repository_root}/.venv/bin/python"
 
 exec "${python_bin}" -m dacboenv.experiment.stageb_followup prepare "$1" "$2" "$3" --repository "${repository_root}"

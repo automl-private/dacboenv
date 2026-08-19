@@ -67,7 +67,7 @@ def test_process_contract_accepts_exact_exported_values(monkeypatch: pytest.Monk
 def test_fresh_process_context_hash_is_repeatable() -> None:
     code = "from dacboenv.experiment.evaluation_determinism import canonical_sha256; print(canonical_sha256({'x': 1}))"
     environment = {**os.environ, **PROCESS_DETERMINISM_CONTRACT}
-    python = str(Path.cwd() / ".env/bin/python")
+    python = str(Path.cwd() / ".venv/bin/python")
     first = subprocess.check_output([python, "-c", code], env=environment, text=True)  # noqa: S603
     second = subprocess.check_output([python, "-c", code], env=environment, text=True)  # noqa: S603
     assert first == second

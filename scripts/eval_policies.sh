@@ -13,7 +13,7 @@ cd -- "${repository_root}"
 : "${DACBO_EVAL_CONTEXTS:?Set DACBO_EVAL_CONTEXTS to its protocol-v2 context JSON}"
 : "${DACBO_EVAL_OUTPUT_ROOT:?Set DACBO_EVAL_OUTPUT_ROOT to a fresh output directory}"
 
-python_bin="${DACBO_PYTHON:-${repository_root}/.env/bin/python}"
+python_bin="${DACBO_PYTHON:-${repository_root}/.venv/bin/python}"
 methods="${DACBO_EVAL_METHODS:-learned_validation_selected}"
 action_family="${DACBO_ACTION_FAMILY:-wei}"
 arguments=(

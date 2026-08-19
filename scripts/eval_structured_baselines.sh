@@ -18,7 +18,7 @@ cd -- "${repository_root}"
 
 evaluation_set="${DACBO_EVALUATION_SET:-bbob_validation}"
 manifest_path="${repository_root}/dacboenv/configs/instance_sets/${evaluation_set}.yaml"
-baseline_run_dir="${DACBO_BASELINE_RUN_DIR:-${repository_root}/runs_structured_baselines_carps}"
+baseline_run_dir="${DACBO_BASELINE_RUN_DIR:-${repository_root}/runs_structured_baselines_carps_new}"
 dry_run="${DACBO_BASELINE_DRY_RUN:-0}"
 
 if [[ ! -f "${manifest_path}" ]]; then
@@ -43,7 +43,7 @@ launch_carps() {
         -m carps.run
         --multirun
         "hydra.searchpath=[pkg://dacboenv/configs]"
-        "seed=range(0,11)"
+        "seed=range(0,6)"
         "+eval=base"
         "+cluster=cpu_noctua"
         "+env/reward=reference_free_improvement"
@@ -66,7 +66,7 @@ launch_carps() {
     fi
 }
 
-action_families=(wei_alpha_discrete lcb_quantile_discrete ucb_quantile_discrete af_selection_discrete)
+action_families=(wei_alpha_discrete) # lcb_quantile_discrete ucb_quantile_discrete af_selection_discrete)
 observation_families=(structured structured_quantile structured_quantile structured_af_selection)
 tasks=('+task/BBOB=glob(cfg_2_*_0)' '+task/BBOB=glob(cfg_8_*_0)' '+task/YAHPO/SO=glob(*)')
 
@@ -84,17 +84,15 @@ for task in "${tasks[@]}"; do
             "+env/obs=${observation_family}" \
             +policy=random
 
-        for freq in f1 f5 f10; do
-            for action in 0 1 2 3 4; do
-                launch_carps "static-${action_family}-action${action}-${freq}" \
-                    "$task" \
-                    +env=base \
-                    +env/opt=base \
-                    "+env/action=${action_family}" \
-                    "+env/interaction_freq=${freq}" \
-                    "+env/obs=${observation_family}" \
-                    "+policy/static/discrete_action=action_${action}"
-            done
+        for action in 0 1 2 3 4; do
+            launch_carps "static-${action_family}-action${action}" \
+                "$task" \
+                +env=base \
+                +env/opt=base \
+                "+env/action=${action_family}" \
+                "+env/interaction_freq=f1" \
+                "+env/obs=${observation_family}" \
+                "+policy/static/discrete_action=action_${action}"
         done
     done
 

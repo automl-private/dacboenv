@@ -105,9 +105,10 @@ def command_for_cell(cell: dict[str, Any], followup_root: Path, output_root: Pat
         f"seed={int(cell['evaluation_seed'])}",
         f"baserundir={result}",
         f"hydra.run.dir={result}",
-        "dacboenv.evaluation_mode=false",
+        "dacboenv.evaluation_mode=true",
         "dacboenv.context_split=validation",
         "dacboenv.terminate_after_reference_performance_reached=false",
+        "+cluster=cpu_noctua",
         f"hydra.searchpath=[file://{followup_root / 'config'},file://{repository / 'dacboenv/configs'},pkg://carps/configs]",
     ]
 

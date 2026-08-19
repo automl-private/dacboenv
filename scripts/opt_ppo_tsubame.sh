@@ -28,7 +28,7 @@ if [[ ! -f "${REPO_ROOT}/pyproject.toml" || ! -d "${REPO_ROOT}/dacboenv" ]]; the
     exit 2
 fi
 
-PYTHON_BIN="${DACBO_PYTHON:-${REPO_ROOT}/.env/bin/python}"
+PYTHON_BIN="${DACBO_PYTHON:-${REPO_ROOT}/.venv/bin/python}"
 if [[ ! -x "${PYTHON_BIN}" ]]; then
     echo "Python environment is missing or not executable: ${PYTHON_BIN}" >&2
     echo "Install the project environment before submitting the PPO matrix." >&2

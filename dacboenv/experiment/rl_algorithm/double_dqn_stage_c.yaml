@@ -1,0 +1,44 @@
+# @package _global_
+
+# Stage-C Double-DQN defaults for the 32-worker mixed BBOB/YAHPO experiment.
+# One vector step contributes 32 transitions. Eight gradient steps therefore
+# give an update/transition ratio of 0.25, avoiding the very aggressive 1.0
+# ratio of gradient_steps=-1 while still reusing every expensive BO sample.
+defaults:
+  - double_dqn
+  - _self_
+
+rl_algorithm:
+  policy_kwargs:
+    net_arch: [128, 128]
+  hyperparameters:
+    policy: MultiInputPolicy
+    verbose: 1
+    learning_rate: 1.0e-4
+    # Retains the complete 204,800-transition Stage-C run.
+    buffer_size: 262144
+    # Five percent of the total transition budget and exactly 320 vector calls.
+    learning_starts: 10240
+    batch_size: 512
+    tau: 1.0
+    # The finite-horizon reference-potential reward telescopes at gamma=1.
+    gamma: 1.0
+    train_freq: [1, step]
+    # 8 updates / 32 newly collected transitions = UTD 0.25.
+    gradient_steps: 8
+    # Hard target update every 10,240 collected transitions.
+    target_update_interval: 10240
+    exploration_fraction: 0.30
+    exploration_initial_eps: 1.0
+    exploration_final_eps: 0.05
+    max_grad_norm: 10.0
+    optimize_memory_usage: false
+    n_steps: 1
+    replay_buffer_kwargs: {}
+
+optimizer_id: DoubleDQN-WEI-StageC
+
+experiment:
+  save_replay_buffer:
+    final: true
+    periodic: false

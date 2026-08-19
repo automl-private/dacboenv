@@ -34,7 +34,7 @@ Options:
 Deprecated environment compatibility:
   DACBO_POLICY_MODEL, DACBO_EVAL_RESULTS_DIR, DACBO_EVAL_RUN_SCRIPT,
   DACBO_OVERWRITE_RUN_SCRIPT. Command-line arguments take precedence.
-  DACBO_PYTHON              Python executable. Default: .env/bin/python when
+  DACBO_PYTHON              Python executable. Default: .venv/bin/python when
                             present, otherwise python from PATH.
 
 The generated script accepts `training`, `bbob_2d_8d`, or `both` (default),
@@ -96,8 +96,8 @@ fi
 
 if [[ -n "${DACBO_PYTHON:-}" ]]; then
     python_bin="${DACBO_PYTHON}"
-elif [[ -x "${repository_root}/.env/bin/python" ]]; then
-    python_bin="${repository_root}/.env/bin/python"
+elif [[ -x "${repository_root}/.venv/bin/python" ]]; then
+    python_bin="${repository_root}/.venv/bin/python"
 else
     python_bin="$(command -v python)"
 fi

@@ -11,5 +11,3 @@ hydra:
     # mem_gb: 8
     mem_per_cpu: 8G
     array_parallelism: 1000
-    setup:
-      - module load system singularity

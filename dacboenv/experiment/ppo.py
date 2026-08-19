@@ -575,12 +575,14 @@ def run_full_panel_validation(
     )
 
     results: list[dict[str, Any]] = []
+    keep_smac_output = bool(validation_cfg.get("full_keep_smac_output", True))
     for candidate in candidates:
+        candidate_smac_directory = rundir / "smac3_output" / "validation_full" / candidate.candidate_id
         full_factories = [
             make_env_factory(
                 cfg,
                 worker_id=0,
-                output_directory=rundir / "smac3_output" / "validation_full" / candidate.candidate_id,
+                output_directory=candidate_smac_directory,
                 task_ids=full_task_ids,
                 inner_seeds=full_inner_seeds,
                 instance_set_id=str(validation_cfg.full_instance_set_id),
@@ -604,6 +606,8 @@ def run_full_panel_validation(
             )
         finally:
             candidate_env.close()
+        if not keep_smac_output:
+            shutil.rmtree(candidate_smac_directory, ignore_errors=True)
         result = {
             "rl_algorithm_id": str(getattr(model, "algorithm_id", type(model).__name__.lower())),
             "algorithm_class": f"{type(model).__module__}.{type(model).__qualname__}",

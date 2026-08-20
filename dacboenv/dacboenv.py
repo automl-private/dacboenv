@@ -547,11 +547,19 @@ class DACBOEnv(gym.Env):
                     )
             elif isinstance(self._action_space, PosteriorModeActionSpace):
                 self._validate_posterior_mode_feature_space("action_features")
+            elif (
+                isinstance(self._action_space, AcqParameterActionSpace) and self._action_space._action.attr == "_alpha"
+            ):
+                # Native SAWEI controls a continuous alpha.  The five rows are
+                # still useful, fixed diagnostic probes of canonical WEI
+                # alphas; they are not presented as indices of the continuous
+                # action space.
+                pass
             else:
                 raise ValueError(
                     "The action_features observation requires WEIDiscreteActionSpace, "
                     "WEITempoRLActionSpace, PosteriorQuantileActionSpace, or "
-                    "PosteriorModeActionSpace."
+                    "PosteriorModeActionSpace, or continuous WEI alpha control."
                 )
 
         if "af_action_features" in observation_keys:

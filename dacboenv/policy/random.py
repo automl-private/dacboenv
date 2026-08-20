@@ -6,7 +6,7 @@ from copy import deepcopy
 from typing import TYPE_CHECKING
 
 import numpy as np
-from gymnasium.spaces import Discrete
+from gymnasium.spaces import Discrete, MultiDiscrete
 
 from dacboenv.policy.abstract_policy import AbstractPolicy
 
@@ -47,6 +47,40 @@ class RandomPolicy(AbstractPolicy):
             Seed
         """
         self._policy_action_space.seed(seed=seed)
+
+
+class DoubleRandomWEIPolicy(AbstractPolicy):
+    """Sample WEI alpha and action duration independently and uniformly.
+
+    The policy is deliberately restricted to :class:`WEITempoRLActionSpace`'s
+    two-axis ``MultiDiscrete([n_durations, n_alphas])`` contract.  Keeping a
+    policy-local generator separates action sampling from ConfigSpace and SMAC
+    randomness.
+    """
+
+    def __init__(self, env: DACBOEnv) -> None:
+        """Validate the two-axis action space and initialize a local RNG."""
+        super().__init__(env)
+        if not isinstance(env.action_space, MultiDiscrete) or env.action_space.nvec.shape != (2,):
+            raise TypeError(
+                "DoubleRandomWEIPolicy requires the two-axis WEI TempoRL MultiDiscrete([duration, alpha]) action space."
+            )
+        self._nvec = np.asarray(env.action_space.nvec, dtype=np.int64)
+        self._rng = np.random.default_rng()
+
+    def __call__(self, obs: ObsType | None = None) -> ActType:  # noqa: ARG002
+        """Draw duration and alpha indices from independent uniform laws."""
+        return np.asarray(
+            [
+                self._rng.integers(0, self._nvec[0]),
+                self._rng.integers(0, self._nvec[1]),
+            ],
+            dtype=np.int64,
+        )
+
+    def set_seed(self, seed: int | None) -> None:
+        """Reset only the policy-local action RNG."""
+        self._rng = np.random.default_rng(seed)
 
 
 class MarginalRandomPolicy(AbstractPolicy):

@@ -1,0 +1,26 @@
+# @package _global_
+
+# SAWEI consumes the four legacy signal keys.  OfflineDatasetOptimizer stores
+# only the common structured + fixed-shape GP keys, so all policies share one
+# scientific dataset schema.
+observation_space_id: structured-gp-all-sawei-v1
+dacboenv:
+  observation_keys:
+    - global_state
+    - action_features
+    - gp_hp_summary
+    - gp_hp_change
+    - gp_hp_raw
+    - gp_hp_raw_mask
+    - gp_hp_raw_roles
+    - ubr_smoothed_gradient
+    - acq_value_PI
+    - acq_value_WEI_explore
+    - previous_param
+  gp_hyperparameters:
+    enabled: true
+    max_raw_parameters: 64
+    overflow_policy: error
+    near_bound_fraction: 0.05
+    unsupported_model_policy: zeros
+    strict_kernel_validation: false

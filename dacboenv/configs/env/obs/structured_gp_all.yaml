@@ -1,0 +1,19 @@
+# @package _global_
+
+observation_space_id: structured-gp-all-v1
+dacboenv:
+  observation_keys:
+    - global_state
+    - action_features
+    - gp_hp_summary
+    - gp_hp_change
+    - gp_hp_raw
+    - gp_hp_raw_mask
+    - gp_hp_raw_roles
+  gp_hyperparameters:
+    enabled: true
+    max_raw_parameters: 64
+    overflow_policy: error
+    near_bound_fraction: 0.05
+    unsupported_model_policy: zeros
+    strict_kernel_validation: false

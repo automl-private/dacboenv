@@ -1,0 +1,14 @@
+# @package _global_
+
+defaults:
+  - base
+
+optimizer:
+  _target_: dacboenv.experiment.offline_dataset.OfflineDatasetOptimizer
+  _partial_: true
+  dataset_output_path: ${outdir}/offline_episode.npz
+  dataset_policy_id: ${policy_id}
+  dataset_schema_version: ${offline_dataset.schema_version}
+  stored_observation_keys: ${offline_dataset.observation_keys}
+  log_observations: false
+

@@ -1,0 +1,9 @@
+# @package _global_
+
+optimizer_id: DoubleRandom-WEI-Tempo
+policy_id: double_random_wei_tempo
+optimizer:
+  policy_class:
+    _target_: dacboenv.policy.random.DoubleRandomWEIPolicy
+    _partial_: true
+  policy_kwargs: {}

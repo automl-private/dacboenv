@@ -1,0 +1,43 @@
+# @package _global_
+
+offline_dataset:
+  operation: build
+  schema_version: dacbo-offline-transitions-v1
+  output_root: artifacts/offline_dataset_carps_v1
+  reference_table: dacboenv/experiment/analysis/yahpo_best_known_references.json
+
+  # All 24 functions in both dimensions, using the same native instance-0
+  # convention as the current broad CARP-S evaluation workflow.
+  bbob_dimensions: [2, 8]
+  bbob_functions: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
+  bbob_instances: [0]
+  include_all_packaged_yahpo_so: true
+  seeds: [0, 1, 2, 3, 4]
+
+  alpha_levels: [0.0, 0.25, 0.5, 0.75, 1.0]
+  durations: [1, 5, 10]
+  sawei:
+    alpha: 0.5
+    delta: 0.1
+    window_size: 7
+    atol_rel: 0.1
+    track_attitude: last
+    bounds: [0.0, 1.0]
+    auto_alpha: false
+
+  observation_keys:
+    - global_state
+    - action_features
+    - gp_hp_summary
+    - gp_hp_change
+    - gp_hp_raw
+    - gp_hp_raw_mask
+    - gp_hp_raw_roles
+
+  consolidated_filename: offline_dataset_carps_bbob2d8d_yahpo_so_v1.npz
+  compression: deflated
+  allow_incomplete_consolidation: false
+
+  # Management-only operation inputs. Collection jobs ignore these values.
+  policy_filter: ".*"
+  launch_mode: all

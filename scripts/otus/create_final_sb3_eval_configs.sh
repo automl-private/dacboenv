@@ -24,9 +24,10 @@ Arguments:
 Options:
   --overwrite   Replace only the generated config/inventory tree.
 
-The script selects checkpoint mode `final`, meaning the checkpoint whose
-training_step exactly equals experiment.total_timesteps. It never selects a
-frequent-validation winner or a full-validation winner.
+The script selects checkpoint mode `final`. The canonical selector verifies
+`training_complete.json`, requires the exact configured final timestep, and
+loads the root `model.zip` (plus root `vecnormalize.pkl` when enabled).
+Validation history is neither required nor consulted.
 EOF
 }
 
@@ -111,6 +112,9 @@ fi
 
 # The positional arguments map exactly to:
 #   rundir, configs_path, model_selection, inventory_path
+#
+# `final` is intentionally validation-independent: it is resolved from
+# training_complete.json and the root model.zip by checkpoint_selection.py.
 uv run --frozen python -m dacboenv.experiment.collect_trained_policies \
     "${run_root}" \
     "${policy_root}" \

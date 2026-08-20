@@ -1,9 +1,10 @@
-"""Canonical, provenance-checked PPO checkpoint selection."""
+"""Canonical, provenance-checked SB3 checkpoint selection."""
 
 from __future__ import annotations
 
 import json
 import warnings
+import zipfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -72,7 +73,7 @@ def _resolve_artifact(run_root: Path, recorded: str, *, directory: Path) -> Path
 def _load_config(run_root: Path) -> tuple[DictConfig, Path, int, bool]:
     config_path = run_root / ".hydra" / "config.yaml"
     if not config_path.is_file():
-        raise FileNotFoundError(f"PPO Hydra config is missing: {config_path}")
+        raise FileNotFoundError(f"RL Hydra config is missing: {config_path}")
     cfg = OmegaConf.load(config_path)
     if not isinstance(cfg, DictConfig):
         raise TypeError(f"Expected a mapping Hydra config at {config_path}")
@@ -83,6 +84,105 @@ def _load_config(run_root: Path) -> tuple[DictConfig, Path, int, bool]:
     if expected_final <= 0:
         raise ValueError("Configured final training timestep must be positive.")
     return cfg, config_path, expected_final, bool(OmegaConf.select(cfg, "experiment.vecnormalize", default=False))
+
+
+
+def _select_final(
+    run_root: Path,
+    *,
+    expected_final: int,
+    vecnormalize: bool,
+) -> tuple[Path, Path | None, int]:
+    """Select the exact post-training root model without validation artifacts.
+
+    The training pipeline asserts that ``model.num_timesteps`` equals the
+    configured total before writing ``model.zip`` and then atomically records
+    the same count in ``training_complete.json``.  Those two artifacts, rather
+    than frequent-validation history, are therefore authoritative for
+    checkpoint mode ``final``.
+    """
+    completion_path = run_root / "training_complete.json"
+    if not completion_path.is_file():
+        raise FileNotFoundError(
+            "final requires the post-training completion marker, not validation "
+            f"history: {completion_path}"
+        )
+
+    payload = json.loads(completion_path.read_text(encoding="utf-8"))
+    if payload.get("complete") is not True:
+        raise ValueError(f"Run is not marked training-complete: {completion_path}")
+
+    try:
+        reached = int(payload["num_timesteps"])
+        recorded_expected = int(payload["expected_final_timesteps"])
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError(
+            f"Malformed final-training provenance in {completion_path}"
+        ) from error
+
+    if recorded_expected != expected_final:
+        raise ValueError(
+            "training_complete.json disagrees with the saved Hydra config: "
+            f"{recorded_expected} != {expected_final}."
+        )
+    if reached != expected_final:
+        raise ValueError(
+            "Training did not reach the exact configured final timestep: "
+            f"{reached} != {expected_final}."
+        )
+
+    # Prefer the canonical root artifact written after the exact-timestep
+    # assertion.  Fall back to the recorded path or its basename only to make
+    # moved/copied run directories portable.
+    candidates: list[Path] = [run_root / "model.zip"]
+    recorded_model = payload.get("model_path")
+    if recorded_model is not None:
+        recorded_path = Path(str(recorded_model))
+        if not recorded_path.is_absolute():
+            recorded_path = run_root / recorded_path
+        candidates.extend((recorded_path, run_root / recorded_path.name))
+
+    model = next(
+        (candidate.resolve() for candidate in candidates if candidate.is_file()),
+        None,
+    )
+    if model is None:
+        rendered = ", ".join(str(candidate) for candidate in candidates)
+        raise FileNotFoundError(
+            "No exact final model artifact was found. Checked: " + rendered
+        )
+    if not zipfile.is_zipfile(model):
+        raise ValueError(f"Final SB3 model is not a valid ZIP archive: {model}")
+
+    normalization: Path | None = None
+    if vecnormalize:
+        recorded_normalization = payload.get("normalization_path")
+        normalization_candidates = [run_root / "vecnormalize.pkl"]
+        if recorded_normalization is not None:
+            recorded_path = Path(str(recorded_normalization))
+            if not recorded_path.is_absolute():
+                recorded_path = run_root / recorded_path
+            normalization_candidates.extend(
+                (recorded_path, run_root / recorded_path.name)
+            )
+        normalization = next(
+            (
+                candidate.resolve()
+                for candidate in normalization_candidates
+                if candidate.is_file()
+            ),
+            None,
+        )
+        if normalization is None:
+            rendered = ", ".join(
+                str(candidate) for candidate in normalization_candidates
+            )
+            raise FileNotFoundError(
+                "The final normalized model has no matching VecNormalize "
+                "artifact. Checked: " + rendered
+            )
+
+    return model, normalization, reached
 
 
 def _frequent_entries(run_root: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -204,24 +304,21 @@ def select_checkpoint(
         model, normalization, step, metric, score, panel_id, panel_hash = _select_full_best(
             run_root, cfg, vecnormalize=vecnormalize
         )
+    elif canonical == "final":
+        model, normalization, step = _select_final(
+            run_root,
+            expected_final=expected_final,
+            vecnormalize=vecnormalize,
+        )
+        metric = "training_complete_root_model"
     else:
         payload, entries = _frequent_entries(run_root)
-        if canonical == "final":
-            matches = [entry for entry in entries if int(entry["training_step"]) == expected_final]
-            if len(matches) != 1:
-                raise FileNotFoundError(
-                    "Expected exactly one frequent checkpoint at configured final step "
-                    f"{expected_final}, found {len(matches)}."
-                )
-            selected = matches[0]
-            metric = "configured_final_training_step"
-        else:
-            selected = max(
-                entries,
-                key=lambda entry: (float(entry["scores"]["balanced"]), -int(entry["training_step"])),
-            )
-            metric = "frequent_balanced_score_diagnostic_only"
-            score = float(selected["scores"]["balanced"])
+        selected = max(
+            entries,
+            key=lambda entry: (float(entry["scores"]["balanced"]), -int(entry["training_step"])),
+        )
+        metric = "frequent_balanced_score_diagnostic_only"
+        score = float(selected["scores"]["balanced"])
         model, normalization = _entry_artifacts(run_root, selected, vecnormalize=vecnormalize)
         step = int(selected["training_step"])
         panel_id = str(selected.get("panel_id", payload.get("panel_id", ""))) or None

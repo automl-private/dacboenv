@@ -10,9 +10,9 @@ Usage:
   otus_collect_offline_dataset.sh OUTPUT_ROOT MODE [--dry-run]
 
 Modes:
-  prepare        Freeze the 5,780-episode inventory and 34 Hydra launch groups.
+  prepare        Freeze the 2,380-episode inventory and 14 Hydra launch groups.
   all            Submit all static, double-random, and SAWEI launch groups.
-  static         Submit only the 15 static alpha-duration policies.
+  static         Submit only the five static WEI-alpha policies.
   double-random  Submit only the double-random policy.
   sawei          Submit only native SAWEI (duration 1).
   status         Validate every expected NPZ shard and report missing/failures.
@@ -62,10 +62,10 @@ esac
 
 repo_root="$(git rev-parse --show-toplevel)"
 cd "${repo_root}"
-python_bin="${repo_root}/.env/bin/python"
+python_bin="${repo_root}/.venv/bin/python"
 if [[ ! -x "${python_bin}" ]]; then
     echo "The repository runtime is missing: ${python_bin}" >&2
-    echo "Create/synchronize .env before preparing the Otus collection." >&2
+    echo "Create/synchronize .venv before preparing the Otus collection." >&2
     exit 1
 fi
 mkdir -p -- "${output_root_input}"

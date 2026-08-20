@@ -27,7 +27,7 @@ from dacboenv.experiment.offline_dataset import (
 )
 from dacboenv.experiment.source_provenance import current_source_revision
 
-POLICY_COUNT = 17
+POLICY_COUNT = 7
 TASK_CONFIG_PATTERN = re.compile(r"cfg_(\d+)_(\d+)_(\d+)\.yaml")
 
 
@@ -111,29 +111,28 @@ def discover_tasks(config: DictConfig) -> list[dict[str, Any]]:
 
 
 def build_policies(config: DictConfig) -> list[dict[str, Any]]:
-    """Create 15 static, one double-random, and one SAWEI policy row."""
+    """Create five static, one double-random, and one SAWEI policy row."""
     alphas = [float(value) for value in config.alpha_levels]
     durations = [int(value) for value in config.durations]
     if alphas != [0.0, 0.25, 0.5, 0.75, 1.0] or durations != [1, 5, 10]:
         raise ValueError("The v1 action schema requires alpha=[0,.25,.5,.75,1] and duration=[1,5,10].")
 
     policies: list[dict[str, Any]] = []
-    for duration in durations:
-        for alpha_index, alpha in enumerate(alphas):
-            policy_id = f"static_wei_alpha{round(100 * alpha):03d}_duration{duration}"
-            policies.append(
-                {
-                    "policy_id": policy_id,
-                    "policy_kind": "static",
-                    "alpha": alpha,
-                    "duration": duration,
-                    "action_config": "wei_alpha_discrete",
-                    "interaction_config": f"f{duration}",
-                    "observation_config": "structured_gp_all",
-                    "policy_override": f"+policy/static/discrete_action=action_{alpha_index}",
-                    "extra_overrides": [],
-                }
-            )
+    for alpha_index, alpha in enumerate(alphas):
+        policy_id = f"static_wei_alpha{round(100 * alpha):03d}"
+        policies.append(
+            {
+                "policy_id": policy_id,
+                "policy_kind": "static",
+                "alpha": alpha,
+                "duration": 1,
+                "action_config": "wei_alpha_discrete",
+                "interaction_config": "f1",
+                "observation_config": "structured_gp_all",
+                "policy_override": f"+policy/static/discrete_action=action_{alpha_index}",
+                "extra_overrides": [],
+            }
+        )
 
     policies.append(
         {
@@ -171,7 +170,7 @@ def build_policies(config: DictConfig) -> list[dict[str, Any]]:
         }
     )
     if len(policies) != POLICY_COUNT or len({policy["policy_id"] for policy in policies}) != POLICY_COUNT:
-        raise RuntimeError("The offline policy registry must contain exactly 17 unique policies.")
+        raise RuntimeError("The offline policy registry must contain exactly seven unique policies.")
     return policies
 
 

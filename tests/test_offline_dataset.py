@@ -65,18 +65,18 @@ def test_canonical_wei_action_unifies_supported_controllers() -> None:
     assert (sawei_action.alpha_index, sawei_action.duration_index) == (-1, -1)
 
 
-def test_policy_registry_has_fifteen_static_and_two_dynamic_rows() -> None:
-    """The frozen campaign expands to exactly 17 scientifically distinct policies."""
+def test_policy_registry_has_five_static_and_two_dynamic_rows() -> None:
+    """The frozen campaign expands to exactly seven scientifically distinct policies."""
     path = Path("dacboenv/configs/offline_dataset/carps_bbob_yahpo_v1.yaml")
     config = OmegaConf.load(path).offline_dataset
     policies = build_policies(config)
 
-    assert len(policies) == POLICY_COUNT == 17
-    assert sum(policy["policy_kind"] == "static" for policy in policies) == 15
+    assert len(policies) == POLICY_COUNT == 7
+    assert sum(policy["policy_kind"] == "static" for policy in policies) == 5
     assert sum(policy["policy_kind"] == "double_random" for policy in policies) == 1
     assert sum(policy["policy_kind"] == "sawei" for policy in policies) == 1
     assert {(policy["alpha"], policy["duration"]) for policy in policies if policy["policy_kind"] == "static"} == {
-        (alpha, duration) for alpha in [0.0, 0.25, 0.5, 0.75, 1.0] for duration in [1, 5, 10]
+        (alpha, 1) for alpha in [0.0, 0.25, 0.5, 0.75, 1.0]
     }
 
 

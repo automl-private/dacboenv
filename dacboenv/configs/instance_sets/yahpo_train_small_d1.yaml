@@ -1,0 +1,41 @@
+schema_version: 1
+id: yahpo-train-small-d1-v1
+domain: yahpo
+split: train
+status: ready
+runnable: true
+role: training-screen
+task_ids:
+- yahpo/so/lcbench/167200/None
+- yahpo/so/lcbench/189908/None
+- yahpo/so/rbv2_glmnet/1457/None
+- yahpo/so/rbv2_glmnet/188/None
+- yahpo/so/rbv2_rpart/41159/None
+- yahpo/so/rbv2_rpart/377/None
+- yahpo/so/rbv2_ranger/458/None
+- yahpo/so/rbv2_ranger/32/None
+- yahpo/so/rbv2_xgboost/41216/None
+- yahpo/so/rbv2_xgboost/1462/None
+- yahpo/so/rbv2_super/42/None
+- yahpo/so/rbv2_super/1487/None
+inner_seeds:
+- null
+reference_coverage:
+  table_path: dacboenv/experiment/analysis/yahpo_best_known_references.json
+  table_sha256: d5b37cbb50d2e227dd794fd3ff0ad61089b10c163c1f09fb5b1689c1d5fece77
+  reference_basis: assumed_metric_upper_bound
+  provenance_complete_non_test_count: 588
+  selected_task_count: 12
+composition:
+  parent_manifest: yahpo-train-v1
+  parent_manifest_hash: 4d82c9cece51176bb000299b33b0f3e3b3ed34b3401e3f7c25737436a1329b6e
+  selection_rule: first two frozen training instances per non-nb301 scenario
+  scenario_task_counts:
+    lcbench: 2
+    rbv2_glmnet: 2
+    rbv2_rpart: 2
+    rbv2_ranger: 2
+    rbv2_xgboost: 2
+    rbv2_super: 2
+  preferred_persistent_workers: 12
+manifest_hash: 78720090719b8758edd3b358357c6fb117d8dce9f0546a447a5295a4288b22c9

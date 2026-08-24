@@ -1,0 +1,8 @@
+policy_inventory: ???
+output_root: ???
+
+hydra:
+  run:
+    dir: ${output_root}/hydra/prepare
+  job:
+    chdir: false

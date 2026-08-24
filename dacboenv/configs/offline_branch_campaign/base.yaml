@@ -1,0 +1,13 @@
+operation: prepare
+final_dataset_root: ???
+output_root: ???
+source_policies:
+  - uniform_random
+seeds: [0, 1, 2, 3, 4]
+phases: [0.25, 0.50, 0.75]
+
+hydra:
+  run:
+    dir: ${output_root}/hydra/${operation}
+  job:
+    chdir: false

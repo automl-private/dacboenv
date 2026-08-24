@@ -1,0 +1,25 @@
+# @package _global_
+defaults:
+  - offline_ddqn_f5_finetune
+  - override /instance_sets@training_instances: offline_train_v3
+  - override /instance_sets@validation_instances: offline_dev_v3
+  - override /instance_sets@test_instances: offline_holdout_v3
+  - override /validation_panels@frequent_validation_panel: offline_dev_v3
+  - override /validation_panels@full_validation_panel: offline_dev_v3
+  - _self_
+
+dacboenv:
+  reference_provider:
+    _target_: dacboenv.reference.CompositeReferenceProvider
+    providers:
+      bbob:
+        _target_: dacboenv.reference.BBOBExactReferenceProvider
+      yahpo:
+        _target_: dacboenv.reference.ManifestReferenceProvider
+        source: dacboenv/experiment/analysis/yahpo_best_known_references.json
+        expected_runtime_objective_transform: negative_accuracy
+        expected_reporting_objective_transform: one_minus_accuracy
+        expected_fidelity: fixed_maximum
+
+offline_replay_prefill:
+  domain: mixed

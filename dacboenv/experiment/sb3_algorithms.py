@@ -19,8 +19,9 @@ from stable_baselines3 import DQN, PPO
 from stable_baselines3.common.callbacks import BaseCallback
 
 from dacboenv.env.observations.gp_hyperparameters import GP_HP_SUMMARY_INDEX
-from dacboenv.experiment.evaluation_determinism import canonical_sha256
+from dacboenv.experiment.evaluation_determinism import canonical_sha256, file_sha256
 from dacboenv.rl.double_dqn import DoubleDQN, double_dqn_bootstrap, vanilla_dqn_bootstrap
+from dacboenv.rl.offline_sb3_policy import OfflineSharedDQNPolicy
 
 if TYPE_CHECKING:
     from stable_baselines3.common.base_class import BaseAlgorithm
@@ -180,7 +181,7 @@ def _off_policy_optimizer_config(
     return policy_kwargs, optimizer_cfg
 
 
-def build_sb3_algorithm(
+def build_sb3_algorithm(  # noqa: C901, PLR0912, PLR0915
     cfg: DictConfig,
     env: VecEnv,
     *,
@@ -203,6 +204,44 @@ def build_sb3_algorithm(
     else:
         algorithm_class = DQN if algorithm_id == "dqn" else DoubleDQN
         policy_kwargs, optimizer_cfg = _off_policy_optimizer_config(cfg, algorithm_class)
+        offline_initialization = OmegaConf.select(cfg, "offline_initialization", default=None)
+        offline_payload = None
+        if offline_initialization is not None and bool(offline_initialization.get("enabled", False)):
+            checkpoint_path = Path(str(offline_initialization.checkpoint)).resolve()
+            normalizer_path = Path(str(offline_initialization.normalizer)).resolve()
+            if not checkpoint_path.is_file() or not normalizer_path.is_file():
+                raise FileNotFoundError("Offline initialization checkpoint/normalizer is missing.")
+            expected_checkpoint = offline_initialization.get("checkpoint_sha256", None)
+            expected_normalizer = offline_initialization.get("normalizer_sha256", None)
+            if expected_checkpoint is not None and file_sha256(checkpoint_path) != str(expected_checkpoint):
+                raise ValueError("Offline initialization checkpoint hash mismatch.")
+            if expected_normalizer is not None and file_sha256(normalizer_path) != str(expected_normalizer):
+                raise ValueError("Offline initialization normalizer hash mismatch.")
+            offline_payload = th.load(checkpoint_path, map_location="cpu", weights_only=False)
+            normalizer_payload = json.loads(normalizer_path.read_text(encoding="utf-8"))
+            if offline_payload.get("schema_version") not in {
+                "dacbo-offline-q-checkpoint-v1",
+                "dacbo-offline-q-checkpoint-v2",
+            }:
+                raise ValueError("Unsupported offline initialization checkpoint schema.")
+            if normalizer_payload.get("train_dataset_sha256") != offline_payload["provenance"]["behavior_train_sha256"]:
+                raise ValueError("Offline initialization checkpoint and normalizer refer to different train data.")
+            model_config = offline_payload["model_config"]
+            if int(model_config["action_count"]) != int(env.action_space.n):
+                raise ValueError("Offline initialization action schema does not match the online environment.")
+            observation = env.observation_space
+            if not isinstance(observation, spaces.Dict):
+                raise TypeError("Offline initialization requires Dict observations.")
+            if observation["global_state"].shape != (int(model_config["state_dim"]),):
+                raise ValueError("Offline initialization global-state shape mismatch.")
+            expected_action_shape = (int(model_config["action_count"]), int(model_config["action_feature_dim"]))
+            if observation["action_features"].shape != expected_action_shape:
+                raise ValueError("Offline initialization action-feature shape mismatch.")
+            policy_kwargs = {
+                "offline_model_config": model_config,
+                "offline_normalizer": normalizer_payload,
+            }
+            optimizer_cfg.policy = "MultiInputPolicy"
         n_steps = int(optimizer_cfg.get("n_steps", 1))
         if isinstance(env.observation_space, spaces.Dict) and n_steps != 1:
             raise ValueError("SB3 2.9.0 does not support n-step replay with Dict observations; set n_steps=1.")
@@ -222,12 +261,19 @@ def build_sb3_algorithm(
             kwargs.pop(key, None)
         if isinstance(kwargs.get("train_freq"), list):
             kwargs["train_freq"] = tuple(kwargs["train_freq"])
+        if offline_payload is not None:
+            kwargs["policy"] = OfflineSharedDQNPolicy
         model = algorithm_class(
             env=env,
             policy_kwargs=policy_kwargs,
             tensorboard_log=tensorboard_log,
             **kwargs,
         )
+        if offline_payload is not None:
+            if not isinstance(model.policy, OfflineSharedDQNPolicy):
+                raise TypeError("Offline initialization requires OfflineSharedDQNPolicy.")
+            model.q_net.shared_q.load_state_dict(offline_payload["model_state"])
+            model.q_net_target.shared_q.load_state_dict(offline_payload["model_state"])
     if not isinstance(model, (PPO, DQN, DoubleDQN)):
         raise TypeError(f"Configured RL target created unsupported model {type(model).__name__}.")
     return model

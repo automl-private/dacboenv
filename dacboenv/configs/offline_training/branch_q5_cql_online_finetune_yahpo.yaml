@@ -1,0 +1,7 @@
+defaults:
+  - base
+experiment_id: O5_branch_q5_cql_online_finetune_yahpo
+domain: yahpo
+algorithm_mode: branch_pretrain_then_cql
+cql_coefficient: 0.5
+online_finetune_after_offline: true

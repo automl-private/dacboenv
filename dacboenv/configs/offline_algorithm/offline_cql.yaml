@@ -1,0 +1,7 @@
+mode: offline_cql
+cql_coefficient: 0.5
+tie_tolerance: 1.0e-3
+branch_regression_weight: 1.0
+branch_ranking_weight: 1.0
+gap_weighted: true
+q10_weight: 0.0

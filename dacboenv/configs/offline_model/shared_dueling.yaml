@@ -1,0 +1,9 @@
+variant: shared_dueling
+state_dim: 13
+action_feature_dim: 4
+action_count: 5
+append_alpha_identity: true
+state_hidden: 64
+action_hidden: 32
+fusion_hidden: 64
+separate_branch_head: true

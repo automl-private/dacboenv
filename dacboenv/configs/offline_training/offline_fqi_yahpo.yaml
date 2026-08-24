@@ -1,0 +1,6 @@
+defaults:
+  - base
+experiment_id: O0_offline_fqi_yahpo
+domain: yahpo
+algorithm_mode: offline_fqi
+cql_coefficient: 0.0

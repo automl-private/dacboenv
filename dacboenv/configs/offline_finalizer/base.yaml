@@ -1,0 +1,12 @@
+behavior_npz: ???
+output_root: ???
+learned_headroom_root: null
+split_seed: dacbo-offline-v3-split-2026-08-24
+tie_tolerance: 1.0e-3
+strict_expected_corpus: true
+
+hydra:
+  run:
+    dir: ${output_root}/hydra/finalize
+  job:
+    chdir: false

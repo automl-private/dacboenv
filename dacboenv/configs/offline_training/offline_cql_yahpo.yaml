@@ -1,0 +1,6 @@
+defaults:
+  - base
+experiment_id: O2_offline_cql_yahpo
+domain: yahpo
+algorithm_mode: offline_cql
+cql_coefficient: 0.5

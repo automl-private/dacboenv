@@ -1,0 +1,7 @@
+defaults:
+  - base
+experiment_id: diagnostic_shuffled_branch_labels
+domain: yahpo
+algorithm_mode: branch_q5_only
+cql_coefficient: 0.0
+negative_control: shuffled_branch_labels

@@ -1,0 +1,15 @@
+defaults:
+  - offline_dataset: base
+  - offline_model: shared_dueling
+  - offline_algorithm: branch_pretrain_then_cql
+  - _self_
+
+seed: 0
+device: cpu
+output_root: ???
+
+hydra:
+  run:
+    dir: ${output_root}/hydra
+  job:
+    chdir: false

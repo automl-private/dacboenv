@@ -1,0 +1,9 @@
+manifest: ???
+job_index: ???
+reference_table: ${hydra:runtime.cwd}/dacboenv/experiment/analysis/yahpo_best_known_references.json
+
+hydra:
+  run:
+    dir: ${hydra:runtime.cwd}/outputs/offline-branch-worker/${job_index}
+  job:
+    chdir: false

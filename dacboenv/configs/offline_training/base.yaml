@@ -1,0 +1,23 @@
+experiment_id: offline_base
+domain: yahpo
+learning_rate: 1.0e-4
+batch_size: 512
+branch_batch_size: 128
+high_gap_branch_fraction: 0.25
+gamma: 1.0
+gradient_clip: 10.0
+target_update_interval: 1000
+maximum_updates: 50000
+branch_pretrain_updates: 5000
+dev_interval: 500
+checkpoint_interval: 1000
+patience: 20
+resume_from: null
+sampler:
+  batch_size: ${offline_training.batch_size}
+  bbob_fraction: 0.5
+  positive_fraction: 0.25
+  ordinary_fraction: 0.75
+  balance_actions: true
+  balance_phases: true
+  balance_yahpo_scenarios: true

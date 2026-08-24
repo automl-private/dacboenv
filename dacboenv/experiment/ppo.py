@@ -59,6 +59,7 @@ from dacboenv.experiment.sb3_algorithms import (
     resolve_rl_algorithm_id,
     write_algorithm_metadata,
 )
+from dacboenv.offline.replay_prefill import OfflineOnlineMixSchedule, configure_offline_replay
 from dacboenv.utils.carps_optimizer import get_task_config
 from dacboenv.utils.loggingutils import maybe_remove_logs
 from dacboenv.utils.seeding import derive_named_seed, run_seed_metadata
@@ -69,6 +70,30 @@ if TYPE_CHECKING:
     from dacboenv.dacboenv import DACBOEnv
 
 logger = get_logger("PPO")
+
+
+def validate_offline_finetune_task_boundary(
+    manifest_path: Path,
+    training_task_ids: Sequence[str],
+    validation_task_ids: Sequence[str],
+) -> None:
+    """Ensure online fine-tuning cannot consume the sealed offline holdout."""
+    if not manifest_path.exists():
+        raise FileNotFoundError(
+            "Offline fine-tuning requires final_offline_dataset_manifest.json beside the behavior dataset."
+        )
+    finalized_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    split_tasks = {
+        split: set(map(str, finalized_manifest["task_splits"][split])) for split in ("train", "dev", "holdout")
+    }
+    training_tasks = set(map(str, training_task_ids))
+    validation_tasks = set(map(str, validation_task_ids))
+    if not training_tasks or not training_tasks <= split_tasks["train"]:
+        raise ValueError("Online fine-tuning tasks must be a nonempty subset of offline_train_v3.")
+    if not validation_tasks or not validation_tasks <= split_tasks["dev"]:
+        raise ValueError("Online fine-tuning validation tasks must be a nonempty subset of offline_dev_v3.")
+    if (training_tasks | validation_tasks) & split_tasks["holdout"]:
+        raise ValueError("Offline holdout tasks are sealed and cannot be used for online fine-tuning.")
 
 
 def derive_worker_seed(run_seed: int, worker_id: int) -> int:
@@ -1278,6 +1303,43 @@ def run(cfg: DictConfig) -> None:  # noqa: C901, PLR0912, PLR0915
             tensorboard_log=str(rundir / "tensorboard"),
             model_seed=int(seed_metadata["policy_model_seed"]),
         )
+        prefill_cfg = cfg.get("offline_replay_prefill", None)
+        if prefill_cfg is not None and bool(prefill_cfg.get("enabled", False)):
+            if algorithm_id not in {"dqn", "double_dqn"}:
+                raise ValueError("Offline replay prefill is supported only for DQN/DoubleDQN.")
+            if bool(cfg.experiment.vecnormalize):
+                raise ValueError("Offline-normalized Q policies cannot be combined with SB3 VecNormalize.")
+            finalized_root = Path(str(prefill_cfg.dataset)).resolve().parent
+            finalized_manifest_path = finalized_root / "final_offline_dataset_manifest.json"
+            validate_offline_finetune_task_boundary(
+                finalized_manifest_path,
+                list(map(str, cfg.dacboenv.task_ids)),
+                list(map(str, cfg.experiment.validation.task_ids)),
+            )
+            mixture_cfg = prefill_cfg.get("mixture", None)
+            mixture = None
+            if mixture_cfg is not None and bool(mixture_cfg.get("enabled", False)):
+                mixture = OfflineOnlineMixSchedule(
+                    initial_fraction=float(mixture_cfg.initial_fraction),
+                    final_fraction=float(mixture_cfg.final_fraction),
+                    decay_steps=int(mixture_cfg.decay_steps),
+                )
+            prefill_result = configure_offline_replay(
+                model,  # type: ignore[arg-type]
+                dataset_path=Path(str(prefill_cfg.dataset)).resolve(),
+                seed=int(prefill_cfg.seed),
+                maximum_transitions=(
+                    None
+                    if prefill_cfg.get("maximum_transitions", None) is None
+                    else int(prefill_cfg.maximum_transitions)
+                ),
+                mixture=mixture,
+                domain=str(prefill_cfg.get("domain", "mixed")),
+            )
+            (rundir / "offline_replay_prefill.json").write_text(
+                json.dumps(prefill_result, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
         algorithm_metadata = write_algorithm_metadata(cfg, vec_env, rundir / "rl_algorithm_metadata.json")
         staged_worker_seeds = stage_training_worker_seeds(vec_env, int(cfg.seed))
         logger.info(f"Staged training worker seeds: {staged_worker_seeds}")

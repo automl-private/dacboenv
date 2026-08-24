@@ -1,0 +1,7 @@
+output_root: artifacts/offline_training
+
+hydra:
+  run:
+    dir: ${output_root}/hydra/render
+  job:
+    chdir: false

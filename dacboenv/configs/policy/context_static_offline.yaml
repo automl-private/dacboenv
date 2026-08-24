@@ -1,0 +1,10 @@
+# @package _global_
+policy_id: OfflineTrainingContextStatic
+optimizer_id: ${policy_id}
+optimizer:
+  policy_class:
+    _target_: dacboenv.policy.context_static.ContextStaticWEIPolicy
+    _partial_: true
+  policy_kwargs:
+    registry: ???
+    registry_sha256: ???

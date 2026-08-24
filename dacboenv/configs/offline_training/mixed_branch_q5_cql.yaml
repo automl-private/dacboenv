@@ -1,0 +1,6 @@
+defaults:
+  - base
+experiment_id: mixed_branch_q5_cql
+domain: mixed
+algorithm_mode: branch_pretrain_then_cql
+cql_coefficient: 0.5

@@ -1,0 +1,7 @@
+defaults:
+  - base
+experiment_id: diagnostic_mismatched_action_rows
+domain: yahpo
+algorithm_mode: branch_pretrain_then_cql
+cql_coefficient: 0.5
+negative_control: mismatched_action_rows

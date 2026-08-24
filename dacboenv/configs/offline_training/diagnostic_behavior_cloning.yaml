@@ -1,0 +1,7 @@
+defaults:
+  - base
+experiment_id: diagnostic_behavior_cloning
+domain: yahpo
+algorithm_mode: behavior_cloning
+cql_coefficient: 0.0
+negative_control: none

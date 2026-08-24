@@ -1,0 +1,15 @@
+# @package _global_
+
+policy_id: OfflineSharedQ
+optimizer_id: ${policy_id}
+optimizer:
+  policy_class:
+    _target_: dacboenv.policy.offline_q.OfflineQPolicy
+    _partial_: true
+  policy_kwargs:
+    checkpoint: ???
+    normalizer: ???
+    checkpoint_sha256: ???
+    normalizer_sha256: ???
+    deployment_head: long_q
+    interaction_frequency: 5

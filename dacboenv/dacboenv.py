@@ -277,6 +277,11 @@ class DACBOEnv(gym.Env):
         """The instance set."""
         return self._instance_set
 
+    @property
+    def objective_reference(self) -> ObjectiveReference | None:
+        """Return immutable exact/best-known metadata for the active episode."""
+        return self._objective_reference
+
     @instance_set.setter
     def instance_set(self, seeds_taskids: tuple[list[int | None], list[str]]) -> None:
         seeds, task_ids = seeds_taskids

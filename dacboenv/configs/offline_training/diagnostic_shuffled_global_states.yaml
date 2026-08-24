@@ -1,0 +1,7 @@
+defaults:
+  - base
+experiment_id: diagnostic_shuffled_global_states
+domain: yahpo
+algorithm_mode: branch_pretrain_then_cql
+cql_coefficient: 0.5
+negative_control: shuffled_global_states

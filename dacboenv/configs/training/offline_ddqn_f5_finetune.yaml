@@ -1,0 +1,77 @@
+# @package _global_
+# Requires hydra.searchpath=[file:///ABS/OFFLINE_FINAL_ROOT/hydra_configs].
+defaults:
+  - structured_ppo_f5
+  - override /rl_algorithm: double_dqn
+  - override /instance_sets@training_instances: offline_train_v3_yahpo
+  - override /instance_sets@validation_instances: offline_dev_v3_yahpo
+  - override /instance_sets@test_instances: offline_holdout_v3_yahpo
+  - override /validation_panels@frequent_validation_panel: offline_dev_v3_yahpo
+  - override /validation_panels@full_validation_panel: offline_dev_v3_yahpo
+  - _self_
+
+instance_set_id: ${training_instances.id}
+reward_id: reference-regret-improvement
+dacboenv:
+  task_ids: ${training_instances.task_ids}
+  inner_seeds: ${training_instances.inner_seeds}
+  reward_keys: [reference_regret_improvement]
+  reference_provider:
+    _target_: dacboenv.reference.ManifestReferenceProvider
+    source: dacboenv/experiment/analysis/yahpo_best_known_references.json
+    expected_runtime_objective_transform: negative_accuracy
+    expected_reporting_objective_transform: one_minus_accuracy
+    expected_fidelity: fixed_maximum
+
+experiment:
+  n_workers: 12
+  vecnormalize: false
+  progress_bar: false
+  bo_evaluation_budget: 61440
+  total_timesteps: ${divideint:${experiment.bo_evaluation_budget},${dacboenv.interaction_frequency}}
+  checkpoint_bo_evaluations: 15360
+  checkpoint_freq: ${divideint:${experiment.checkpoint_bo_evaluations},${dacboenv.interaction_frequency}}
+  validation:
+    enabled: true
+    instance_set_id: ${frequent_validation_panel.id}
+    task_ids: ${frequent_validation_panel.task_ids}
+    inner_seeds: [0, 1]
+    manifest_hash: ${frequent_validation_panel.manifest_hash}
+    panel_tier: offline_dev
+    full_enabled: false
+    step_zero: true
+    n_workers: 1
+    n_eval_episodes: ${multiply:${len:${frequent_validation_panel.task_ids}},2}
+  save_replay_buffer:
+    final: true
+    periodic: false
+
+rl_algorithm:
+  hyperparameters:
+    learning_starts: 0
+    gamma: 1.0
+    train_freq: [1, step]
+    # D1-compatible update/data ratio: 3 updates / 12 worker transitions = 0.25.
+    gradient_steps: ${divideint:${experiment.n_workers},4}
+
+offline_initialization:
+  enabled: true
+  checkpoint: ???
+  normalizer: ???
+  checkpoint_sha256: ???
+  normalizer_sha256: ???
+
+offline_replay_prefill:
+  enabled: true
+  dataset: ???
+  seed: ${seed}
+  domain: yahpo
+  maximum_transitions: null
+  mixture:
+    enabled: true
+    initial_fraction: 0.5
+    final_fraction: 0.1
+    decay_steps: ${experiment.total_timesteps}
+
+optimizer_id: OfflineInitialized-DoubleDQN-f5
+baserundir: runs_offline_finetune

@@ -6,6 +6,7 @@ import math
 from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
@@ -13,6 +14,7 @@ from carps.utils.running import make_task
 from dacboenv.experiment.optbench_inventory import audit_optbench_inventory
 from dacboenv.experiment.ppo import assign_training_worker_context
 from dacboenv.experiment.protocol import load_manifest, manifest_hash
+from dacboenv.optimizer import DACBOEnvOptimizer
 from dacboenv.reference import OptBenchExactReferenceProvider, ReferenceLookupError
 from dacboenv.utils.carps_optimizer import (
     get_installed_optbench_task_configs,
@@ -92,6 +94,20 @@ def test_optbench_canonical_and_carps_display_task_ids_are_equivalent() -> None:
     assert task_ids_equivalent("bbob/2/1/0", "bbob/2/1/0")
     assert not task_ids_equivalent("optbench/Ackley-2", "Ackley-5")
     assert not task_ids_equivalent("bbob/2/1/0", "2/1/0")
+
+
+def test_dacbo_optimizer_cleanup_tolerates_failed_setup() -> None:
+    """A primary setup exception must not trigger CARP-S's destructor error."""
+    uninitialized = DACBOEnvOptimizer.__new__(DACBOEnvOptimizer)
+    uninitialized._solver = None
+    uninitialized.__del__()
+
+    callback = Mock()
+    initialized = DACBOEnvOptimizer.__new__(DACBOEnvOptimizer)
+    initialized._solver = SimpleNamespace(optimizer=SimpleNamespace(_callbacks=[callback]))
+    initialized.__del__()
+    callback.on_end.assert_called_once_with(initialized._solver.optimizer)
+    initialized._solver = None
 
 
 def test_installed_inventory_audit_matches_the_frozen_finite_subset() -> None:

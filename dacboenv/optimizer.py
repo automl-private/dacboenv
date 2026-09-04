@@ -79,6 +79,22 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         Updates the optimizer and environment with the result of a trial.
     """
 
+    def __del__(self) -> None:
+        """Notify callbacks only when CARP-S completed optimizer setup.
+
+        CARP-S 1.1 assumes ``solver`` is initialized in its destructor. A
+        setup exception legitimately leaves it as ``None``; guarding that
+        state prevents a secondary error from obscuring the primary failure.
+        """
+        solver = getattr(self, "_solver", None)
+        if solver is None:
+            return
+        smbo = getattr(solver, "optimizer", None)
+        if smbo is None:
+            return
+        for callback in getattr(smbo, "_callbacks", ()):
+            callback.on_end(smbo)
+
     def __init__(
         self,
         task: Task,

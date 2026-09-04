@@ -73,7 +73,7 @@ if [[ ! -s "${bundle_json}" || ! -s "${launch_tsv}" ]]; then
 fi
 
 output_root="${bundle_root}/results"
-seed_spec="range(0,6)"
+seed_spec="range(0,11)"
 bbob_dims="2,8"
 bbob_functions="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24"
 bbob_instance="0"
@@ -329,35 +329,45 @@ do
         exit 1
     fi
 
-    selected_policies=$((selected_policies + 1))
+    # Support comma-separated discrete policy names without overwriting result directories
+    IFS=',' read -r -a p_names <<< "${policy_name}"
+    
+    for p_name in "${p_names[@]}"; do
+        current_policy_slug="${policy_slug}"
+        if (( ${#p_names[@]} > 1 )); then
+            current_policy_slug="${policy_slug}_${p_name}"
+        fi
 
-    if [[ "${mode}" == "bbob" || "${mode}" == "both" ]]; then
-        launch_policy_suite \
-            bbob \
-            "+task/BBOB=${bbob_tasks}" \
-            "${policy_slug}" \
-            "${action_config}" \
-            "${frequency}" \
-            "${observation_config}" \
-            "${policy_group}" \
-            "${policy_name}" \
-            "${algorithm_id}" \
-            "${outer_seed}"
-    fi
+        selected_policies=$((selected_policies + 1))
 
-    if [[ "${mode}" == "yahpo" || "${mode}" == "both" ]]; then
-        launch_policy_suite \
-            yahpo \
-            "+task/YAHPO/SO=${yahpo_tasks}" \
-            "${policy_slug}" \
-            "${action_config}" \
-            "${frequency}" \
-            "${observation_config}" \
-            "${policy_group}" \
-            "${policy_name}" \
-            "${algorithm_id}" \
-            "${outer_seed}"
-    fi
+        if [[ "${mode}" == "bbob" || "${mode}" == "both" ]]; then
+            launch_policy_suite \
+                bbob \
+                "+task/BBOB=${bbob_tasks}" \
+                "${current_policy_slug}" \
+                "${action_config}" \
+                "${frequency}" \
+                "${observation_config}" \
+                "${policy_group}" \
+                "${p_name}" \
+                "${algorithm_id}" \
+                "${outer_seed}"
+        fi
+
+        if [[ "${mode}" == "yahpo" || "${mode}" == "both" ]]; then
+            launch_policy_suite \
+                yahpo \
+                "+task/YAHPO/SO=${yahpo_tasks}" \
+                "${current_policy_slug}" \
+                "${action_config}" \
+                "${frequency}" \
+                "${observation_config}" \
+                "${policy_group}" \
+                "${p_name}" \
+                "${algorithm_id}" \
+                "${outer_seed}"
+        fi
+    done
 done < "${launch_tsv}"
 
 if (( selected_policies == 0 )); then

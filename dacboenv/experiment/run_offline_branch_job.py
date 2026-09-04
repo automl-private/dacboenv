@@ -7,10 +7,10 @@ import os
 import traceback
 from dataclasses import asdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
-import hydra
 import numpy as np
+from omegaconf import DictConfig, OmegaConf
 
 from dacboenv.experiment.collect_snapshots import (
     StaticSnapshotPolicy,
@@ -19,10 +19,6 @@ from dacboenv.experiment.collect_snapshots import (
     collect_context_snapshots,
 )
 from dacboenv.experiment.evaluation_determinism import canonical_sha256
-from dacboenv.experiment.offline_branch_campaign import (
-    BRANCH_EXECUTION_SEMANTICS_VERSION,
-    environment_context_split,
-)
 from dacboenv.experiment.real_env import real_structured_mixed_env
 from dacboenv.experiment.snapshot_branch import (
     require_deterministic_replay_process_environment,
@@ -30,9 +26,6 @@ from dacboenv.experiment.snapshot_branch import (
     snapshot_record_digest,
 )
 from dacboenv.reference import BBOBExactReferenceProvider, ManifestReferenceProvider
-
-if TYPE_CHECKING:
-    from omegaconf import DictConfig
 
 SCENARIOS = ("bbob", "lcbench", "rbv2_glmnet", "rbv2_ranger", "rbv2_rpart", "rbv2_super", "rbv2_xgboost")
 TIE_TOLERANCE = 1e-3
@@ -99,20 +92,22 @@ def run(config: DictConfig) -> dict[str, Any]:
         raise RuntimeError(f"Refusing partial/conflicting branch shard {output}.")
     reference_table = Path(str(config.reference_table)).resolve()
     task_id = str(row["task_id"])
-    data_context_split = str(row["data_context_split"])
-    expected_environment_split = environment_context_split(data_context_split)
-    env_context_split = str(row["environment_context_split"])
-    if env_context_split != expected_environment_split:
+    data_context_split = str(row["context_split"])
+    if data_context_split not in {"train", "dev"}:
         raise ValueError(
-            f"Branch environment split mismatch: {data_context_split!r} requires {expected_environment_split!r}."
+            "Offline branch rows must use data context split 'train' or 'dev', "
+            f"got {data_context_split!r}."
         )
+    environment_context_split = (
+        "train" if data_context_split == "train" else "validation"
+    )
 
     def factory(task: str, seed: int, family: str) -> Any:
         return real_structured_mixed_env(
             task,
             seed,
             family,
-            context_split=env_context_split,
+            context_split=environment_context_split,
             reference_table=reference_table if task.startswith("yahpo/") else None,
             interaction_frequency=5,
         )
@@ -179,9 +174,9 @@ def run(config: DictConfig) -> dict[str, Any]:
         "scenario_id": scenario_id,
         "phase_bin": phase_bin,
         "seed": int(row["seed"]),
-        "source_policy_id": str(row["source_policy"]),
         "data_context_split": data_context_split,
-        "environment_context_split": env_context_split,
+        "environment_context_split": environment_context_split,
+        "source_policy_id": str(row["source_policy"]),
         "source_state_digest": source_digest,
         "source_replay_digest": source_digest,
         "candidate_duplicate_groups": json.dumps(_duplicate_groups(action_features), separators=(",", ":")),
@@ -191,18 +186,11 @@ def run(config: DictConfig) -> dict[str, Any]:
             "source_hash": snapshot.reference_source_hash,
         },
         "branch_protocol_hash": canonical_sha256(
-            {
-                "execution_semantics": BRANCH_EXECUTION_SEMANTICS_VERSION,
-                "data_context_split": data_context_split,
-                "environment_context_split": env_context_split,
-                "horizons": [5, 10],
-                "actions": [0, 1, 2, 3, 4],
-                "interaction_frequency": 5,
-            }
+            {"horizons": [5, 10], "actions": [0, 1, 2, 3, 4], "interaction_frequency": 5}
         ),
     }
     payload: dict[str, Any] = {
-        "schema_version": "dacbo-offline-branch-job-v2",
+        "schema_version": "dacbo-offline-branch-job-v1",
         "status": "success",
         "job_hash": row["job_hash"],
         "job": row,
@@ -213,16 +201,31 @@ def run(config: DictConfig) -> dict[str, Any]:
         "reward_telescoping_valid": bool(np.all(errors <= TELESCOPING_TOLERANCE)),
         "maximum_telescoping_error": float(errors.max(initial=0.0)),
         "single_h10_branch_with_h5_prefix": True,
-        "data_context_split": data_context_split,
-        "environment_context_split": env_context_split,
     }
     _atomic_json(output, payload)
     return payload
 
 
-@hydra.main(version_base=None, config_path="../configs/offline_branch_worker", config_name="base")  # type: ignore[untyped-decorator]
-def main(config: DictConfig) -> None:
+def _config_from_cli() -> DictConfig:
+    """Parse the leaf-worker dotlist without initializing Hydra globally.
+
+    This worker calls real environment factories that compose a separate
+    DACBO training template. Running the worker itself under ``@hydra.main``
+    initializes ``GlobalHydra`` first and makes that nested composition fail.
+    The Slurm worker already supplies the complete immutable row interface as
+    ``key=value`` arguments, so OmegaConf dotlist parsing is sufficient here.
+    """
+    config = OmegaConf.from_cli()
+    required = ("manifest", "job_index", "reference_table")
+    missing = [key for key in required if OmegaConf.select(config, key, default=None) is None]
+    if missing:
+        raise ValueError(f"Offline branch worker is missing required CLI keys: {missing}.")
+    return config
+
+
+def main() -> None:
     """Run one manifest row and persist compact failure metadata on errors."""
+    config = _config_from_cli()
     manifest = json.loads(Path(str(config.manifest)).read_text(encoding="utf-8"))
     row = manifest["jobs"][int(config.job_index)]
     try:

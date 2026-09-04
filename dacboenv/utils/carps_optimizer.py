@@ -30,6 +30,7 @@ _YAHPO_SO_TASK_ID = re.compile(
     r"^yahpo/so/(?P<scenario>[^/]+)/(?P<instance>[^/]+)/None$",
     flags=re.IGNORECASE,
 )
+_OPTBENCH_TASK_ID = re.compile(r"^optbench/(?P<name>[^/]+)$", flags=re.IGNORECASE)
 _BBOB_MAX_FUNCTION_ID = 24
 EXPECTED_NATIVE_BBOB_DIMENSIONS = (2, 4, 8, 16, 32)
 _PACKAGE_RELATIVE_SMAC_LOGGING_PATH = Path("dacboenv/configs/logging/smac_internal.yaml")
@@ -131,6 +132,52 @@ def _config_id_from_text(text: str, id_column: str) -> str | None:
     if config_id is None or config_id.startswith("${"):
         return None
     return config_id
+
+
+@lru_cache(maxsize=1)
+def get_installed_optbench_task_configs() -> dict[str, Path]:
+    """Index task configs from the installed editable OptBench package.
+
+    OptBench is a CARP-S Hydra search-path extension rather than part of the
+    CARP-S task directory. DACBO's programmatic task loader therefore indexes
+    its public config package explicitly. Canonical DACBO IDs add an
+    ``optbench/`` namespace while retaining OptBench's own task name.
+    """
+    try:
+        config_root = Path(str(files("optbench"))) / "configs" / "task" / "OptBench"
+    except ModuleNotFoundError as error:
+        raise ModuleNotFoundError(
+            "OptBench is not installed. Install the sibling OptBench checkout editable before using optbench tasks."
+        ) from error
+    configs: dict[str, Path] = {}
+    for config_path in sorted(config_root.glob("*.yaml")):
+        task_name = _config_id_from_text(config_path.read_text(encoding="utf-8"), "task_id")
+        if task_name is None:
+            continue
+        canonical = f"optbench/{task_name}"
+        if canonical in configs:
+            raise RuntimeError(f"Duplicate installed OptBench task name {task_name!r}.")
+        configs[canonical] = config_path
+    if not configs:
+        raise FileNotFoundError(f"No OptBench task configs were found below {config_root}.")
+    return configs
+
+
+def is_optbench_task_id(task_id: str) -> bool:
+    """Return whether a canonical ID maps to an installed OptBench config."""
+    return _OPTBENCH_TASK_ID.fullmatch(task_id) is not None and task_id in get_installed_optbench_task_configs()
+
+
+def get_optbench_task_dimension(task_id: str) -> int:
+    """Return the declared input dimension of an installed OptBench task."""
+    config_path = get_installed_optbench_task_configs().get(task_id)
+    if config_path is None:
+        raise KeyError(f"Unknown installed OptBench task {task_id!r}.")
+    cfg = OmegaConf.load(config_path)
+    dimension = int(cfg.task.metadata.dimensions)
+    if dimension <= 0:
+        raise ValueError(f"OptBench task {task_id!r} declares invalid dimension {dimension}.")
+    return dimension
 
 
 @lru_cache(maxsize=2)
@@ -252,6 +299,18 @@ def get_task_config(task_id: str) -> DictConfig:
     DictConfig
         The config with the node task.
     """
+    optbench_match = _OPTBENCH_TASK_ID.fullmatch(task_id)
+    if optbench_match is not None:
+        config_path = get_installed_optbench_task_configs().get(task_id)
+        if config_path is None:
+            raise KeyError(f"Installed OptBench has no task config for {task_id!r}.")
+        cfg = OmegaConf.load(config_path)
+        if not isinstance(cfg, DictConfig):
+            raise TypeError(f"Expected a mapping in OptBench task config {config_path}.")
+        cfg.task.name = task_id
+        cfg.task_id = task_id
+        return maybe_add_defaults(cfg, str(config_path))
+
     bbob_match = _BBOB_TASK_ID.fullmatch(task_id)
     if bbob_match is not None:
         key = tuple(int(bbob_match.group(name)) for name in ("dimension", "function_id", "instance_id"))

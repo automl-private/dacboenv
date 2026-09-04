@@ -166,7 +166,7 @@ def _validate_manifest_identity(manifest: Mapping[str, Any]) -> None:
         )
     if not isinstance(manifest.get("id"), str) or not manifest["id"]:
         raise ManifestValidationError("Manifest id must be a non-empty string.")
-    if manifest.get("domain") not in {"bbob", "yahpo", "mixed"}:
+    if manifest.get("domain") not in {"bbob", "yahpo", "mixed", "optbench"}:
         raise ManifestValidationError(f"Unsupported manifest domain {manifest.get('domain')!r}.")
     if manifest.get("split") not in {"train", "validation", "test"}:
         raise ManifestValidationError(f"Unsupported manifest split {manifest.get('split')!r}.")

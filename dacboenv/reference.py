@@ -29,6 +29,7 @@ ReferenceKind = Literal["exact", "best_known"]
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _GIT_COMMIT = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 _BBOB_TASK_ID = re.compile(r"^bbob/\d+/\d+/\d+$", flags=re.IGNORECASE)
+_OPTBENCH_TASK_ID = re.compile(r"^optbench/[^/]+$", flags=re.IGNORECASE)
 _INCOMPLETE_PROVENANCE_VALUES = frozenset({"n/a", "none", "unknown", "unavailable"})
 _REFERENCE_FIELDS = frozenset(
     {
@@ -372,6 +373,68 @@ class BBOBExactReferenceProvider:
             benchmark_data_version=data_version,
             tolerance=self._tolerance,
             metadata=metadata,
+        )
+        _validate_compatibility(reference, task_metadata)
+        return reference
+
+
+class OptBenchExactReferenceProvider:
+    """Read an exact global minimum from the active OptBench objective.
+
+    OptBench exposes ``f_min`` on the instantiated objective, currently as a
+    property. Callable forms are accepted as well because its wrapper class
+    exposes the same value as a method. Tasks without a finite minimum fail
+    closed and must not enter a reference-regret training manifest.
+    """
+
+    def __init__(
+        self,
+        *,
+        tolerance: float = 1e-8,
+        source_hash: str | None = None,
+    ) -> None:
+        self._tolerance = tolerance
+        self._source_hash = source_hash
+
+    def get_reference(
+        self,
+        task_id: str,
+        objective_function: Any,
+        task_metadata: Mapping[str, Any] | None,
+    ) -> ObjectiveReference:
+        """Return the finite live OptBench global minimum as reward-only data."""
+        if _OPTBENCH_TASK_ID.fullmatch(task_id) is None:
+            raise ReferenceLookupError(f"OptBench exact-reference provider does not cover task {task_id!r}.")
+        try:
+            minimum = objective_function.f_min
+        except AttributeError as error:
+            raise ReferenceLookupError(
+                f"Active objective {type(objective_function).__name__} exposes no OptBench f_min."
+            ) from error
+        if callable(minimum):
+            minimum = minimum()
+        try:
+            value = _finite_float(minimum, field_name=f"{task_id}.f_min")
+        except ObjectiveReferenceError as error:
+            raise ReferenceLookupError(
+                f"OptBench task {task_id!r} exposes no finite global minimum: {minimum!r}."
+            ) from error
+        objective_type = type(objective_function)
+        reference = ObjectiveReference(
+            task_id=task_id,
+            value=value,
+            kind="exact",
+            runtime_objective_transform="identity",
+            reporting_objective_transform="identity",
+            fidelity="not_applicable",
+            source="live installed OptBench objective f_min",
+            source_hash=self._source_hash or _objective_source_hash(objective_function),
+            benchmark_code_version=f"OptBench={_installed_version('OptBench')};carps={_installed_version('carps')}",
+            benchmark_data_version="analytic-function-no-external-data",
+            tolerance=self._tolerance,
+            metadata={
+                "objective_class": f"{objective_type.__module__}.{objective_type.__qualname__}",
+            },
         )
         _validate_compatibility(reference, task_metadata)
         return reference
@@ -967,6 +1030,7 @@ __all__ = [
     "ObjectiveReference",
     "ObjectiveReferenceError",
     "ObjectiveReferenceProvider",
+    "OptBenchExactReferenceProvider",
     "ReferenceBreachContext",
     "ReferenceBreachRecord",
     "ReferenceCompatibilityError",

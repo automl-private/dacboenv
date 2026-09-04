@@ -1,0 +1,4 @@
+# @package dacboenv.reference_provider
+
+_target_: dacboenv.reference.OptBenchExactReferenceProvider
+tolerance: 1.0e-8

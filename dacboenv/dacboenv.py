@@ -36,7 +36,7 @@ from dacboenv.reference import (
     ReferenceProvider,
     reference_regret,
 )
-from dacboenv.utils.carps_optimizer import build_carps_optimizer, is_bbob_task_id
+from dacboenv.utils.carps_optimizer import build_carps_optimizer, is_bbob_task_id, is_optbench_task_id
 from dacboenv.utils.loggingutils import get_logger
 from dacboenv.utils.math import safe_log10
 from dacboenv.utils.reference_performance import ReferencePerformance
@@ -358,7 +358,7 @@ class DACBOEnv(gym.Env):
                     f"for non-BBOB task {task_id!r}."
                 )
             objective_function = self._carps_solver.task.objective_function
-            if is_bbob_task_id(task_id):
+            if is_bbob_task_id(task_id) or is_optbench_task_id(task_id):
                 task_metadata: dict[str, Any] = {
                     "task_id": task_id,
                     "runtime_objective_transform": "identity",
@@ -404,6 +404,8 @@ class DACBOEnv(gym.Env):
             return parts[2], parts[3]
         if parts[0].lower() == "bbob" and len(parts) == 4:  # noqa: PLR2004
             return "bbob", parts[3]
+        if parts[0].lower() == "optbench" and len(parts) == 2:  # noqa: PLR2004
+            return "optbench", parts[1]
         return parts[0], parts[-1]
 
     def _check_reference_breach(self, trial_value: Any) -> None:

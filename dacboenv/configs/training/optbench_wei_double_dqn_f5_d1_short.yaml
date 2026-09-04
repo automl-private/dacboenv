@@ -1,0 +1,12 @@
+# @package _global_
+defaults:
+  - optbench_wei_double_dqn_f5_d1
+  - _self_
+
+experiment:
+  bo_evaluation_budget: 30720
+  total_timesteps: ${divideint:${experiment.bo_evaluation_budget},${dacboenv.interaction_frequency}}
+  checkpoint_bo_evaluations: 7680
+  checkpoint_freq: ${divideint:${experiment.checkpoint_bo_evaluations},${dacboenv.interaction_frequency}}
+
+optimizer_id: DoubleDQN-WEI-F5-D1-OptBench-Short

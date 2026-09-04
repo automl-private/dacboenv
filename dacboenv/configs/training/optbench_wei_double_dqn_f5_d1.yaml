@@ -1,0 +1,36 @@
+# @package _global_
+# OptBench exact-reference Double-DQN training at interaction frequency five.
+defaults:
+  - structured_ppo_f5
+  - /env/reference_provider: optbench_exact
+  - override /rl_algorithm: double_dqn_d1_f5
+  - override /instance_sets@training_instances: optbench_train
+  - _self_
+
+instance_set_id: ${training_instances.id}
+reward_id: reference-regret-improvement
+dacboenv:
+  task_ids: ${training_instances.task_ids}
+  inner_seeds: ${training_instances.inner_seeds}
+  reward_keys: [reference_regret_improvement]
+
+experiment:
+  n_workers: 12
+  vecnormalize: false
+  progress_bar: false
+  start_method: forkserver
+  bo_evaluation_budget: 61440
+  total_timesteps: ${divideint:${experiment.bo_evaluation_budget},${dacboenv.interaction_frequency}}
+  checkpoint_bo_evaluations: 15360
+  checkpoint_freq: ${divideint:${experiment.checkpoint_bo_evaluations},${dacboenv.interaction_frequency}}
+  # No task-disjoint OptBench validation manifest exists yet. Do not select a
+  # checkpoint on the training inventory; retain numbered/final checkpoints.
+  validation:
+    enabled: false
+    full_enabled: false
+    step_zero: false
+  final_evaluation:
+    enabled: false
+
+optimizer_id: DoubleDQN-WEI-F5-D1-OptBench
+baserundir: runs_optbench_ddqn_f5

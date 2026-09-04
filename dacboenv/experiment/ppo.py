@@ -60,7 +60,7 @@ from dacboenv.experiment.sb3_algorithms import (
     write_algorithm_metadata,
 )
 from dacboenv.offline.replay_prefill import OfflineOnlineMixSchedule, configure_offline_replay
-from dacboenv.utils.carps_optimizer import get_task_config
+from dacboenv.utils.carps_optimizer import get_optbench_task_dimension, get_task_config, is_optbench_task_id
 from dacboenv.utils.loggingutils import maybe_remove_logs
 from dacboenv.utils.seeding import derive_named_seed, run_seed_metadata
 
@@ -148,6 +148,7 @@ class WorkerContextAssignment:
     selector_target: str
     bbob_dimension: int | None = None
     yahpo_scenario: str | None = None
+    optbench_dimension: int | None = None
 
 
 @dataclass(frozen=True)
@@ -706,9 +707,14 @@ def assign_training_worker_context(  # noqa: C901
 
     bbob_tasks = sorted(task_id for task_id in task_ids if task_id.lower().startswith("bbob/"))
     yahpo_tasks = sorted(task_id for task_id in task_ids if task_id.lower().startswith("yahpo/"))
-    unknown_tasks = sorted(set(task_ids) - set(bbob_tasks) - set(yahpo_tasks))
+    optbench_tasks = sorted(task_id for task_id in task_ids if is_optbench_task_id(task_id))
+    unknown_tasks = sorted(set(task_ids) - set(bbob_tasks) - set(yahpo_tasks) - set(optbench_tasks))
     if unknown_tasks:
-        raise ValueError(f"The protocol sampler only accepts BBOB or YAHPO task IDs, got {unknown_tasks}.")
+        raise ValueError(
+            f"The protocol sampler only accepts BBOB, YAHPO, or installed OptBench task IDs, got {unknown_tasks}."
+        )
+    if optbench_tasks and (bbob_tasks or yahpo_tasks):
+        raise ValueError("OptBench workers cannot be mixed with BBOB/YAHPO in the current protocol sampler.")
 
     local_worker_id = worker_id
     if bbob_tasks and yahpo_tasks:
@@ -744,6 +750,15 @@ def assign_training_worker_context(  # noqa: C901
             task_ids=[task_id for task_id in yahpo_tasks if task_id.split("/")[2] == scenario],
             selector_target="dacboenv.env.instance.HierarchicalYAHPOInstanceSelector",
             yahpo_scenario=scenario,
+        )
+    elif optbench_tasks:
+        dimensions = sorted({get_optbench_task_dimension(task_id) for task_id in optbench_tasks})
+        dimension = dimensions[worker_id % len(dimensions)]
+        return WorkerContextAssignment(
+            domain="optbench",
+            task_ids=[task_id for task_id in optbench_tasks if get_optbench_task_dimension(task_id) == dimension],
+            selector_target="dacboenv.env.instance.RandomInstanceSelector",
+            optbench_dimension=dimension,
         )
 
     dimensions = sorted({int(task_id.split("/")[1]) for task_id in bbob_tasks})
@@ -1277,6 +1292,7 @@ def run(cfg: DictConfig) -> None:  # noqa: C901, PLR0912, PLR0915
                 "domain": assignment.domain,
                 "bbob_dimension": assignment.bbob_dimension,
                 "yahpo_scenario": assignment.yahpo_scenario,
+                "optbench_dimension": assignment.optbench_dimension,
                 "task_ids": assignment.task_ids,
                 "selector_target": assignment.selector_target,
             }

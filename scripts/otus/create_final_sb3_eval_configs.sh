@@ -404,6 +404,8 @@ echo "  bash scripts/otus/otus_eval_final_sb3.sh ${bundle_root} list"
 echo
 echo "Dry-run BBOB and YAHPO launchers:"
 echo "  bash scripts/otus/otus_eval_final_sb3.sh ${bundle_root} both --dry-run"
+echo "Dry-run OptBench launcher:"
+echo "  bash scripts/otus/otus_eval_final_sb3.sh ${bundle_root} optbench --dry-run"
 echo
 echo "Submit on Otus:"
-echo "  bash scripts/otus/otus_eval_final_sb3.sh ${bundle_root} both"
+echo "  bash scripts/otus/otus_eval_final_sb3.sh ${bundle_root} optbench"

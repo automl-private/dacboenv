@@ -193,6 +193,11 @@ if [[ -s "${yahpo_reference}" ]]; then
     export DACBO_YAHPO_REFERENCE_TABLE="${yahpo_reference}"
 fi
 
+if [[ "${mode}" == "optbench" || "${mode}" == "all" ]]; then
+    echo "Validating editable OptBench package and exact-reference task inventory..."
+    uv run --frozen python -m dacboenv.experiment.optbench_inventory
+fi
+
 if [[ "${mode}" == "list" ]]; then
     if command -v column >/dev/null 2>&1; then
         column -t -s $'\t' "${launch_tsv}"

@@ -26,6 +26,7 @@ pytest.importorskip("optbench")
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = ROOT / "dacboenv" / "configs" / "instance_sets" / "optbench_train.yaml"
 LAUNCHER_PATH = ROOT / "scripts" / "launch_optbench_ddqn_f5.sh"
+EVALUATION_LAUNCHER_PATH = ROOT / "scripts" / "otus" / "otus_eval_final_sb3.sh"
 EXPECTED_TASKS = {
     "optbench/Ackley-2",
     "optbench/Ackley-5",
@@ -179,3 +180,16 @@ def test_optbench_launcher_uses_otus_environment_and_three_outer_seeds() -> None
     assert "dacboenv.experiment.optbench_inventory" in text
     assert "optbench_wei_double_dqn_f5_d1" in text
     assert "optbench_wei_double_dqn_f5_d1_short" in text
+
+
+def test_algorithm_neutral_final_evaluator_has_exact_optbench_mode() -> None:
+    """Final Double-DQN bundles can be evaluated on only eligible OptBench tasks."""
+    text = EVALUATION_LAUNCHER_PATH.read_text(encoding="utf-8")
+
+    assert "list|bbob|yahpo|optbench|both|all|gather" in text
+    assert "+task/OptBench=${optbench_tasks}" in text
+    assert "pkg://optbench/configs" in text
+    assert "dacboenv.experiment.optbench_inventory" in text
+    assert "optbench_exact" in text
+    assert "Hartmann_4" not in text
+    assert "Hartmann_3,Hartmann_6" in text

@@ -6,7 +6,9 @@
 #   bash scripts/otus/otus_eval_final_sb3.sh BUNDLE_ROOT list
 #   bash scripts/otus/otus_eval_final_sb3.sh BUNDLE_ROOT bbob
 #   bash scripts/otus/otus_eval_final_sb3.sh BUNDLE_ROOT yahpo
+#   bash scripts/otus/otus_eval_final_sb3.sh BUNDLE_ROOT optbench
 #   bash scripts/otus/otus_eval_final_sb3.sh BUNDLE_ROOT both
+#   bash scripts/otus/otus_eval_final_sb3.sh BUNDLE_ROOT all
 #   bash scripts/otus/otus_eval_final_sb3.sh BUNDLE_ROOT gather
 
 set -euo pipefail
@@ -21,7 +23,9 @@ Modes:
   list      Show exported final policies.
   bbob     Evaluate all selected policies on BBOB functions 1..24.
   yahpo    Evaluate all selected policies on YAHPO/SO tasks.
-  both     Submit BBOB and YAHPO evaluations.
+  optbench Evaluate all selected policies on the finite-minimum OptBench tasks.
+  both     Submit BBOB and YAHPO evaluations (backward-compatible meaning).
+  all      Submit BBOB, YAHPO, and OptBench evaluations.
   gather   Gather CARP-S data and report missing runs.
 
 Options:
@@ -32,6 +36,7 @@ Options:
   --bbob-instance N         Native CARP-S BBOB instance. Default: 0
   --yahpo-tasks SPEC        Default: glob(*)
   --yahpo-reference PATH    Default: bundled reference table
+  --optbench-tasks SPEC     Default: the 11 finite-minimum task configs
   --policy-filter REGEX     Match generated policy slug. Default: .*
   --dry-run                 Print Hydra commands without submitting.
   --overwrite               Permit populated policy result roots.
@@ -79,6 +84,7 @@ bbob_functions="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24"
 bbob_instance="0"
 yahpo_tasks="glob(*)"
 yahpo_reference="${default_reference}"
+optbench_tasks="Ackley_2,Ackley_5,Ackley_10,Levy_2,Levy_5,Levy_10,Schwefel_2,Schwefel_5,Schwefel_10,Hartmann_3,Hartmann_6"
 policy_filter=".*"
 dry_run=0
 overwrite=0
@@ -114,6 +120,10 @@ while (( $# > 0 )); do
             yahpo_reference="$2"
             shift
             ;;
+        --optbench-tasks)
+            optbench_tasks="$2"
+            shift
+            ;;
         --policy-filter)
             policy_filter="$2"
             shift
@@ -141,7 +151,7 @@ while (( $# > 0 )); do
 done
 
 case "${mode}" in
-    list|bbob|yahpo|both|gather) ;;
+    list|bbob|yahpo|optbench|both|all|gather) ;;
     *)
         echo "Unknown mode: ${mode}" >&2
         usage >&2
@@ -172,7 +182,7 @@ export MKL_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 
-if [[ "${mode}" == "yahpo" || "${mode}" == "both" ]]; then
+if [[ "${mode}" == "yahpo" || "${mode}" == "both" || "${mode}" == "all" ]]; then
     if [[ ! -s "${yahpo_reference}" ]]; then
         echo "YAHPO reference table does not exist: ${yahpo_reference}" >&2
         exit 1
@@ -238,6 +248,8 @@ launch_policy_suite() {
     local policy_name="$8"
     local algorithm_id="$9"
     local outer_seed="${10}"
+    local reference_config="${11}"
+    local context_split="${12}"
 
     local suite_root="${output_root}/${suite_id}"
     local policy_result_root="${suite_root}/${policy_slug}"
@@ -251,9 +263,14 @@ launch_policy_suite() {
         exit 1
     fi
 
+    local hydra_searchpath="[file://${config_root},pkg://dacboenv/configs]"
+    if [[ "${suite_id}" == "optbench" ]]; then
+        hydra_searchpath="[file://${config_root},pkg://dacboenv/configs,pkg://optbench/configs]"
+    fi
+
     local -a command=(
         uv run --frozen python -m carps.run -m
-        "hydra.searchpath=[file://${config_root},pkg://dacboenv/configs]"
+        "hydra.searchpath=${hydra_searchpath}"
         "${task_override}"
         "+eval=base"
         "+env=base"
@@ -262,7 +279,7 @@ launch_policy_suite() {
         "+env/interaction_freq=f${frequency}"
         "+env/obs=${observation_config}"
         "+env/reward=reference_regret_improvement"
-        "+env/reference_provider=composite"
+        "+env/reference_provider=${reference_config}"
         "+${policy_group}=${policy_name}"
         "+cluster=cpu_noctua"
         "optimizer_id=${policy_slug}"
@@ -274,7 +291,7 @@ launch_policy_suite() {
         "hydra.sweeper.max_batch_size=500"
         "dacboenv.evaluation_mode=false"
         "dacboenv.terminate_after_reference_performance_reached=false"
-        "dacboenv.context_split=test"
+        "dacboenv.context_split=${context_split}"
         "dacboenv.yahpo_training_budget_multiplier=1.0"
     )
 
@@ -340,7 +357,7 @@ do
 
         selected_policies=$((selected_policies + 1))
 
-        if [[ "${mode}" == "bbob" || "${mode}" == "both" ]]; then
+        if [[ "${mode}" == "bbob" || "${mode}" == "both" || "${mode}" == "all" ]]; then
             launch_policy_suite \
                 bbob \
                 "+task/BBOB=${bbob_tasks}" \
@@ -351,10 +368,12 @@ do
                 "${policy_group}" \
                 "${p_name}" \
                 "${algorithm_id}" \
-                "${outer_seed}"
+                "${outer_seed}" \
+                composite \
+                test
         fi
 
-        if [[ "${mode}" == "yahpo" || "${mode}" == "both" ]]; then
+        if [[ "${mode}" == "yahpo" || "${mode}" == "both" || "${mode}" == "all" ]]; then
             launch_policy_suite \
                 yahpo \
                 "+task/YAHPO/SO=${yahpo_tasks}" \
@@ -365,7 +384,25 @@ do
                 "${policy_group}" \
                 "${p_name}" \
                 "${algorithm_id}" \
-                "${outer_seed}"
+                "${outer_seed}" \
+                composite \
+                test
+        fi
+
+        if [[ "${mode}" == "optbench" || "${mode}" == "all" ]]; then
+            launch_policy_suite \
+                optbench \
+                "+task/OptBench=${optbench_tasks}" \
+                "${current_policy_slug}" \
+                "${action_config}" \
+                "${frequency}" \
+                "${observation_config}" \
+                "${policy_group}" \
+                "${p_name}" \
+                "${algorithm_id}" \
+                "${outer_seed}" \
+                optbench_exact \
+                train
         fi
     done
 done < "${launch_tsv}"

@@ -18,6 +18,7 @@ from dacboenv.utils.carps_optimizer import (
     get_installed_optbench_task_configs,
     get_optbench_task_dimension,
     get_task_config,
+    task_ids_equivalent,
 )
 from hydra import compose, initialize_config_module
 
@@ -82,6 +83,15 @@ def test_installed_optbench_inventory_keeps_hartmann_tasks_distinct() -> None:
     objective = make_task(cfg).objective_function
     assert type(objective).__name__ == "Hartmann6"
     assert objective.f_min == pytest.approx(-3.32237)
+
+
+def test_optbench_canonical_and_carps_display_task_ids_are_equivalent() -> None:
+    """Only OptBench's canonical namespace may match its plugin display name."""
+    assert task_ids_equivalent("optbench/Ackley-2", "Ackley-2")
+    assert task_ids_equivalent("Ackley-2", "optbench/Ackley-2")
+    assert task_ids_equivalent("bbob/2/1/0", "bbob/2/1/0")
+    assert not task_ids_equivalent("optbench/Ackley-2", "Ackley-5")
+    assert not task_ids_equivalent("bbob/2/1/0", "2/1/0")
 
 
 def test_installed_inventory_audit_matches_the_frozen_finite_subset() -> None:
@@ -188,6 +198,7 @@ def test_algorithm_neutral_final_evaluator_has_exact_optbench_mode() -> None:
 
     assert "list|bbob|yahpo|optbench|both|all|gather" in text
     assert "+task/OptBench=${optbench_tasks}" in text
+    assert r"dacboenv.task_ids=[optbench/\${task.name}]" in text
     assert "pkg://optbench/configs" in text
     assert "dacboenv.experiment.optbench_inventory" in text
     assert "optbench_exact" in text

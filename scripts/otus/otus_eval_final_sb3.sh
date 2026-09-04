@@ -299,6 +299,12 @@ launch_policy_suite() {
         "dacboenv.context_split=${context_split}"
         "dacboenv.yahpo_training_budget_multiplier=1.0"
     )
+    if [[ "${suite_id}" == "optbench" ]]; then
+        # CARP-S task configs use bare names such as ``Ackley-2``. DACBOEnv's
+        # task loader and exact-reference provider use canonical namespaced
+        # identifiers so they cannot collide with another benchmark family.
+        command+=("dacboenv.task_ids=[optbench/\${task.name}]")
+    fi
 
     echo
     echo "Policy: ${policy_slug}"

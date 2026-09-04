@@ -17,6 +17,8 @@ from dacboenv.env.action import (
     WEITempoRLActionSpace,
 )
 from dacboenv.policy.random import RandomPolicy
+from dacboenv.utils.carps_optimizer import task_ids_equivalent
+from dacboenv.utils.loggingutils import dump_logs, get_logger
 
 if TYPE_CHECKING:
     from carps.loggers.abstract_logger import AbstractLogger
@@ -27,8 +29,6 @@ if TYPE_CHECKING:
     from dacboenv.dacboenv import DACBOEnv
     from dacboenv.env.observations.types import ObsType
     from dacboenv.policy.abstract_policy import Policy
-
-from dacboenv.utils.loggingutils import dump_logs, get_logger
 
 logger = get_logger("OptPolicy")
 
@@ -165,9 +165,16 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         self.trial_counter += self._dacboenv.get_n_finished_trials()
         if self._seed != self._dacboenv._smac_instance._scenario.seed:
             raise ValueError(f"Seeds not the same: {self._seed} != {self._dacboenv._smac_instance._scenario.seed}")
-        if self._dacboenv._carps_solver.task.name != self.task.name:
+        inner_task_name = self._dacboenv._carps_solver.task.name
+        if not task_ids_equivalent(inner_task_name, self.task.name):
             raise ValueError(f"Tasks not the same: {self._dacboenv._carps_solver.task.name} != {self.task.name}")
-        if self._dacboenv.instance_selector.instances != [(self._seed, self.task.name)]:
+        selected_instances = self._dacboenv.instance_selector.instances
+        instances_match = (
+            len(selected_instances) == 1
+            and selected_instances[0][0] == self._seed
+            and task_ids_equivalent(selected_instances[0][1], self.task.name)
+        )
+        if not instances_match:
             raise ValueError(
                 "Inner seed and task id not matching: "
                 f"{self._dacboenv.instance_selector.instances} != {[(self._seed, self.task.name)]}"

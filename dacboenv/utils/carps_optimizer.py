@@ -168,6 +168,34 @@ def is_optbench_task_id(task_id: str) -> bool:
     return _OPTBENCH_TASK_ID.fullmatch(task_id) is not None and task_id in get_installed_optbench_task_configs()
 
 
+def task_ids_equivalent(first: str, second: str) -> bool:
+    """Compare canonical DACBO task IDs with CARP-S plugin display names.
+
+    OptBench's public CARP-S task objects use names such as ``Ackley-2``, while
+    DACBOEnv intentionally namespaces the same task as ``optbench/Ackley-2`` to
+    make reference dispatch unambiguous.  No other task namespace is relaxed.
+
+    Parameters
+    ----------
+    first, second : str
+        Task identities supplied by DACBOEnv and the outer CARP-S task.
+
+    Returns
+    -------
+    bool
+        Whether both strings identify the same task.
+    """
+    if first == second:
+        return True
+    first_match = _OPTBENCH_TASK_ID.fullmatch(first)
+    second_match = _OPTBENCH_TASK_ID.fullmatch(second)
+    if first_match is not None and "/" not in second:
+        return first_match.group("name") == second
+    if second_match is not None and "/" not in first:
+        return second_match.group("name") == first
+    return False
+
+
 def get_optbench_task_dimension(task_id: str) -> int:
     """Return the declared input dimension of an installed OptBench task."""
     config_path = get_installed_optbench_task_configs().get(task_id)

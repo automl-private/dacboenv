@@ -9,8 +9,10 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import numpy as np
+import pandas as pd
 import pytest
 from carps.utils.running import make_task
+from dacboenv.experiment.index_optbench_carps import _validate_index
 from dacboenv.experiment.optbench_inventory import audit_optbench_inventory
 from dacboenv.experiment.ppo import assign_training_worker_context
 from dacboenv.experiment.protocol import load_manifest, manifest_hash
@@ -129,6 +131,20 @@ def test_installed_inventory_audit_matches_the_frozen_finite_subset() -> None:
     ]
 
 
+def test_optbench_carps_index_requires_unique_current_config_paths(tmp_path: Path) -> None:
+    """Gathering accepts only exact, unique OptBench index mappings."""
+    config = tmp_path / "Ackley_2.yaml"
+    config.touch()
+    expected = {"Ackley-2": config.resolve()}
+    valid = pd.DataFrame([{"task_id": "Ackley-2", "config_fn": str(config)}])
+
+    assert _validate_index(valid, expected) == [{"task_id": "Ackley-2", "config_fn": str(config.resolve())}]
+    with pytest.raises(RuntimeError, match="not unique/current"):
+        _validate_index(pd.concat([valid, valid], ignore_index=True), expected)
+    with pytest.raises(RuntimeError, match="not unique/current"):
+        _validate_index(pd.DataFrame([{"task_id": "Ackley-2", "config_fn": str(tmp_path / "stale.yaml")}]), expected)
+
+
 def test_optbench_exact_reference_provider_fails_closed() -> None:
     """Only namespaced tasks with finite live minima receive exact references."""
     provider = OptBenchExactReferenceProvider(source_hash="a" * 64)
@@ -217,6 +233,7 @@ def test_algorithm_neutral_final_evaluator_has_exact_optbench_mode() -> None:
     assert r"dacboenv.task_ids=[optbench/\${task.name}]" in text
     assert "pkg://optbench/configs" in text
     assert "dacboenv.experiment.optbench_inventory" in text
+    assert "dacboenv.experiment.index_optbench_carps" in text
     assert "optbench_exact" in text
     assert "Hartmann_4" not in text
     assert "Hartmann_3,Hartmann_6" in text

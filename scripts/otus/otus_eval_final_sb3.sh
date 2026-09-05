@@ -208,6 +208,10 @@ if [[ "${mode}" == "list" ]]; then
 fi
 
 if [[ "${mode}" == "gather" ]]; then
+    if [[ -d "${output_root}/optbench" ]]; then
+        echo "Registering the installed OptBench task configs in the CARP-S index..."
+        uv run --frozen python -m dacboenv.experiment.index_optbench_carps
+    fi
     uv run --frozen python -m carps.analysis.gather_data "${output_root}"
     uv run --frozen python -m carps.utils.check_missing "${output_root}" || true
     exit 0

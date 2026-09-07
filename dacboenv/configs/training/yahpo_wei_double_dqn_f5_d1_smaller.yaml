@@ -1,0 +1,66 @@
+# @package _global_
+
+# Focused YAHPO-only Double-DQN experiment.
+#
+# Training inventory:
+#   - 3 LCBench tasks
+#   - 3 rbv2_xgboost tasks
+#   - 3 rbv2_ranger tasks, including cfg_rbv2_ranger_1040
+#
+# The inventory has three scenario strata. Twelve persistent workers therefore
+# assign exactly four workers to each scenario under the current hierarchical
+# YAHPO worker assignment.
+#
+# Schedule at f=5:
+#   61,440 controlled BO evaluations
+#   12,288 RL block transitions
+#   1,024 vector steps with 12 workers
+#   64-vector-step replay warm-up
+#   3 gradient steps per vector step
+#   2,880 nominal gradient updates after warm-up
+#
+# Validation and final evaluation are disabled. The exact final checkpoint is
+# the scientific model output.
+defaults:
+  - structured_ppo_f5
+  - override /rl_algorithm: double_dqn_d1_f5
+  - override /instance_sets@training_instances: yahpo_train_small
+  - override /instance_sets@validation_instances: yahpo_validation
+  - override /validation_panels@frequent_validation_panel: yahpo_frequent
+  - override /validation_panels@full_validation_panel: yahpo_full
+  - override /instance_sets@test_instances: yahpo_test_official_so
+  - _self_
+
+optimizer_id: DoubleDQN-WEI-YAHPO-Focused9-F5-D1
+reward_id: reference-regret-improvement
+
+dacboenv:
+  reward_keys: [reference_regret_improvement]
+  reference_provider:
+    _target_: dacboenv.reference.ManifestReferenceProvider
+    source: ${oc.env:DACBO_YAHPO_REFERENCE_TABLE,dacboenv/experiment/analysis/yahpo_best_known_references.json}
+    expected_runtime_objective_transform: negative_accuracy
+    expected_reporting_objective_transform: one_minus_accuracy
+    expected_fidelity: fixed_maximum
+  yahpo_training_budget_multiplier: 1.0
+
+experiment:
+  n_workers: 12
+  bo_evaluation_budget: 61440
+  checkpoint_bo_evaluations: 61440
+  progress_bar: false
+  training_sampler:
+    enabled: true
+  validation:
+    enabled: false
+    step_zero: false
+    full_enabled: false
+  final_evaluation:
+    enabled: false
+  # The final replay buffer is not needed to export/evaluate the final model
+  # and was a material source of disk usage in earlier campaigns.
+  save_replay_buffer:
+    final: false
+    periodic: false
+
+baserundir: runs_d1_ddqn_f5_yahpo_focused9

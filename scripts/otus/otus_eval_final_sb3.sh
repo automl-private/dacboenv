@@ -78,7 +78,7 @@ if [[ ! -s "${bundle_json}" || ! -s "${launch_tsv}" ]]; then
 fi
 
 output_root="${bundle_root}/results"
-seed_spec="range(0,11)"
+seed_spec="range(0,5)"
 bbob_dims="2,8"
 bbob_functions="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24"
 bbob_instance="0"

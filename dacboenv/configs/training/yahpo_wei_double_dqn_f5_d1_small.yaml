@@ -1,0 +1,24 @@
+# @package _global_
+
+# Reduced-inventory, half-budget D1 screen. It preserves all six YAHPO
+# scenarios and the frequency-5 temporal abstraction but is not a substitute
+# for the full-inventory D1 experiment.
+defaults:
+  - yahpo_wei_double_dqn_f5_d1
+  - override /instance_sets@training_instances: yahpo_train_small_d1
+  - _self_
+
+optimizer_id: DoubleDQN-WEI-YAHPO-Small-F5-D1
+
+experiment:
+  n_workers: 12
+  bo_evaluation_budget: 30720
+  checkpoint_bo_evaluations: 30720
+  validation:
+    enabled: false
+    step_zero: false
+    full_enabled: false
+  final_evaluation:
+    enabled: false
+
+baserundir: runs_d1_ddqn_f5_small

@@ -1,0 +1,48 @@
+# @package _global_
+
+# D1-A: YAHPO-only Double DQN with one action held for five BO evaluations.
+# No checkpoint validation is run; the exact final model is the scientific
+# output. 61,440 nominal controlled BO evaluations yield 12,288 block
+# transitions, 1,024 vector steps, and 5,120 controlled BO evaluations per
+# worker.
+defaults:
+  - structured_ppo_f5
+  - override /rl_algorithm: double_dqn_d1_f5
+  - override /instance_sets@training_instances: yahpo_train
+  - override /instance_sets@validation_instances: yahpo_validation
+  - override /validation_panels@frequent_validation_panel: yahpo_frequent
+  - override /validation_panels@full_validation_panel: yahpo_full
+  - override /instance_sets@test_instances: yahpo_test_official_so
+  - _self_
+
+optimizer_id: DoubleDQN-WEI-YAHPO-F5-D1
+reward_id: reference-regret-improvement
+
+# Retain the complete six-scenario training inventory. Persistent workers make
+# two independent workers responsible for every YAHPO scenario.
+dacboenv:
+  reward_keys: [reference_regret_improvement]
+  reference_provider:
+    _target_: dacboenv.reference.ManifestReferenceProvider
+    source: ${oc.env:DACBO_YAHPO_REFERENCE_TABLE,dacboenv/experiment/analysis/yahpo_best_known_references.json}
+    expected_runtime_objective_transform: negative_accuracy
+    expected_reporting_objective_transform: one_minus_accuracy
+    expected_fidelity: fixed_maximum
+  yahpo_training_budget_multiplier: 1.0
+
+experiment:
+  n_workers: 12
+  bo_evaluation_budget: 61440
+  # Save only one numbered checkpoint at the exact final transition.
+  checkpoint_bo_evaluations: 61440
+  progress_bar: false
+  training_sampler:
+    enabled: true
+  validation:
+    enabled: false
+    step_zero: false
+    full_enabled: false
+  final_evaluation:
+    enabled: false
+
+baserundir: runs_d1_ddqn_f5

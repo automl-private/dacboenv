@@ -1,0 +1,29 @@
+# @package _global_
+# Focused-nine YAHPO rerun: larger Q network and 3x the controlled BO budget.
+# 36,864 f5 transitions; 3,072 vector steps; 9,024 updates after warm-up.
+defaults:
+  - yahpo_wei_double_dqn_f5_d1_smaller
+  - _self_
+
+rl_algorithm:
+  policy_kwargs:
+    net_arch: [512, 512, 512]
+
+experiment:
+  bo_evaluation_budget: 184320
+  total_timesteps: ${divideint:${experiment.bo_evaluation_budget},${dacboenv.interaction_frequency}}
+  # Final numbered checkpoint only, alongside the standard final model.zip.
+  checkpoint_bo_evaluations: 184320
+  checkpoint_freq: ${divideint:${experiment.checkpoint_bo_evaluations},${dacboenv.interaction_frequency}}
+  validation:
+    enabled: false
+    step_zero: false
+    full_enabled: false
+  final_evaluation:
+    enabled: false
+  save_replay_buffer:
+    final: false
+    periodic: false
+
+optimizer_id: DoubleDQN-WEI-YAHPO-Focused9-F5-D1-512x3-184320BO
+baserundir: runs_yahpo_focused9_ddqn_f5_large_long

@@ -1,0 +1,13 @@
+# @package _global_
+# Matched-budget control: original [128,128] network with 184,320 BO evaluations.
+# All other settings match the larger-network rerun, including disabled eval.
+defaults:
+  - optbench_wei_double_dqn_f5_d1_large_long
+  - _self_
+
+rl_algorithm:
+  policy_kwargs:
+    net_arch: [128, 128]
+
+optimizer_id: DoubleDQN-WEI-F5-D1-OptBench-128x2-184320BO
+baserundir: runs_optbench_ddqn_f5_long

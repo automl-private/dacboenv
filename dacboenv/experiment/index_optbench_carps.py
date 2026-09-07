@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+from carps.analysis.gather_data_utils import load_task_cfg
 from carps.utils.index_configs import cache_path, index_configs
 from omegaconf import OmegaConf
 
@@ -38,6 +39,11 @@ def _validate_index(index: pd.DataFrame, expected: dict[str, Path]) -> list[dict
             raise RuntimeError(
                 f"CARP-S index entry for OptBench task {task_id!r} is not unique/current: "
                 f"expected {[str(expected_path)]}, found {[str(path) for path in resolved]}."
+            )
+        loaded = load_task_cfg(task_id, index)
+        if str(loaded.name) != task_id:
+            raise RuntimeError(
+                f"CARP-S loaded unexpected task name {loaded.name!r} for indexed OptBench ID {task_id!r}."
             )
         rows.append({"task_id": task_id, "config_fn": str(expected_path)})
     return rows

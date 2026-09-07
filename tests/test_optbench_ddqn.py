@@ -134,7 +134,7 @@ def test_installed_inventory_audit_matches_the_frozen_finite_subset() -> None:
 def test_optbench_carps_index_requires_unique_current_config_paths(tmp_path: Path) -> None:
     """Gathering accepts only exact, unique OptBench index mappings."""
     config = tmp_path / "Ackley_2.yaml"
-    config.touch()
+    config.write_text("task_id: Ackley-2\ntask:\n  name: Ackley-2\n", encoding="utf-8")
     expected = {"Ackley-2": config.resolve()}
     valid = pd.DataFrame([{"task_id": "Ackley-2", "config_fn": str(config)}])
 

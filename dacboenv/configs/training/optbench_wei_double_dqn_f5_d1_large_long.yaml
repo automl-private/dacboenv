@@ -1,0 +1,28 @@
+# @package _global_
+# OptBench rerun: larger Q network and 3x the controlled BO budget.
+# 36,864 f5 transitions; 3,072 vector steps; 9,024 updates after warm-up.
+defaults:
+  - optbench_wei_double_dqn_f5_d1
+  - _self_
+
+rl_algorithm:
+  policy_kwargs:
+    net_arch: [512, 512, 512]
+
+experiment:
+  bo_evaluation_budget: 184320
+  total_timesteps: ${divideint:${experiment.bo_evaluation_budget},${dacboenv.interaction_frequency}}
+  checkpoint_bo_evaluations: 184320
+  checkpoint_freq: ${divideint:${experiment.checkpoint_bo_evaluations},${dacboenv.interaction_frequency}}
+  validation:
+    enabled: false
+    step_zero: false
+    full_enabled: false
+  final_evaluation:
+    enabled: false
+  save_replay_buffer:
+    final: false
+    periodic: false
+
+optimizer_id: DoubleDQN-WEI-F5-D1-OptBench-512x3-184320BO
+baserundir: runs_optbench_ddqn_f5_large_long

@@ -9,6 +9,8 @@
 #   primary   61,440 BO evaluations, 12,288 transitions, 2,880 nominal updates
 #   short     30,720 BO evaluations,  6,144 transitions, 1,344 nominal updates
 #   both      submit both configurations
+#   large-long  184,320 BO evaluations; Q network [512,512,512]; no evaluation
+#   long        184,320 BO evaluations; original Q network [128,128]; no evaluation
 #
 # Example (run from the Otus DACBOEnv checkout):
 #   bash scripts/launch_optbench_ddqn_f5.sh primary /ABS/RUN_ROOT
@@ -28,7 +30,7 @@ fi
 mode="$1"
 shift
 case "${mode}" in
-    primary|short|both) ;;
+    primary|short|both|large-long|long) ;;
     -h|--help|help)
         usage
         exit 0
@@ -64,6 +66,12 @@ echo "Validating installed OptBench global minima against optbench_train..."
 
 configs=()
 case "${mode}" in
+    long)
+        configs+=(optbench_wei_double_dqn_f5_d1_long)
+        ;;
+    large-long)
+        configs+=(optbench_wei_double_dqn_f5_d1_large_long)
+        ;;
     primary)
         configs+=(optbench_wei_double_dqn_f5_d1)
         ;;

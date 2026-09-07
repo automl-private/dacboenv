@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Submit focused nine-task YAHPO Double-DQN f=5 runs through the existing
-# algorithm-neutral scripts/opt_ppo.sh worker on TSUBAME.
+# algorithm-neutral scripts/opt_ppo.sh worker on Otus.
 #
 # Usage:
 #   bash scripts/launch_yahpo_focused9_ddqn_f5.sh MODE [RUN_ROOT] [OVERRIDE ...]
@@ -9,6 +9,8 @@
 #   primary   61,440 BO evaluations, 12,288 transitions, 2,880 nominal updates
 #   short     30,720 BO evaluations,  6,144 transitions, 1,344 nominal updates
 #   both      submit both configurations
+#   large-long  184,320 BO evaluations; Q network [512,512,512]; no evaluation
+#   long        184,320 BO evaluations; original Q network [128,128]; no evaluation
 #
 # Examples:
 #   bash scripts/launch_yahpo_focused9_ddqn_f5.sh primary \
@@ -33,7 +35,7 @@ fi
 mode="$1"
 shift
 case "${mode}" in
-    primary|short|both) ;;
+    primary|short|both|large-long|long) ;;
     -h|--help|help)
         usage
         exit 0
@@ -60,6 +62,12 @@ run_root="$(cd "${run_root_input}" && pwd -P)"
 
 configs=()
 case "${mode}" in
+    long)
+        configs+=(yahpo_wei_double_dqn_f5_d1_smaller_long)
+        ;;
+    large-long)
+        configs+=(yahpo_wei_double_dqn_f5_d1_smaller_large_long)
+        ;;
     primary)
         configs+=(yahpo_wei_double_dqn_f5_d1_smaller)
         ;;

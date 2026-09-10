@@ -1,0 +1,6 @@
+id: G8_multi_horizon
+parameters:
+  mode: robust_both
+  epsilon5: 1.0e-3
+  epsilon10: 1.0e-3
+  epsilon5_harm: 1.0e-3

@@ -1,0 +1,7 @@
+run_root: ???
+output_root: ???
+hydra:
+  run:
+    dir: ${output_root}_hydra/export/${now:%Y%m%d_%H%M%S_%f}
+  job:
+    chdir: false

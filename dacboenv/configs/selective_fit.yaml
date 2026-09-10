@@ -1,0 +1,19 @@
+defaults:
+  - _self_
+
+seed: 0
+expected_source_revision: null
+selective_data:
+  branch_root: ???
+  normalizer: null
+  initial_base_bundle: null
+  partition_seed: 20260830
+selective_output:
+  root: ???
+  resume: false
+
+hydra:
+  run:
+    dir: ${selective_output.root}_hydra/${now:%Y%m%d_%H%M%S_%f}
+  job:
+    chdir: false

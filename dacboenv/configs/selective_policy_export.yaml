@@ -1,0 +1,7 @@
+run_root: ???
+output_root: ???
+hydra:
+  run:
+    dir: ${output_root}/hydra/export
+  job:
+    chdir: false

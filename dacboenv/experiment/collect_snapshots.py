@@ -404,6 +404,9 @@ def collect_context_snapshots(  # noqa: C901, PLR0912, PLR0913
     snapshots: list[BOSnapshot] = []
     try:
         observation, info = env.reset()
+        initialize_policy = getattr(policy, "initialize", None)
+        if callable(initialize_policy):
+            initialize_policy(observation, env)
         assert_snapshot_action_space(
             BOSnapshot(task_id, int(inner_seed), action_space=action_space_name),
             env,
@@ -452,6 +455,12 @@ def collect_context_snapshots(  # noqa: C901, PLR0912, PLR0913
                     code_commit=code_commit or current_git_commit(),
                     observation_hash=observation_digest(observation),
                     observation_json=portable_observation_json(observation),
+                    initial_anchor_json=(
+                        json.dumps(env.portable_initial_anchor(), sort_keys=True, allow_nan=False)
+                        if callable(getattr(env, "portable_initial_anchor", None))
+                        and env.portable_initial_anchor() is not None
+                        else ""
+                    ),
                     snapshot_id=snapshot_id,
                     history_seed=policy.outer_seed,
                     total_budget=int(env._n_trials),

@@ -281,6 +281,15 @@ class DACBOEnvOptimizer(SMAC3Optimizer):
         """
         super().tell(trial_info, trial_value)
 
+        # The outer CARP-S loop records D0 itself. New initial-conditioned
+        # policies must not fit/probe successive partial initial designs.
+        # Legacy PPO/DDQN observation and reward timing is unchanged.
+        if (
+            getattr(self._dacboenv, "external_initial_context_pending", False)
+            and not self._dacboenv.finish_external_initial_context()
+        ):
+            return
+
         obs = self._dacboenv.get_observation()
         rew = self._dacboenv.get_reward()
 

@@ -1,0 +1,10 @@
+# @package _global_
+policy_id: SelectiveWEIBaseOnly
+optimizer_id: ${policy_id}
+optimizer:
+  policy_class:
+    _target_: dacboenv.selective_wei.policy.SelectiveBaseOnlyPolicy
+    _partial_: true
+  policy_kwargs:
+    registry: ???
+    registry_hash: ???

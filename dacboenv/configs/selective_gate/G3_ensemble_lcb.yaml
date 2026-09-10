@@ -1,0 +1,5 @@
+id: G3_ensemble_lcb
+parameters:
+  horizon: ${selective_policy.horizon}
+  minimum_ensemble_size: 3
+  tie_tolerance: 1.0e-12

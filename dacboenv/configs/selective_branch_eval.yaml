@@ -1,0 +1,10 @@
+policy_bundle: ???
+branch_dataset: ???
+output: ???
+bootstrap_resamples: 2000
+seed: 20260830
+hydra:
+  run:
+    dir: ${oc.dirname:${output}}/hydra_branch_evaluation
+  job:
+    chdir: false

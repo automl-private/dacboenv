@@ -1,0 +1,6 @@
+id: G4_probability_superiority
+parameters:
+  horizon: ${selective_policy.horizon}
+  epsilon_benefit: 1.0e-3
+  epsilon_mean: 0.0
+  tie_tolerance: 1.0e-12

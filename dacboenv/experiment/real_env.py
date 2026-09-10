@@ -6,8 +6,10 @@ import os
 import tempfile
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from hydra import compose, initialize_config_module
+from hydra.core.global_hydra import GlobalHydra
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf, open_dict
 
@@ -35,6 +37,11 @@ def _template(action_space: str, interaction_frequency: int = 1) -> DictConfig:
             f"interaction_frequency must be one of {_SUPPORTED_INTERACTION_FREQUENCIES}, got {interaction_frequency!r}."
         )
     training_config = f"{training_prefix}_f{interaction_frequency}"
+    if GlobalHydra.instance().is_initialized():
+        return compose(
+            config_name=None,
+            overrides=[f"+training={training_config}", "seed=0", "outdir=/tmp/dacboenv-offline-audit"],
+        )
     with initialize_config_module(version_base=None, config_module="dacboenv.configs"):
         return compose(
             config_name=None,
@@ -50,6 +57,7 @@ def _build_real_structured_bbob_env(
     context_split: str,
     initial_design_n_configs: int | None,
     interaction_frequency: int,
+    initial_context_settings: dict[str, Any] | None = None,
 ):
     """Instantiate an isolated, fixed-context structured BBOB environment."""
     if not task_id.startswith("bbob/"):
@@ -64,6 +72,8 @@ def _build_real_structured_bbob_env(
         cfg.dacboenv.task_ids = [task_id]
         cfg.dacboenv.inner_seeds = [int(inner_seed)]
         cfg.dacboenv.context_split = context_split
+        if initial_context_settings is not None:
+            cfg.dacboenv.initial_context_settings = initial_context_settings
         # Offline evaluation must use the same privileged exact-reference
         # potential as the reported metrics.  The structured training template
         # intentionally defaults to a reference-free reward, so make this
@@ -84,6 +94,7 @@ def real_structured_bbob_env(
     *,
     context_split: str = "validation",
     interaction_frequency: int = 1,
+    initial_context_settings: dict[str, Any] | None = None,
 ):
     """Create one Stage-A-equivalent BBOB environment for a paired audit.
 
@@ -98,10 +109,17 @@ def real_structured_bbob_env(
         context_split=context_split,
         initial_design_n_configs=None,
         interaction_frequency=interaction_frequency,
+        initial_context_settings=initial_context_settings,
     )
 
 
-def real_structured_bbob_smoke_env(task_id: str, inner_seed: int, action_space: str = "wei"):
+def real_structured_bbob_smoke_env(
+    task_id: str,
+    inner_seed: int,
+    action_space: str = "wei",
+    *,
+    interaction_frequency: int = 1,
+):
     """Create a reduced-initial-design WEI environment for engineering smokes.
 
     The native BO budget and objective remain unchanged; only the initial
@@ -116,7 +134,7 @@ def real_structured_bbob_smoke_env(task_id: str, inner_seed: int, action_space: 
         action_space="wei",
         context_split="train",
         initial_design_n_configs=2,
-        interaction_frequency=1,
+        interaction_frequency=interaction_frequency,
     )
 
 
@@ -134,6 +152,7 @@ def real_structured_yahpo_env(  # noqa: PLR0913
     reference_breach_path: str | Path | None = None,
     interaction_frequency: int = 1,
     allow_sealed_test: bool = False,
+    initial_context_settings: dict[str, Any] | None = None,
 ):
     """Create an isolated structured environment for a non-test YAHPO smoke.
 
@@ -159,6 +178,8 @@ def real_structured_yahpo_env(  # noqa: PLR0913
         cfg.dacboenv.inner_seeds = [int(inner_seed)]
         cfg.dacboenv.context_split = context_split
         cfg.dacboenv.yahpo_training_budget_multiplier = float(budget_multiplier)
+        if initial_context_settings is not None:
+            cfg.dacboenv.initial_context_settings = initial_context_settings
         cfg.dacboenv.optimizer_cfg.smac_cfg.scenario.output_directory = str(audit_directory / "smac3_output")
         if initial_design_n_configs is not None:
             initial_design = cfg.dacboenv.optimizer_cfg.smac_cfg.smac_kwargs.initial_design
@@ -189,6 +210,7 @@ def real_structured_mixed_env(
     reference_table: str | Path | None = None,
     interaction_frequency: int = 1,
     allow_sealed_test: bool = False,
+    initial_context_settings: dict[str, Any] | None = None,
 ):
     """Dispatch a paired mixed context without flattening domain semantics."""
     if task_id.startswith("bbob/"):
@@ -198,6 +220,7 @@ def real_structured_mixed_env(
             action_space,
             context_split=context_split,
             interaction_frequency=interaction_frequency,
+            initial_context_settings=initial_context_settings,
         )
     if task_id.lower().startswith("yahpo/so/"):
         if reference_table is None:
@@ -210,6 +233,7 @@ def real_structured_mixed_env(
             reference_table=reference_table,
             interaction_frequency=interaction_frequency,
             allow_sealed_test=allow_sealed_test,
+            initial_context_settings=initial_context_settings,
         )
     raise ValueError(f"Unsupported mixed-evaluation task namespace: {task_id!r}.")
 

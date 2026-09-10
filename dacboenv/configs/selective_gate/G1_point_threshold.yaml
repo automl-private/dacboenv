@@ -1,0 +1,4 @@
+id: G1_point_threshold
+parameters:
+  horizon: ${selective_policy.horizon}
+  tie_tolerance: 1.0e-12

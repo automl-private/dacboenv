@@ -1,0 +1,13 @@
+defaults:
+  - /selective_base@_global_.selective_base: B1_context_mean
+  - /selective_predictor@_global_.selective_predictor: neural_ensemble
+  - /selective_gate@_global_.selective_gate: G1_point_threshold
+  - /selective_calibration@_global_.selective_calibration: default
+  - /selective_evaluation@_global_.selective_evaluation: default
+  - _self_
+
+id: selective_b1_g1
+horizon: 5
+interaction_frequency: 5
+candidate_equivalence_tolerance: 1.0e-6
+safe_fallback: contextual_base

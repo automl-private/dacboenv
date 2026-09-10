@@ -1,0 +1,18 @@
+id: G9_gp_trust_wrapper
+trust_mode: hard
+maximum_reliable_error: 1.0e-2
+parameters:
+  horizon: ${selective_policy.horizon}
+  minimum_trust_probability: 0.8
+  trust_metadata_key: trust_probability
+  minimum_action_feature_spread: 1.0e-3
+  maximum_duplicate_fraction: 0.6
+  maximum_calibration_error: 1.0
+  require_gp_available: false
+  inner:
+    gate_id: G3_ensemble_lcb
+    parameters:
+      horizon: ${selective_policy.horizon}
+      kappa: 1.0
+      epsilon: 1.0e-3
+      minimum_ensemble_size: 3

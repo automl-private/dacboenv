@@ -1,0 +1,7 @@
+kind: shared_neural
+ensemble_size: 5
+ensemble_kind: task_bootstrap
+updates: 3000
+learning_rate: 1.0e-4
+features: [global_state, action_features]
+raw_gp_hyperparameters: false

@@ -1,0 +1,15 @@
+operation: prepare
+campaign: base
+final_dataset_root: ???
+output_root: ???
+base_selector_registry: ???
+base_selector_registry_hash: ???
+policy_bundle: null
+initial_base_bundle: null
+target_semantics: fixed_action_local_gain
+intervention_horizon: 5
+hydra:
+  run:
+    dir: ${output_root}/hydra/${campaign}/${operation}
+  job:
+    chdir: false

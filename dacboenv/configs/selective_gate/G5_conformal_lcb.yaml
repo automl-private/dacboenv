@@ -1,0 +1,4 @@
+id: G5_conformal_lcb
+parameters:
+  horizon: ${selective_policy.horizon}
+  tie_tolerance: 1.0e-12

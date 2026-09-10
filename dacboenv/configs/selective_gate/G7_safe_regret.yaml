@@ -1,0 +1,6 @@
+id: G7_safe_regret
+parameters:
+  horizon: ${selective_policy.horizon}
+  benefit_mode: lcb
+  kappa: 1.0
+  p_min: 0.7

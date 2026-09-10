@@ -1,0 +1,8 @@
+campaign: base
+source_history: frozen_contextual_base
+data_splits: [train, dev]
+snapshot_phases: [0.25, 0.50, 0.75]
+actions: [0, 1, 2, 3, 4]
+horizons: [5, 10]
+interaction_frequency: 5
+

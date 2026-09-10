@@ -1,0 +1,6 @@
+id: G6_two_stage
+parameters:
+  horizon: ${selective_policy.horizon}
+  epsilon_worthwhile: 1.0e-3
+  tie_tolerance: 1.0e-12
+classifier: extra_trees

@@ -1,0 +1,8 @@
+manifest: ???
+job_index: ???
+reference_table: ???
+hydra:
+  run:
+    dir: ${oc.dirname:${manifest}}/hydra_jobs/${job_index}
+  job:
+    chdir: false

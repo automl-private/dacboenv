@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import hashlib
 import warnings
+from copy import deepcopy
 from dataclasses import dataclass, field
+from importlib.metadata import version
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
@@ -78,6 +80,92 @@ GP_HP_CHANGE_HIGH = np.ones(GP_HP_CHANGE_DIM, dtype=np.float32)
 
 Role = Literal["lengthscale", "signal", "noise", "other"]
 MAX_NEAR_BOUND_FRACTION = 0.5
+
+
+def verify_synchronized_gp(smbo: Any) -> dict[str, Any]:
+    """Verify the pinned fitted GP actually contains all completed observations.
+
+    This is a strict, read-only initial-context compatibility check, not a
+    fit operation. SMAC 2.4 exposes no public training-data identity API, so
+    selector ``_collect_data``, ``_previous_entries``, ``_model`` and the GP's
+    ``_gp``, ``_normalize_y`` and ``_impute_inactive`` are centralized here.
+    Input features/PCA and non-GP models not covered by this exact check fail
+    explicitly instead of receiving a fabricated verification fingerprint.
+    """
+    if version("smac") != "2.4.0":
+        raise RuntimeError("Initial GP identity verification requires audited SMAC 2.4.0.")
+    selector = smbo.intensifier.config_selector
+    x, y, _ = selector._collect_data()
+    model = selector._model
+    count = int(smbo.runhistory.finished)
+    if count <= 0 or len(x) != count or len(y) != count or selector._previous_entries != count:
+        raise RuntimeError("Surrogate data do not include exactly all completed D0 observations.")
+    if not bool(getattr(model, "_is_trained", False)) or not hasattr(model, "_gp"):
+        raise RuntimeError("A verified fitted GP is required for initial GP diagnostics.")
+    fitted = model._gp
+    expected_x = model._impute_inactive(np.asarray(x).copy())
+    expected_y = np.asarray(y).reshape(-1)
+    if model._normalize_y:
+        expected_y = (expected_y - model.mean_y_) / model.std_y_
+    if not np.array_equal(fitted.X_train_, expected_x, equal_nan=True):
+        raise RuntimeError("Fitted GP input data mismatch (unsupported transform or stale model).")
+    if not np.array_equal(fitted.y_train_, expected_y, equal_nan=False):
+        raise RuntimeError("Fitted GP target data mismatch.")
+    digest = hashlib.sha256()
+    for array in (np.asarray(fitted.X_train_, dtype=np.float64), np.asarray(fitted.y_train_, dtype=np.float64)):
+        digest.update(str(array.shape).encode())
+        digest.update(array.tobytes())
+    data_digest = digest.hexdigest()
+    digest.update(np.asarray(fitted.kernel_.theta, dtype=np.float64).tobytes())
+    return {
+        "training_data_digest": data_digest,
+        "model_digest": digest.hexdigest(),
+        "completed_observations": count,
+        "model_class": f"{type(model).__module__}.{type(model).__name__}",
+        "kernel": str(fitted.kernel_),
+        "encoder_class": type(selector._runhistory_encoder).__name__,
+        "output_normalization": "standardize_then_inverse_predict" if model._normalize_y else "identity",
+        "smac_version": "2.4.0",
+    }
+
+
+def probe_synchronized_gp(smbo: Any, *, probe_count: int, seed: int) -> dict[str, Any]:
+    """Read a finite posterior panel including every completed observation.
+
+    The copied ConfigSpace owns the only sampling RNG. Original objective
+    units are supported only for the audited identity runhistory encoder;
+    log/rank/multifidelity encodings fail instead of mislabelling their units.
+    The private SMAC scenario lookup remains in this compatibility layer.
+    """
+    identity = verify_synchronized_gp(smbo)
+    if identity["encoder_class"] != "RunHistoryEncoder":
+        raise RuntimeError("Raw-unit initial probes require an audited identity RunHistoryEncoder.")
+    if probe_count <= 0:
+        raise ValueError("Initial posterior probe count must be positive.")
+    space = deepcopy(smbo._scenario.configspace)
+    space.seed(seed)
+    configurations = [smbo.runhistory.get_config(key.config_id) for key in smbo.runhistory]
+    costs = np.asarray([smbo.runhistory[key].cost for key in smbo.runhistory], dtype=np.float64).reshape(-1)
+    if len(costs) != len(configurations) or not np.isfinite(costs).all():
+        raise RuntimeError("Initial probes support only finite single-objective completed histories.")
+    sampled = space.sample_configuration(size=probe_count)
+    if not isinstance(sampled, list):
+        sampled = [sampled]
+    points = np.asarray([configuration.get_array() for configuration in configurations + sampled])
+    mean, variance = smbo.intensifier.config_selector._model.predict(points)
+    if variance is None or identity != verify_synchronized_gp(smbo):
+        raise RuntimeError("Posterior diagnostics lack variance or mutated the fitted model.")
+    return {
+        "identity": identity,
+        "mean": np.asarray(mean).reshape(-1),
+        "variance": np.asarray(variance).reshape(-1),
+        "initial_indices": np.arange(len(configurations)),
+        "initial_costs": costs,
+        "probe_digest": hashlib.sha256(points.tobytes()).hexdigest(),
+        "probe_seed": seed,
+        "random_probe_count": probe_count,
+        "output_units": "original_objective",
+    }
 
 
 @dataclass(frozen=True)

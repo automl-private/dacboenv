@@ -1,0 +1,5 @@
+id: G2_hysteresis
+parameters:
+  horizon: ${selective_policy.horizon}
+  tie_tolerance: 1.0e-12
+  minimum_dwell_blocks: 1

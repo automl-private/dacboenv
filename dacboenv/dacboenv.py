@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
@@ -36,6 +36,7 @@ from dacboenv.reference import (
     ReferenceProvider,
     reference_regret,
 )
+from dacboenv.selective_wei.initial_context import InitialAnchorCache, InitialContext
 from dacboenv.utils.carps_optimizer import build_carps_optimizer, is_bbob_task_id, is_optbench_task_id
 from dacboenv.utils.loggingutils import get_logger
 from dacboenv.utils.math import safe_log10
@@ -135,6 +136,7 @@ class DACBOEnv(gym.Env):
         run_id: str | None = None,
         yahpo_training_budget_multiplier: float = 1.0,
         context_split: str = "train",
+        initial_context_settings: dict[str, Any] | None = None,
         **kwargs: dict,
     ) -> None:
         """Initialize the DACBOEnv environment.
@@ -222,6 +224,11 @@ class DACBOEnv(gym.Env):
 
         # Instance Set
         self._prepared_reset_result: tuple[ObsType, dict[str, Any], int | None] | None = None
+        self._initial_context_settings = initial_context_settings
+        self._initial_anchor: InitialAnchorCache | None = None
+        self._episode_generation = 0
+        self._initial_feature_provenance: dict[str, Any] = {}
+        self._initial_boundary_count: int | None = None
         self._instance_set: InstanceSet
         self._instance_selector_class = (
             instance_selector_class if instance_selector_class else RoundRobinInstanceSelector
@@ -893,7 +900,7 @@ class DACBOEnv(gym.Env):
             info.copy(),
         )
 
-    def reset(  # noqa: C901, PLR0915
+    def reset(  # noqa: C901, PLR0912, PLR0915
         self,
         *,
         seed: int | None = None,
@@ -927,6 +934,11 @@ class DACBOEnv(gym.Env):
         prepared_result = self._consume_prepared_reset(seed)
         if prepared_result is not None:
             return prepared_result
+
+        self._initial_anchor = None
+        self._episode_generation += 1
+        self._initial_feature_provenance = {}
+        self._initial_boundary_count = None
 
         self._apply_reset_seed(seed)
 
@@ -1034,6 +1046,12 @@ class DACBOEnv(gym.Env):
         # The initial design is already part of the BO state. Returning hard
         # coded defaults would hide the consumed budget, fitted surrogate and
         # action consequences from the first policy decision.
+        initial_history = getattr(self._smac_instance, "runhistory", None)
+        self._initial_boundary_count = (
+            None if initial_history is None or self._evaluation_mode else int(initial_history.finished)
+        )
+        if self._initial_context_settings is not None and not self._evaluation_mode:
+            self.get_initial_context(self._initial_context_settings)
         initial_obs = self._dacbo_observation_space.get_initial_observation()
         initial_obs = self.modify_obs(obs=initial_obs)
 
@@ -1046,6 +1064,108 @@ class DACBOEnv(gym.Env):
             info.update(gp_diagnostics_fn())
         logger.info(f"Selected episode context: {info}")
         return initial_obs, info
+
+    def configure_initial_context(self, settings: dict[str, Any]) -> None:
+        """Register the artifact's initial recipe before external CARP-S design trials."""
+        from dacboenv.selective_wei.initial_features import InitialFeatureSettings  # noqa: PLC0415
+
+        recipe = asdict(InitialFeatureSettings(**settings))
+        if (
+            self._initial_context_settings is not None
+            and asdict(InitialFeatureSettings(**self._initial_context_settings)) != recipe
+        ):
+            raise ValueError("Environment and policy initial-feature recipes differ.")
+        self._initial_context_settings = recipe
+
+    @property
+    def external_initial_context_pending(self) -> bool:
+        """Whether CARP-S still owns completion of an opted-in initial boundary."""
+        return (
+            self._evaluation_mode
+            and self._initial_context_settings is not None
+            and self._initial_boundary_count is None
+        )
+
+    def finish_external_initial_context(self) -> bool:
+        """Capture D0 only after CARP-S has told every actual design configuration.
+
+        The selected-design compatibility path is shared with reset; no candidate
+        is asked or discarded. A design-only episode needs no controller anchor.
+        """
+        if not self.external_initial_context_pending:
+            return True
+        history = self._smac_instance.runhistory
+        design = self._smac_instance.intensifier.config_selector._initial_design_configs
+        if len(history.get_configs()) < len(design) and history.finished < self._n_trials:
+            return False
+        self._initial_boundary_count = int(history.finished)
+        if history.finished < self._n_trials:
+            self.get_initial_context(self._initial_context_settings)
+        return True
+
+    def get_initial_context(self, settings: dict[str, Any] | None = None) -> InitialContext:
+        """Return the immutable reset-boundary context, never the current GP state.
+
+        Opting in before reset through ``initial_context_settings`` extracts
+        before action-feature probes. Lazy access is allowed only while no
+        controlled evaluation has occurred; it cannot reconstruct missing D0.
+        """
+        from dacboenv.selective_wei.context import canonical_hash  # noqa: PLC0415
+        from dacboenv.selective_wei.initial_features import (  # noqa: PLC0415
+            InitialFeatureSettings,
+            extract_initial_context,
+        )
+
+        selected = settings if settings is not None else self._initial_context_settings or {}
+        recipe = InitialFeatureSettings(**selected)
+        if self._initial_anchor is not None:
+            assert self._initial_anchor.context is not None
+            if self._initial_anchor.context.diagnostic_protocol_digest != canonical_hash(asdict(recipe)):
+                raise ValueError("Initial feature recipe changed during an episode.")
+            return self._initial_anchor.context
+        if self._initial_boundary_count is None or self.get_n_finished_trials() != self._initial_boundary_count:
+            raise RuntimeError(
+                "Initial context unavailable: controlled evaluations already occurred or reset is incomplete."
+            )
+        anchor, provenance = extract_initial_context(self, recipe)
+        self._initial_anchor = InitialAnchorCache()
+        self._initial_anchor.freeze(anchor)
+        self._initial_feature_provenance = provenance
+        return anchor
+
+    def freeze_initial_base(self, decision: Any) -> Any:
+        """Cache one base decision against the verified initial context."""
+        if self._initial_anchor is None:
+            raise RuntimeError("Extract the initial context before selecting its base.")
+        return self._initial_anchor.select(decision)
+
+    def initial_anchor_state(self) -> dict[str, Any]:
+        """Return portable context/base state without using the current GP."""
+        if self._initial_anchor is None:
+            raise RuntimeError("No initial anchor was captured for this episode.")
+        return self._initial_anchor.to_dict()
+
+    def portable_initial_anchor(self) -> dict[str, Any] | None:
+        """Expose an existing anchor and its recipe without triggering extraction."""
+        if self._initial_anchor is None or self._initial_anchor.context is None:
+            return None
+        return {
+            "state": self.initial_anchor_state(),
+            "settings": self._initial_feature_provenance["settings"],
+        }
+
+    def policy_decision_key(self) -> tuple[int, int]:
+        """Identify an actual episode/BO boundary for idempotent policy reads."""
+        return self._episode_generation, self.get_n_finished_trials()
+
+    def restore_initial_anchor(self, state: dict[str, Any]) -> None:
+        """Restore a cached base only after verifying this episode's initial context."""
+        restored = InitialAnchorCache.from_dict(state)
+        if self._initial_anchor is None or self._initial_anchor.context != restored.context:
+            raise ValueError("Restore requires the original verified reset anchor, not the current GP.")
+        if self._initial_anchor.decision is not None and self._initial_anchor.decision != restored.decision:
+            raise ValueError("Restored base action conflicts with the episode's frozen action.")
+        self._initial_anchor = restored
 
     def get_n_finished_trials(self) -> int:
         """Get the number of told trials from the SMAC instance.

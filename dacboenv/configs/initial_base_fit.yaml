@@ -1,0 +1,14 @@
+dataset_root: ???
+output_root: ???
+features: base_initial_gp_ubr
+model: extra_trees
+seed: 0
+resume: false
+task_partition: all_train
+partition_seed: 20260830
+expected_source_revision: null
+hydra:
+  run:
+    dir: ${output_root}_hydra/${now:%Y%m%d_%H%M%S_%f}
+  job:
+    chdir: false

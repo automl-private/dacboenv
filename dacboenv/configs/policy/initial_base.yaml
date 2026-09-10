@@ -1,0 +1,7 @@
+policy_id: InitialConditionedWEI
+optimizer:
+  policy_class:
+    _target_: dacboenv.policy.initial_base.InitialConditionedWEIPolicy
+    _partial_: true
+  policy_kwargs:
+    base_bundle: ???

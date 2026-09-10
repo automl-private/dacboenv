@@ -1,0 +1,8 @@
+kind: existing
+manifest: ???
+ensemble_size: 1
+ensemble_kind: loaded
+updates: 0
+learning_rate: 0.0
+features: [global_state, action_features]
+raw_gp_hyperparameters: false

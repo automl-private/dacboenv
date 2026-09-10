@@ -111,6 +111,7 @@ class BOSnapshot:
     observation_json: str = ""
     initial_design_hash: str = ""
     deterministic_environment_json: str = ""
+    initial_anchor_json: str = ""
 
     def __post_init__(self) -> None:  # noqa: C901, PLR0912
         """Normalize and validate the portable snapshot representation."""
@@ -160,8 +161,11 @@ class BOSnapshot:
 
 def snapshot_record_digest(snapshot: BOSnapshot) -> str:
     """Hash every portable snapshot field, including completed evaluations."""
+    fields = asdict(snapshot)
+    if not snapshot.initial_anchor_json:
+        fields.pop("initial_anchor_json")  # Preserve historical unanchored snapshot hashes.
     payload = json.dumps(
-        asdict(snapshot),
+        fields,
         allow_nan=False,
         separators=(",", ":"),
         sort_keys=True,
@@ -407,6 +411,15 @@ def replay_snapshot(
             raise SnapshotReplayError("Environment reset() info must be a mapping.")
         _validate_reset_context(env, info, snapshot)
         assert_snapshot_action_space(snapshot, env)
+
+        if snapshot.initial_anchor_json:
+            anchor = json.loads(snapshot.initial_anchor_json)
+            capture = getattr(env, "get_initial_context", None)
+            restore = getattr(env, "restore_initial_anchor", None)
+            if not callable(capture) or not callable(restore):
+                raise SnapshotReplayError("Anchored snapshot requires initial-context replay support.")
+            capture(anchor["settings"])
+            restore(anchor["state"])
 
         actions = _discrete_actions(env)
         for history_index, action in enumerate(snapshot.action_history):

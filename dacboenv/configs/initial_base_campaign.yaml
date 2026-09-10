@@ -1,0 +1,21 @@
+operation: prepare
+reuse_source: null
+output_root: ???
+partition_manifest: null
+job_index: null
+reference_table: dacboenv/experiment/analysis/yahpo_best_known_references.json
+seeds: [0, 1, 2, 3, 4]
+features:
+  probe_count: 128
+  probe_seed: 1729
+  confidence_multiplier: 2.0
+  scale_floor: 1.0e-12
+  scenario_features: true
+  require_gp: true
+  require_ubr: true
+  version: initial-mdgu-v2
+hydra:
+  run:
+    dir: ${output_root}_hydra/${operation}/${now:%Y%m%d_%H%M%S_%f}
+  job:
+    chdir: false

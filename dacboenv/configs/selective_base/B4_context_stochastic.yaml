@@ -1,0 +1,3 @@
+id: B4_context_stochastic
+temperature: 0.05
+description: frozen contextual action distribution ablation

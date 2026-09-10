@@ -1,0 +1,11 @@
+# @package _global_
+policy_id: SelectiveResidualWEI
+optimizer_id: ${policy_id}
+optimizer:
+  policy_class:
+    _target_: dacboenv.selective_wei.policy.SelectiveWEIPolicy
+    _partial_: true
+  policy_kwargs:
+    policy_bundle: ???
+    policy_bundle_hash: ???
+    decision_log: null

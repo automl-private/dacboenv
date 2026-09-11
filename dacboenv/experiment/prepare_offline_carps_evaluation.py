@@ -43,7 +43,11 @@ def _task_configs(task_ids: set[str], generated_config_root: Path) -> dict[str, 
         name = f"offline_{scenario}_{instance}"
         destination = generated_config_root / "task" / "YAHPO" / "SO" / f"{name}.yaml"
         destination.parent.mkdir(parents=True, exist_ok=True)
-        OmegaConf.save(get_task_config(task_id), destination)
+        task_config = get_task_config(task_id)
+        destination.write_text(
+            "# @package _global_\n\n" + OmegaConf.to_yaml(task_config, resolve=False),
+            encoding="utf-8",
+        )
         result["YAHPO/SO"].append(name)
         found.add(task_id)
     if found != task_ids:
